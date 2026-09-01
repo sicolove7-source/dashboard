@@ -399,195 +399,362 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
             <div>لا توجد شركات مطابقة لمعايير البحث.</div>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="table" style={{ width: '100%', margin: 0 }}>
-              <thead>
-                <tr style={{ background: 'rgba(0,0,0,0.02)', textAlign: 'right' }}>
-                  <th>الشركة والرابط المخصص</th>
-                  <th>المدير والبريد</th>
-                  <th>الباقة والعملة</th>
-                  <th>صلاحية الاشتراك</th>
-                  <th>الحالة</th>
-                  <th style={{ textAlign: 'center' }}>إجراءات الحساب والواتساب</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((t) => {
-                  const isSuspended = t.status === 'suspended';
-                  const isTrial = t.status === 'trial';
+          <>
+            {/* Desktop View Table */}
+            <div className="desktop-only-table" style={{ overflowX: 'auto' }}>
+              <table className="table" style={{ width: '100%', margin: 0 }}>
+                <thead>
+                  <tr style={{ background: 'rgba(0,0,0,0.02)', textAlign: 'right' }}>
+                    <th>الشركة والرابط المخصص</th>
+                    <th>المدير والبريد</th>
+                    <th>الباقة والعملة</th>
+                    <th>صلاحية الاشتراك</th>
+                    <th>الحالة</th>
+                    <th style={{ textAlign: 'center' }}>إجراءات الحساب والواتساب</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((t) => {
+                    const isSuspended = t.status === 'suspended';
+                    const isTrial = t.status === 'trial';
 
-                  return (
-                    <tr key={t.id} style={{ opacity: isSuspended ? 0.6 : 1 }}>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          <div
-                            style={{
-                              width: 44,
-                              height: 44,
-                              borderRadius: 12,
-                              background: `linear-gradient(135deg, ${t.primaryColor || '#6366F1'}, ${t.accentColor || '#3B82F6'})`,
-                              color: '#fff',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontWeight: 800,
-                              fontSize: 16,
-                              boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
-                              flexShrink: 0,
-                            }}
-                          >
-                            {t.name.slice(0, 2)}
-                          </div>
-                          <div>
-                            <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--ink)' }}>{t.name}</div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                              <MapPin size={12} color="var(--amber)" />
-                              <span>{t.city} - {t.country}</span>
-                              {t.customDomain && (
-                                <span style={{ color: '#6366F1', fontWeight: 700, direction: 'ltr' }}>• 🌐 {t.customDomain}</span>
-                              )}
+                    return (
+                      <tr key={t.id} style={{ opacity: isSuspended ? 0.6 : 1 }}>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <div
+                              style={{
+                                width: 44,
+                                height: 44,
+                                borderRadius: 12,
+                                background: `linear-gradient(135deg, ${t.primaryColor || '#6366F1'}, ${t.accentColor || '#3B82F6'})`,
+                                color: '#fff',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontWeight: 800,
+                                fontSize: 16,
+                                boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
+                                flexShrink: 0,
+                              }}
+                            >
+                              {t.name.slice(0, 2)}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--ink)' }}>{t.name}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                                <MapPin size={12} color="var(--amber)" />
+                                <span>{t.city} - {t.country}</span>
+                                {t.customDomain && (
+                                  <span style={{ color: '#6366F1', fontWeight: 700, direction: 'ltr' }}>• 🌐 {t.customDomain}</span>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{t.adminName || 'المدير العام'}</div>
-                        <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'monospace' }}>{t.adminEmail}</div>
-                      </td>
+                        <td>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{t.adminName || 'المدير العام'}</div>
+                          <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'monospace' }}>{t.adminEmail}</div>
+                        </td>
 
-                      <td>
-                        <div style={{ fontWeight: 700, fontSize: 13 }}>{t.planName || t.plan}</div>
-                        <div style={{ fontSize: 12, color: 'var(--teal)', fontWeight: 700 }}>
-                          العملة: {t.currency || 'د.إ'}
-                        </div>
-                      </td>
+                        <td>
+                          <div style={{ fontWeight: 700, fontSize: 13 }}>{t.planName || t.plan}</div>
+                          <div style={{ fontSize: 12, color: 'var(--teal)', fontWeight: 700 }}>
+                            العملة: {t.currency || 'د.إ'}
+                          </div>
+                        </td>
 
-                      <td>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>
-                          {t.expiryDate || 'مفتوح'}
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                          تاريخ البدء: {t.startDate || '2026-08'}
-                        </div>
-                      </td>
+                        <td>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>
+                            {t.expiryDate || 'مفتوح'}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                            تاريخ البدء: {t.startDate || '2026-08'}
+                          </div>
+                        </td>
 
-                      <td>
+                        <td>
+                          {t.status === 'active' && (
+                            <span style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981', padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
+                              نشط ✅
+                            </span>
+                          )}
+                          {t.status === 'trial' && (
+                            <span style={{ background: 'rgba(245,158,11,0.15)', color: '#D97706', padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
+                              تجريبي ⏳
+                            </span>
+                          )}
+                          {t.status === 'suspended' && (
+                            <span style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
+                              معلق ⛔
+                            </span>
+                          )}
+                        </td>
+
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                            <button
+                              onClick={() => handleImpersonate(t)}
+                              className="btn btn-primary"
+                              style={{
+                                padding: '7px 12px',
+                                fontSize: 12,
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 5,
+                                background: 'linear-gradient(135deg, #0F766E, #0D9488)',
+                                borderRadius: 8,
+                              }}
+                              title="الدخول لحساب الشركة واستعراض مساحة عملها"
+                            >
+                              <ExternalLink size={13} /> دخول للحساب
+                            </button>
+
+                            <button
+                              onClick={() => copyWhatsApp(t)}
+                              className="btn"
+                              style={{
+                                padding: '7px 10px',
+                                fontSize: 12,
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 5,
+                                background: copiedId === t.id ? '#10B981' : '#25D366',
+                                color: '#fff',
+                                borderRadius: 8,
+                                border: 'none',
+                              }}
+                              title="نسخ رسالة التفعيل والبيانات لإرسالها بالواتساب"
+                            >
+                              {copiedId === t.id ? <Check size={13} /> : <Copy size={13} />}
+                              <span>{copiedId === t.id ? 'تم النسخ!' : 'واتساب'}</span>
+                            </button>
+
+                            <button
+                              onClick={() => openEditModal(t)}
+                              className="icon-btn"
+                              title="تعديل بيانات الشركة والاشتراك"
+                            >
+                              <Pencil size={14} />
+                            </button>
+
+                            <button
+                              onClick={() => toggleStatus(t)}
+                              className="icon-btn"
+                              title={isSuspended ? 'تفعيل الحساب' : 'تعليق الحساب'}
+                              style={{ color: isSuspended ? '#10B981' : '#F59E0B' }}
+                            >
+                              <Power size={14} />
+                            </button>
+
+                            {deleteConfirmId === t.id ? (
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <button
+                                  onClick={() => handleDelete(t.id)}
+                                  className="btn btn-danger"
+                                  style={{ padding: '4px 8px', fontSize: 11 }}
+                                >
+                                  تأكيد
+                                </button>
+                                <button
+                                  onClick={() => setDeleteConfirmId(null)}
+                                  className="btn btn-ghost"
+                                  style={{ padding: '4px 8px', fontSize: 11 }}
+                                >
+                                  إلغاء
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setDeleteConfirmId(t.id)}
+                                className="icon-btn"
+                                style={{ color: 'var(--danger)' }}
+                                title="حذف الشركة نهائياً"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile-Only Responsive Company Cards */}
+            <div className="mobile-only-cards" style={{ display: 'none', flexDirection: 'column', gap: 14, padding: 14 }}>
+              {filtered.map((t) => {
+                const isSuspended = t.status === 'suspended';
+                const isTrial = t.status === 'trial';
+
+                return (
+                  <div
+                    key={t.id}
+                    className="panel"
+                    style={{
+                      padding: 16,
+                      borderRadius: 16,
+                      border: '1px solid var(--border)',
+                      background: 'var(--card)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 12,
+                      opacity: isSuspended ? 0.65 : 1,
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+                    }}
+                  >
+                    {/* Header */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div
+                          style={{
+                            width: 42,
+                            height: 42,
+                            borderRadius: 12,
+                            background: `linear-gradient(135deg, ${t.primaryColor || '#6366F1'}, ${t.accentColor || '#3B82F6'})`,
+                            color: '#fff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 800,
+                            fontSize: 15,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {t.name.slice(0, 2)}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: 14.5, color: 'var(--ink)' }}>{t.name}</div>
+                          <div style={{ fontSize: 12, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <MapPin size={11} color="var(--amber)" />
+                            <span>{t.city} - {t.country}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
                         {t.status === 'active' && (
-                          <span style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981', padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
+                          <span style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981', padding: '3px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700 }}>
                             نشط ✅
                           </span>
                         )}
                         {t.status === 'trial' && (
-                          <span style={{ background: 'rgba(245,158,11,0.15)', color: '#D97706', padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
+                          <span style={{ background: 'rgba(245,158,11,0.15)', color: '#D97706', padding: '3px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700 }}>
                             تجريبي ⏳
                           </span>
                         )}
                         {t.status === 'suspended' && (
-                          <span style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
+                          <span style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', padding: '3px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700 }}>
                             معلق ⛔
                           </span>
                         )}
-                      </td>
+                      </div>
+                    </div>
 
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                          {/* Impersonate / Enter Company Workspace */}
-                          <button
-                            onClick={() => handleImpersonate(t)}
-                            className="btn btn-primary"
-                            style={{
-                              padding: '7px 12px',
-                              fontSize: 12,
-                              fontWeight: 700,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 5,
-                              background: 'linear-gradient(135deg, #0F766E, #0D9488)',
-                              borderRadius: 8,
-                            }}
-                            title="الدخول لحساب الشركة واستعراض مساحة عملها"
-                          >
-                            <ExternalLink size={13} /> دخول للحساب
-                          </button>
+                    {/* Details Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, background: 'var(--bg)', padding: '10px 12px', borderRadius: 12, fontSize: 12 }}>
+                      <div>
+                        <span style={{ color: 'var(--muted)', display: 'block', fontSize: 11 }}>المدير المسؤول:</span>
+                        <span style={{ fontWeight: 700, color: 'var(--ink)' }}>{t.adminName || 'المدير العام'}</span>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--muted)', display: 'block', fontSize: 11 }}>الباقة والعملة:</span>
+                        <span style={{ fontWeight: 700, color: 'var(--teal)' }}>{t.planName || t.plan} ({t.currency || 'د.إ'})</span>
+                      </div>
+                      <div style={{ gridColumn: 'span 2' }}>
+                        <span style={{ color: 'var(--muted)', display: 'block', fontSize: 11 }}>البريد الإلكتروني:</span>
+                        <span style={{ fontWeight: 600, color: 'var(--ink)', fontFamily: 'monospace' }}>{t.adminEmail}</span>
+                      </div>
+                    </div>
 
-                          {/* Copy WhatsApp Activation */}
-                          <button
-                            onClick={() => copyWhatsApp(t)}
-                            className="btn"
-                            style={{
-                              padding: '7px 10px',
-                              fontSize: 12,
-                              fontWeight: 700,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 5,
-                              background: copiedId === t.id ? '#10B981' : '#25D366',
-                              color: '#fff',
-                              borderRadius: 8,
-                              border: 'none',
-                            }}
-                            title="نسخ رسالة التفعيل والبيانات لإرسالها بالواتساب"
-                          >
-                            {copiedId === t.id ? <Check size={13} /> : <Copy size={13} />}
-                            <span>{copiedId === t.id ? 'تم النسخ!' : 'واتساب'}</span>
-                          </button>
+                    {/* Main Action Button */}
+                    <button
+                      onClick={() => handleImpersonate(t)}
+                      className="btn btn-primary"
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        fontSize: 13,
+                        fontWeight: 800,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        background: 'linear-gradient(135deg, #0F766E, #0D9488)',
+                        borderRadius: 10,
+                      }}
+                    >
+                      <ExternalLink size={15} /> دخول لمساحة عمل الشركة
+                    </button>
 
-                          {/* Edit */}
-                          <button
-                            onClick={() => openEditModal(t)}
-                            className="icon-btn"
-                            title="تعديل بيانات الشركة والاشتراك"
-                          >
-                            <Pencil size={14} />
-                          </button>
+                    {/* Secondary Actions Bar */}
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'space-between', alignItems: 'center' }}>
+                      <button
+                        onClick={() => copyWhatsApp(t)}
+                        className="btn"
+                        style={{
+                          flex: 1,
+                          padding: '8px',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 4,
+                          background: copiedId === t.id ? '#10B981' : '#25D366',
+                          color: '#fff',
+                          borderRadius: 8,
+                          border: 'none',
+                        }}
+                      >
+                        {copiedId === t.id ? <Check size={14} /> : <Copy size={14} />}
+                        <span>{copiedId === t.id ? 'تم النسخ!' : 'واتساب'}</span>
+                      </button>
 
-                          {/* Suspend / Resume */}
-                          <button
-                            onClick={() => toggleStatus(t)}
-                            className="icon-btn"
-                            title={isSuspended ? 'تفعيل الحساب' : 'تعليق الحساب'}
-                            style={{ color: isSuspended ? '#10B981' : '#F59E0B' }}
-                          >
-                            <Power size={14} />
-                          </button>
+                      <button
+                        onClick={() => openEditModal(t)}
+                        className="btn btn-secondary"
+                        style={{ padding: '8px 12px', fontSize: 12, borderRadius: 8, gap: 4 }}
+                      >
+                        <Pencil size={13} /> تعديل
+                      </button>
 
-                          {/* Delete */}
-                          {deleteConfirmId === t.id ? (
-                            <div style={{ display: 'flex', gap: 4 }}>
-                              <button
-                                onClick={() => handleDelete(t.id)}
-                                className="btn btn-danger"
-                                style={{ padding: '4px 8px', fontSize: 11 }}
-                              >
-                                تأكيد
-                              </button>
-                              <button
-                                onClick={() => setDeleteConfirmId(null)}
-                                className="btn btn-ghost"
-                                style={{ padding: '4px 8px', fontSize: 11 }}
-                              >
-                                إلغاء
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => setDeleteConfirmId(t.id)}
-                              className="icon-btn"
-                              title="حذف الشركة"
-                              style={{ color: 'var(--danger)' }}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      <button
+                        onClick={() => toggleStatus(t)}
+                        className="btn btn-secondary"
+                        style={{ padding: '8px 12px', fontSize: 12, borderRadius: 8, gap: 4, color: isSuspended ? '#10B981' : '#F59E0B' }}
+                      >
+                        <Power size={13} /> {isSuspended ? 'تفعيل' : 'تعليق'}
+                      </button>
+
+                      {deleteConfirmId === t.id ? (
+                        <button
+                          onClick={() => handleDelete(t.id)}
+                          className="btn btn-danger"
+                          style={{ padding: '8px 12px', fontSize: 12, borderRadius: 8 }}
+                        >
+                          تأكيد
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setDeleteConfirmId(t.id)}
+                          className="btn btn-ghost"
+                          style={{ padding: '8px', color: 'var(--danger)' }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 

@@ -1298,4 +1298,90 @@
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   SUPERADMIN & PLATFORM-WIDE ENHANCED MOBILE RESPONSIVENESS
+   ═══════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  /* Tables vs Mobile Cards Toggle */
+  .desktop-only-table {
+    display: none !important;
+  }
+  .mobile-only-cards {
+    display: flex !important;
+  }
+
+  /* Impersonation Top Bar on Mobile */
+  .impersonation-top-bar {
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+    gap: 6px !important;
+  }
+
+  /* Floating WhatsApp Widget on Mobile */
+  .wa-widget-wrapper {
+    bottom: 74px !important;
+    left: 14px !important;
+    z-index: 999 !important;
+  }
+  .wa-fab {
+    width: 48px !important;
+    height: 48px !important;
+    padding: 0 !important;
+    justify-content: center !important;
+    border-radius: 50% !important;
+    box-shadow: 0 6px 20px rgba(37, 211, 102, 0.45) !important;
+  }
+  .wa-fab > span:not(.wa-fab-pulse) {
+    display: none !important;
+  }
+  .wa-chat-window {
+    bottom: 128px !important;
+    left: 10px !important;
+    right: 10px !important;
+    width: calc(100vw - 20px) !important;
+    max-width: 400px !important;
+    max-height: calc(100vh - 150px) !important;
+    border-radius: 18px !important;
+  }
+
+  /* Main Container Spacing */
+  .main {
+    padding: 14px 12px 90px 12px !important;
+  }
+
+  /* Title block */
+  .titleblock {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+    margin-bottom: 16px !important;
+  }
+  .titleblock h1 {
+    font-size: 20px !important;
+  }
+
+  /* Panels and Cards padding */
+  .panel {
+    padding: 14px 14px !important;
+    border-radius: 14px !important;
+  }
+
+  /* Modals on Mobile */
+  .modal-content {
+    width: calc(100vw - 24px) !important;
+    max-width: none !important;
+    padding: 18px 16px !important;
+    border-radius: 18px !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+  }
+
+  /* Forms on Mobile */
+  .form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+}
+
 
