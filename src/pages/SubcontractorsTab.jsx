@@ -418,11 +418,12 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
                 padding: '8px 16px',
                 borderRadius: 10,
                 border: 'none',
-                background: activeTab === t.key ? '#F59E0B' : 'transparent',
+                background: activeTab === t.key ? 'var(--amber)' : 'transparent',
                 color: activeTab === t.key ? '#fff' : 'var(--muted)',
                 fontWeight: 700,
                 fontSize: 13,
                 cursor: 'pointer',
+                boxShadow: activeTab === t.key ? '0 4px 14px rgba(217, 119, 6, 0.35)' : 'none',
                 transition: 'all .2s'
               }}
             >

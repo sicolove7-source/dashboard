@@ -155,12 +155,30 @@ const TEAM_KEY = "finishing-team-v2";
 const THEME_KEY = "finishing-theme-v2";
 const LEADS_KEY = "crm-leads-v1";
 
+function getTabFromPath() {
+  try {
+    const path = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+    if (path === 'contractors' || path === 'subcontractors') return 'subcontractors';
+    if (path === 'projects') return 'projects';
+    if (path === 'crm' || path === 'pipeline') return 'crm';
+    if (path === 'finance') return 'finance';
+    if (path === 'team') return 'team';
+    if (path === 'suppliers') return 'suppliers';
+    if (path === 'quotations') return 'quotations';
+    if (path === 'specs') return 'specs';
+    if (path === 'automations') return 'automations';
+    if (path === 'settings') return 'settings';
+    if (path === 'tenants' || path === 'superadmin') return 'tenants';
+  } catch (e) {}
+  return null;
+}
+
 export default function App() {
   const [projects, setProjects] = useState(null); // null = loading
   const [team, setTeam] = useState(null); // {engineers, accountants, techOffice, customerService}
   const [leads, setLeads] = useState(null); // crm leads
   const [companySettings, setCompanySettings] = useState(() => loadCompanySettings());
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState(() => getTabFromPath() || "overview");
   const [view, setView] = useState("list"); // list | detail | form
   const [activeId, setActiveId] = useState(null);
   const [activeClientPortalProjectId, setActiveClientPortalProjectId] = useState(null);
@@ -407,7 +425,10 @@ export default function App() {
         const compId = parsed.companyId || getActiveTenantId() || 'comp_alain';
         loadTenantWorkspace(compId);
 
-        if (parsed.role === 'super_admin') {
+        const requestedTab = getTabFromPath();
+        if (requestedTab) {
+          setTab(requestedTab);
+        } else if (parsed.role === 'super_admin') {
           setTab('tenants');
         } else {
           const allowedTabs = NAV_PERMISSIONS[parsed.role] || ['overview'];
@@ -419,6 +440,39 @@ export default function App() {
       }
     }
   }, []);
+
+  // Listen for browser forward/back buttons
+  useEffect(() => {
+    function handlePopState() {
+      const target = getTabFromPath();
+      if (target) setTab(target);
+    }
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Sync browser URL with active tab
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const pathMap = {
+      subcontractors: '/contractors',
+      projects: '/projects',
+      overview: '/overview',
+      crm: '/crm',
+      finance: '/finance',
+      team: '/team',
+      suppliers: '/suppliers',
+      quotations: '/quotations',
+      specs: '/specs',
+      automations: '/automations',
+      settings: '/settings',
+      tenants: '/tenants',
+    };
+    const targetPath = pathMap[tab] || '/overview';
+    if (window.location.pathname !== targetPath) {
+      window.history.replaceState(null, '', targetPath);
+    }
+  }, [tab, isAuthenticated]);
 
   // Security Guard: Prevent non-superadmin accounts from ever viewing the tenants hub
   useEffect(() => {
