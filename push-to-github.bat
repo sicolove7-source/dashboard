@@ -1,36 +1,38 @@
 @echo off
 @chcp 65001 >nul
+title رفع وتحديث لوحة التحكم سحابياً على GitHub و Vercel
 cd /d "%~dp0"
 
 echo ================================================================
-echo   Updating Dashboard on GitHub and Vercel...
+echo   🚀 جاري رفع التحديثات الأمنية وإغلاق الحسابات سحابياً...
 echo ================================================================
 echo.
 
 set "GIT_EXE=C:\Program Files\Git\cmd\git.exe"
 
 if exist "%GIT_EXE%" (
-    echo [1/3] Adding changes...
+    echo [1/3] تجهيز الملفات المعدلة...
     "%GIT_EXE%" add .
 
-    echo [2/3] Committing changes...
-    "%GIT_EXE%" commit -m "Hide demo accounts and secure superadmin login"
+    echo [2/3] حفظ التعديلات الأمنية...
+    "%GIT_EXE%" commit -m "تأمين المنصة وقفل الحسابات الفرعية وتحديث لوحة المالك"
 
-    echo [3/3] Pushing to GitHub...
+    echo [3/3] جاري الرفع إلى GitHub و Vercel...
     "%GIT_EXE%" push origin main
 ) else (
-    echo [1/3] Adding changes...
+    echo [1/3] تجهيز الملفات المعدلة...
     git add .
 
-    echo [2/3] Committing changes...
-    git commit -m "Hide demo accounts and secure superadmin login"
+    echo [2/3] حفظ التعديلات الأمنية...
+    git commit -m "تأمين المنصة وقفل الحسابات الفرعية وتحديث لوحة المالك"
 
-    echo [3/3] Pushing to GitHub...
+    echo [3/3] جاري الرفع إلى GitHub و Vercel...
     git push origin main
 )
 
 echo.
 echo ================================================================
-echo   Done! Your Vercel website is updating now!
+echo   ✅ تم رفع التحديثات بنجاح إلى GitHub!
+echo   موقعك السحابي على Vercel يتم تحديثه الآن تلقائياً.
 echo ================================================================
 pause
