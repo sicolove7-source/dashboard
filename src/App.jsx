@@ -30,7 +30,7 @@ import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import AutomationsCenter from './pages/AutomationsCenter';
 import OnboardingTourModal from './components/OnboardingTourModal';
 import WhatsAppSupportWidget from './components/WhatsAppSupportWidget';
-import { getActiveTenantId, setActiveTenantId, getTenantData, loadAllTenants } from './services/tenantsManager';
+import { getActiveTenantId, setActiveTenantId, getTenantData, loadAllTenants, isSubAccountsLoginAllowed } from './services/tenantsManager';
 
 // Utils
 import { NAV, ENGINEERS, ACCOUNTANTS, TECH_OFFICE, TYPES, AREAS, SUBMITTAL_ITEMS, SUB_STATUS, DIARY_WORK_SAMPLES, DIARY_ISSUE_SAMPLES, LABOR_TRADES, MATERIALS_LIST, MATERIAL_STATUS, EQUIPMENT_LIST, STAGES, SEED_LEADS } from './utils/constants';
@@ -393,6 +393,15 @@ export default function App() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        
+        // إذا كان الحساب فرعياً (ليس سوبر أدمن) ودخول الحسابات الفرعية مقفل -> إنهاء الجلسة فوراً
+        if (parsed.role !== 'super_admin' && !parsed.isSuperAdmin && !isSubAccountsLoginAllowed()) {
+          localStorage.removeItem('isAdmin');
+          setCurrentUser(null);
+          setIsAuthenticated(false);
+          return;
+        }
+
         setCurrentUser(parsed);
         setIsAuthenticated(true);
         const compId = parsed.companyId || getActiveTenantId() || 'comp_alain';

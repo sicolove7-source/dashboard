@@ -3,12 +3,13 @@ import {
   Building2, Plus, Search, CheckCircle2, Clock, AlertTriangle,
   Copy, Check, ExternalLink, KeyRound, Shield, Trash2, Pencil,
   Power, Sparkles, MapPin, DollarSign, Calendar, Users, Phone,
-  Mail, X, RefreshCw, Layers, Globe, Server
+  Mail, X, RefreshCw, Layers, Globe, Server, Lock
 } from 'lucide-react';
 import {
   loadAllTenants, createTenant, updateTenant, deleteTenant,
   generateWhatsAppWelcomeMessage, setActiveTenantId,
-  getSuperAdminAccount, saveSuperAdminAccount
+  getSuperAdminAccount, saveSuperAdminAccount,
+  isSubAccountsLoginAllowed, setSubAccountsLoginAllowed
 } from '../services/tenantsManager';
 
 export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) {
@@ -20,6 +21,9 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
   const [editTenant, setEditTenant] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+
+  // Sub-accounts access master switch
+  const [subAccountsAllowed, setSubAccountsAllowed] = useState(() => isSubAccountsLoginAllowed());
 
   // Owner Security Modal State
   const [showOwnerModal, setShowOwnerModal] = useState(false);
@@ -190,6 +194,101 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
             <Plus size={16} /> إضافة شركة جديدة
           </button>
         </div>
+      </div>
+
+      {/* ─── Sub-Accounts Master Access Security Panel ─── */}
+      <div
+        className="panel"
+        style={{
+          background: subAccountsAllowed 
+            ? 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(59,130,246,0.05))' 
+            : 'linear-gradient(135deg, rgba(239,68,68,0.08), rgba(245,158,11,0.05))',
+          border: subAccountsAllowed ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(239,68,68,0.3)',
+          borderRadius: 16,
+          padding: '18px 24px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 16,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 14,
+              background: subAccountsAllowed ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+              color: subAccountsAllowed ? '#10B981' : '#EF4444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            {subAccountsAllowed ? <CheckCircle2 size={26} /> : <Lock size={26} />}
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>
+                صلاحية دخول الحسابات الفرعية والمشتركين:
+              </span>
+              <span
+                style={{
+                  padding: '4px 14px',
+                  borderRadius: 20,
+                  fontSize: 12.5,
+                  fontWeight: 800,
+                  background: subAccountsAllowed ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                  color: subAccountsAllowed ? '#10B981' : '#EF4444',
+                  border: `1px solid ${subAccountsAllowed ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)'}`,
+                }}
+              >
+                {subAccountsAllowed ? '🟢 متاح دخول الشركات والمستخدمين' : '🔒 مقفل كلياً (حساب المالك فقط)'}
+              </span>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>
+              {subAccountsAllowed
+                ? 'الحسابات الفرعية والمشتركون يمكنهم تسجيل الدخول لمساحات عملهم.'
+                : 'تم قفل دخول جميع الحسابات الفرعية والشركات — لا يمكن لأي حساب فتح المنصة سوى مالك المنصة.'}
+            </div>
+          </div>
+        </div>
+
+        <button
+          className="btn"
+          onClick={() => {
+            const next = !subAccountsAllowed;
+            setSubAccountsLoginAllowed(next);
+            setSubAccountsAllowed(next);
+          }}
+          style={{
+            padding: '11px 24px',
+            borderRadius: 12,
+            fontWeight: 800,
+            fontSize: 14,
+            background: subAccountsAllowed ? '#EF4444' : '#10B981',
+            color: '#fff',
+            border: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            cursor: 'pointer',
+            boxShadow: `0 4px 14px ${subAccountsAllowed ? 'rgba(239,68,68,0.35)' : 'rgba(16,185,129,0.35)'}`,
+            transition: 'all 0.2s',
+          }}
+        >
+          {subAccountsAllowed ? (
+            <>
+              <Lock size={17} /> قفل الحسابات الفرعية فوراً 🔒
+            </>
+          ) : (
+            <>
+              <CheckCircle2 size={17} /> السماح بدخول الحسابات الفرعية 🟢
+            </>
+          )}
+        </button>
       </div>
 
       {/* Stats Cards */}

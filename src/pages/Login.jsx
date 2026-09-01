@@ -1,14 +1,13 @@
 import React, { useState } from "react";
 import { Building2, Lock, Mail, AlertTriangle, ShieldCheck } from "lucide-react";
-import { loadUsers } from "./UserManagement";
 import { authenticateTenantUser } from "../services/tenantsManager";
 
 export default function Login({ onLogin, companySettings }) {
-  const companyName = companySettings?.companyName || 'لوحة إدارة التشطيبات والمشاريع';
-  const companySubtitle = companySettings?.companySubtitle || 'بوابة الدخول الآمنة للنظام الموحد';
-  const companyLogo = companySettings?.companyLogo || null;
-  const primaryColor = companySettings?.primaryColor || '#6366F1';
-  const accentColor = companySettings?.accentColor || '#3B82F6';
+  const companyName = 'منصة إدارة وتشطيبات المشاريع';
+  const companySubtitle = 'بوابة الدخول الآمنة للنظام الموحد';
+  const companyLogo = null;
+  const primaryColor = '#6366F1';
+  const accentColor = '#3B82F6';
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [error, setError]       = useState(null);
@@ -25,19 +24,10 @@ export default function Login({ onLogin, companySettings }) {
       if (authResult.success) {
         onLogin(authResult.user, authResult.tenant, authResult.isSuperAdmin);
       } else {
-        // Fallback for company staff users
-        const accounts = loadUsers();
-        const found = accounts.find(
-          (a) => a.email.toLowerCase().trim() === email.toLowerCase().trim() && a.password === password
-        );
-        if (found) {
-          onLogin({ role: found.role, name: found.name, engineerName: found.engineerName, email: found.email });
-        } else {
-          setError(authResult.error || "البريد الإلكتروني أو كلمة المرور غير صحيحة.");
-        }
+        setError(authResult.error || "البريد الإلكتروني أو كلمة المرور غير صحيحة.");
       }
       setLoading(false);
-    }, 500);
+    }, 400);
   };
 
   return (

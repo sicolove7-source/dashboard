@@ -10,6 +10,34 @@ import { setGlobalCurrency } from '../utils/helpers';
 export const PLATFORM_TENANTS_KEY = 'platform-tenants-master-v1';
 export const ACTIVE_TENANT_ID_KEY = 'platform-active-tenant-id';
 export const SUPER_ADMIN_STORAGE_KEY = 'platform-superadmin-credentials-v1';
+export const SUB_ACCOUNTS_ACCESS_KEY = 'platform-subaccounts-access-v1';
+
+/**
+ * فحص هل دخول الحسابات الفرعية مسموح أم مقفل بقرار مالك المنصة
+ * القيمة الافتراضية: false (مقفل حصرياً للمالك) لضمان أعلى مستويات الأمان والخصوصية
+ */
+export function isSubAccountsLoginAllowed() {
+  try {
+    const raw = localStorage.getItem(SUB_ACCOUNTS_ACCESS_KEY);
+    if (raw !== null) {
+      return JSON.parse(raw) === true;
+    }
+  } catch (e) {
+    console.error("Error checking sub-accounts access:", e);
+  }
+  return false; // الافتراضي: مقفل ولا تفتح الحسابات الفرعية إلا بعد تفعيل المالك
+}
+
+export function setSubAccountsLoginAllowed(allowed) {
+  try {
+    localStorage.setItem(SUB_ACCOUNTS_ACCESS_KEY, JSON.stringify(!!allowed));
+    window.dispatchEvent(new Event('storage'));
+    return true;
+  } catch (e) {
+    console.error("Error setting sub-accounts access:", e);
+    return false;
+  }
+}
 
 // حساب مالك المنصة الرئيسي الافتراضي (Super Admin)
 export const DEFAULT_SUPER_ADMIN_ACCOUNT = {
@@ -421,7 +449,7 @@ export function authenticateTenantUser(email, password) {
   const cleanEmail = email.toLowerCase().trim();
   const superAdmin = getSuperAdminAccount();
 
-  // 1. فحص حساب الـ Super Admin (مالك المنصة)
+  // 1. فحص حساب الـ Super Admin (مالك المنصة) - متاح دائماً بدون أي قيود
   if (cleanEmail === superAdmin.email.toLowerCase().trim() && password === superAdmin.password) {
     return {
       success: true,
@@ -431,7 +459,15 @@ export function authenticateTenantUser(email, password) {
     };
   }
 
-  // 2. فحص جميع الشركات ومستخدميها
+  // 2. إذا لم يكن الحساب هو المالك، نفحص هل دخول الحسابات الفرعية مفعل أم مقفل
+  if (!isSubAccountsLoginAllowed()) {
+    return {
+      success: false,
+      error: '🔒 تم قفل دخول الحسابات الفرعية من قِبل إدارة المنصة. الدخول مخصص فقط لمالك المنصة الرئيسي.',
+    };
+  }
+
+  // 3. فحص جميع الشركات ومستخدميها (إذا كان الدخول مصرحاً له من المالك)
   const tenants = loadAllTenants();
   for (const t of tenants) {
     if (t.adminEmail.toLowerCase() === cleanEmail && t.adminPassword === password) {
