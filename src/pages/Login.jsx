@@ -1,12 +1,11 @@
 import React, { useState } from "react";
-import { Building2, Lock, Mail, AlertTriangle, ChevronDown, Crown } from "lucide-react";
-import { ROLES } from "../utils/permissions";
+import { Building2, Lock, Mail, AlertTriangle, ShieldCheck } from "lucide-react";
 import { loadUsers } from "./UserManagement";
-import { authenticateTenantUser, SUPER_ADMIN_ACCOUNT, loadAllTenants } from "../services/tenantsManager";
+import { authenticateTenantUser } from "../services/tenantsManager";
 
 export default function Login({ onLogin, companySettings }) {
-  const companyName = companySettings?.companyName || 'لوحة إدارة التشطيبات';
-  const companySubtitle = companySettings?.companySubtitle || 'سجّل دخولك للوصول إلى لوحة التحكم';
+  const companyName = companySettings?.companyName || 'لوحة إدارة التشطيبات والمشاريع';
+  const companySubtitle = companySettings?.companySubtitle || 'بوابة الدخول الآمنة للنظام الموحد';
   const companyLogo = companySettings?.companyLogo || null;
   const primaryColor = companySettings?.primaryColor || '#6366F1';
   const accentColor = companySettings?.accentColor || '#3B82F6';
@@ -14,10 +13,6 @@ export default function Login({ onLogin, companySettings }) {
   const [password, setPassword] = useState("");
   const [error, setError]       = useState(null);
   const [loading, setLoading]   = useState(false);
-  const [showAccounts, setShowAccounts] = useState(false);
-
-  // Load all registered tenant companies
-  const tenants = loadAllTenants();
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -30,10 +25,10 @@ export default function Login({ onLogin, companySettings }) {
       if (authResult.success) {
         onLogin(authResult.user, authResult.tenant, authResult.isSuperAdmin);
       } else {
-        // Fallback for legacy demo users
+        // Fallback for company staff users
         const accounts = loadUsers();
         const found = accounts.find(
-          (a) => a.email === email.trim() && a.password === password
+          (a) => a.email.toLowerCase().trim() === email.toLowerCase().trim() && a.password === password
         );
         if (found) {
           onLogin({ role: found.role, name: found.name, engineerName: found.engineerName, email: found.email });
@@ -42,14 +37,7 @@ export default function Login({ onLogin, companySettings }) {
         }
       }
       setLoading(false);
-    }, 600);
-  };
-
-  const fillAccount = (emailVal, passVal) => {
-    setEmail(emailVal);
-    setPassword(passVal);
-    setShowAccounts(false);
-    setError(null);
+    }, 500);
   };
 
   return (
@@ -166,7 +154,7 @@ export default function Login({ onLogin, companySettings }) {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  placeholder="example@company.com"
+                  placeholder="admin@platform.com"
                   style={{
                     width: "100%", padding: "11px 42px 11px 14px",
                     border: "1.5px solid var(--border)", borderRadius: 10,
@@ -175,7 +163,7 @@ export default function Login({ onLogin, companySettings }) {
                     outline: "none", boxSizing: "border-box",
                     transition: "border-color 0.2s",
                   }}
-                  onFocus={(e) => (e.target.style.borderColor = "#6366F1")}
+                  onFocus={(e) => (e.target.style.borderColor = primaryColor)}
                   onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
                 />
               </div>
@@ -210,7 +198,7 @@ export default function Login({ onLogin, companySettings }) {
                     outline: "none", boxSizing: "border-box",
                     transition: "border-color 0.2s",
                   }}
-                  onFocus={(e) => (e.target.style.borderColor = "#6366F1")}
+                  onFocus={(e) => (e.target.style.borderColor = primaryColor)}
                   onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
                 />
               </div>
@@ -222,119 +210,35 @@ export default function Login({ onLogin, companySettings }) {
               disabled={loading}
               style={{
                 width: "100%", padding: "13px",
-                background: "linear-gradient(135deg, #6366F1, #3B82F6)",
+                background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})`,
                 color: "#fff", border: "none", borderRadius: 12,
                 fontFamily: "'Cairo', sans-serif", fontSize: 16, fontWeight: 700,
                 cursor: loading ? "not-allowed" : "pointer",
                 opacity: loading ? 0.7 : 1,
-                boxShadow: "0 4px 20px rgba(99,102,241,0.4)",
+                boxShadow: `0 4px 20px ${primaryColor}40`,
                 transition: "all 0.2s",
                 marginTop: 4,
               }}
             >
-              {loading ? "⏳ جاري الدخول..." : "دخول →"}
+              {loading ? "⏳ جاري التحقق..." : "تسجيل الدخول →"}
             </button>
           </form>
         </div>
 
-        {/* ─── حسابات تجريبية وحسابات الشركات ─── */}
+        {/* ─── شارة الحماية والأمان ─── */}
         <div
           style={{
-            background: "var(--card)",
-            borderRadius: 16,
-            border: "1px solid var(--border)",
-            overflow: "hidden",
-            backdropFilter: "blur(12px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            color: "var(--muted)",
+            fontSize: 12,
+            fontWeight: 600,
           }}
         >
-          <button
-            onClick={() => setShowAccounts(!showAccounts)}
-            style={{
-              width: "100%", padding: "14px 20px",
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              background: "transparent", border: "none",
-              color: "var(--muted)", cursor: "pointer",
-              fontFamily: "'Cairo', sans-serif", fontSize: 13, fontWeight: 700,
-            }}
-          >
-            <span>🔑 حسابات سريعة للتجربة (اختر الحساب)</span>
-            <ChevronDown
-              size={16}
-              style={{ transform: showAccounts ? "rotate(180deg)" : "rotate(0deg)", transition: "0.2s" }}
-            />
-          </button>
-
-          {showAccounts && (
-            <div style={{ padding: "0 12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-              {/* 👑 Super Admin */}
-              <button
-                onClick={() => fillAccount(SUPER_ADMIN_ACCOUNT.email, SUPER_ADMIN_ACCOUNT.password)}
-                style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "10px 14px", borderRadius: 12,
-                  background: "linear-gradient(135deg, rgba(236,72,153,0.15), rgba(139,92,246,0.15))",
-                  border: "1px solid rgba(236,72,153,0.35)",
-                  cursor: "pointer", textAlign: "right",
-                  fontFamily: "'Cairo', sans-serif",
-                  transition: "all 0.15s",
-                }}
-              >
-                <span style={{ fontSize: 22 }}>👑</span>
-                <div style={{ flex: 1, textAlign: "right" }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: "#EC4899" }}>
-                    المدير العام للمنصة (Super Admin)
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                    {SUPER_ADMIN_ACCOUNT.email} • إدارة جميع الشركات
-                  </div>
-                </div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: "#EC4899", padding: "3px 9px", borderRadius: 6 }}>
-                  دخول المالك
-                </div>
-              </button>
-
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", margin: "4px 0 2px", paddingRight: 4 }}>
-                🏢 شركات ومكاتب المشتركين (حسابات فرعية مستقلة):
-              </div>
-
-              {tenants.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => fillAccount(t.adminEmail, t.adminPassword)}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 10,
-                    padding: "9px 12px", borderRadius: 10,
-                    background: "rgba(0,0,0,0.02)",
-                    border: "1px solid var(--border)",
-                    cursor: "pointer", textAlign: "right",
-                    fontFamily: "'Cairo', sans-serif",
-                    transition: "all 0.15s",
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--brand-primary, #6366F1)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
-                >
-                  <div style={{
-                    width: 28, height: 28, borderRadius: 8,
-                    background: `linear-gradient(135deg, ${t.primaryColor || '#6366F1'}, ${t.accentColor || '#3B82F6'})`,
-                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0
-                  }}>
-                    {t.name.slice(0, 1)}
-                  </div>
-                  <div style={{ flex: 1, textAlign: "right", minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {t.name}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                      {t.city} • {t.adminEmail}
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", background: "var(--border)", padding: "2px 6px", borderRadius: 4 }}>
-                    دخول
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+          <ShieldCheck size={16} color="#10B981" />
+          <span>اتصال مشفر 256-bit آمن • جميع الحقوق محفوظة</span>
         </div>
       </div>
     </div>

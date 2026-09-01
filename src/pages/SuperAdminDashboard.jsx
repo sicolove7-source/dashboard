@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import {
   loadAllTenants, createTenant, updateTenant, deleteTenant,
-  generateWhatsAppWelcomeMessage, setActiveTenantId
+  generateWhatsAppWelcomeMessage, setActiveTenantId,
+  getSuperAdminAccount, saveSuperAdminAccount
 } from '../services/tenantsManager';
 
 export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) {
@@ -19,6 +20,11 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
   const [editTenant, setEditTenant] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+
+  // Owner Security Modal State
+  const [showOwnerModal, setShowOwnerModal] = useState(false);
+  const [ownerForm, setOwnerForm] = useState(() => getSuperAdminAccount());
+  const [ownerSuccess, setOwnerSuccess] = useState(false);
 
   // Form State for Adding / Editing
   const [form, setForm] = useState({
@@ -168,7 +174,18 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-secondary"
+            onClick={() => {
+              setOwnerForm(getSuperAdminAccount());
+              setOwnerSuccess(false);
+              setShowOwnerModal(true);
+            }}
+            style={{ gap: 8, padding: '10px 18px', background: 'rgba(236, 72, 153, 0.1)', color: '#EC4899', borderColor: 'rgba(236, 72, 153, 0.3)' }}
+          >
+            <KeyRound size={16} /> أمان وبيانات المالك
+          </button>
           <button className="btn btn-primary" onClick={openAddModal} style={{ gap: 8, padding: '10px 20px' }}>
             <Plus size={16} /> إضافة شركة جديدة
           </button>
@@ -635,6 +652,86 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                 </button>
                 <button type="submit" className="btn btn-primary" style={{ padding: '12px 28px' }}>
                   {editTenant ? 'حفظ التعديلات' : 'تفعيل وإنشاء الحساب 🚀'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Owner Security Settings */}
+      {showOwnerModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: 480 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(236,72,153,0.15)', color: '#EC4899', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Shield size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>بيانات حساب مالك المنصة</h3>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>تخصيص البريد وكلمة المرور الحصرية لك فقط</div>
+                </div>
+              </div>
+              <button className="btn btn-ghost" style={{ padding: 6 }} onClick={() => setShowOwnerModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            {ownerSuccess && (
+              <div style={{ padding: '10px 14px', background: 'rgba(16,185,129,0.1)', color: '#10B981', borderRadius: 10, fontSize: 13, marginBottom: 16, border: '1px solid rgba(16,185,129,0.3)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <CheckCircle2 size={16} />
+                <span>تم حفظ وتأمين بياناتك بنجاح!</span>
+              </div>
+            )}
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                saveSuperAdminAccount(ownerForm);
+                setOwnerSuccess(true);
+                setTimeout(() => setShowOwnerModal(false), 1200);
+              }}
+              style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+            >
+              <div className="form-field">
+                <label>اسم المالك / المدير العام</label>
+                <input
+                  type="text"
+                  required
+                  value={ownerForm.name || ''}
+                  onChange={(e) => setOwnerForm({ ...ownerForm, name: e.target.value })}
+                />
+              </div>
+
+              <div className="form-field">
+                <label>البريد الإلكتروني الحصري (Super Admin Email)</label>
+                <input
+                  type="email"
+                  required
+                  style={{ direction: 'ltr', textAlign: 'left' }}
+                  value={ownerForm.email || ''}
+                  onChange={(e) => setOwnerForm({ ...ownerForm, email: e.target.value })}
+                />
+              </div>
+
+              <div className="form-field">
+                <label>كلمة المرور الجديدة</label>
+                <input
+                  type="text"
+                  required
+                  style={{ direction: 'ltr', textAlign: 'left' }}
+                  value={ownerForm.password || ''}
+                  onChange={(e) => setOwnerForm({ ...ownerForm, password: e.target.value })}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <button type="button" className="btn btn-ghost" onClick={() => setShowOwnerModal(false)}>
+                  إلغاء
+                </button>
+                <button type="submit" className="btn btn-primary" style={{ padding: '10px 24px', background: 'linear-gradient(135deg, #EC4899, #8B5CF6)' }}>
+                  حفظ وتأمين الحساب 🔒
                 </button>
               </div>
             </form>

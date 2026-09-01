@@ -9,16 +9,56 @@ import { setGlobalCurrency } from '../utils/helpers';
 
 export const PLATFORM_TENANTS_KEY = 'platform-tenants-master-v1';
 export const ACTIVE_TENANT_ID_KEY = 'platform-active-tenant-id';
+export const SUPER_ADMIN_STORAGE_KEY = 'platform-superadmin-credentials-v1';
 
-// حساب مالك المنصة الرئيسي (Super Admin)
-export const SUPER_ADMIN_ACCOUNT = {
+// حساب مالك المنصة الرئيسي الافتراضي (Super Admin)
+export const DEFAULT_SUPER_ADMIN_ACCOUNT = {
   id: 'super_admin_master',
-  email: 'superadmin@platform.com',
-  password: 'admin123',
-  name: 'المدير العام للمنصة',
+  email: 'admin@platform.com',
+  password: 'Admin@2026#Master',
+  name: 'مالك المنصة الرئيسي',
   role: 'super_admin',
   isSuperAdmin: true,
 };
+
+export function getSuperAdminAccount() {
+  try {
+    const raw = localStorage.getItem(SUPER_ADMIN_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.email && parsed.password) {
+        return {
+          id: 'super_admin_master',
+          name: parsed.name || 'مالك المنصة الرئيسي',
+          email: parsed.email.toLowerCase().trim(),
+          password: parsed.password,
+          role: 'super_admin',
+          isSuperAdmin: true,
+        };
+      }
+    }
+  } catch (e) {
+    console.error("Error reading superadmin credentials:", e);
+  }
+  return DEFAULT_SUPER_ADMIN_ACCOUNT;
+}
+
+export function saveSuperAdminAccount(creds) {
+  try {
+    const data = {
+      name: creds.name || 'مالك المنصة الرئيسي',
+      email: creds.email.toLowerCase().trim(),
+      password: creds.password,
+    };
+    localStorage.setItem(SUPER_ADMIN_STORAGE_KEY, JSON.stringify(data));
+    return true;
+  } catch (e) {
+    console.error("Error saving superadmin credentials:", e);
+    return false;
+  }
+}
+
+export const SUPER_ADMIN_ACCOUNT = DEFAULT_SUPER_ADMIN_ACCOUNT;
 
 // الشركات الافتراضية
 export const DEFAULT_TENANTS = [
@@ -379,12 +419,13 @@ export function getTenantData(companyId) {
 
 export function authenticateTenantUser(email, password) {
   const cleanEmail = email.toLowerCase().trim();
+  const superAdmin = getSuperAdminAccount();
 
-  // 1. فحص حساب الـ Super Admin
-  if (cleanEmail === SUPER_ADMIN_ACCOUNT.email && password === SUPER_ADMIN_ACCOUNT.password) {
+  // 1. فحص حساب الـ Super Admin (مالك المنصة)
+  if (cleanEmail === superAdmin.email.toLowerCase().trim() && password === superAdmin.password) {
     return {
       success: true,
-      user: SUPER_ADMIN_ACCOUNT,
+      user: superAdmin,
       tenant: null,
       isSuperAdmin: true,
     };
