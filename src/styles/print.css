@@ -1,0 +1,212 @@
+/* ═══════════════════════════════════════════════════════════════
+   PREMIUM CONTRACT & DOCUMENT PRINT SYSTEM (100% Isolated Print)
+   ═══════════════════════════════════════════════════════════════ */
+
+@media print {
+  /* 1. Paper & Page Configuration */
+  @page {
+    size: A4 portrait;
+    margin: 10mm 12mm 10mm 12mm;
+  }
+
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    box-sizing: border-box !important;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-family: 'Cairo', 'Tajawal', Tahoma, sans-serif !important;
+    font-size: 11pt !important;
+    line-height: 1.65 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* ═══ 2. ISOLATED TARGET PRINTING (Hides everything else on page) ═══ */
+  body.is-printing-document * {
+    visibility: hidden !important;
+  }
+
+  body.is-printing-document .printable-document-target,
+  body.is-printing-document .printable-document-target * {
+    visibility: visible !important;
+  }
+
+  body.is-printing-document .printable-document-target {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 10mm 12mm !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    box-shadow: none !important;
+    display: block !important;
+    overflow: visible !important;
+    z-index: 99999999 !important;
+  }
+
+  /* ═══ 3. GENERAL UI ELEMENTS HIDDEN IN ALL PRINTS ═══ */
+  .no-print,
+  .print-hide,
+  .sidebar,
+  .topbar,
+  .mobile-header,
+  .mobile-bottom-nav,
+  .titleblock,
+  .desktop-subtabs,
+  .mobile-subtabs-grid,
+  .project-detail-header,
+  .back-link,
+  .confirm-bar,
+  .save-pill,
+  button,
+  .btn,
+  input[type="file"],
+  aside,
+  nav,
+  .hamburger-btn {
+    display: none !important;
+  }
+
+  /* Fallback: If printing normally without is-printing-document */
+  #root, .app-root, .main, .content, .tab-fade {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .modal-overlay {
+    position: static !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+
+  .modal-content {
+    position: static !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: none !important;
+    height: auto !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    border-radius: 0 !important;
+  }
+
+  /* 4. Decorative Legal Double Border Frame for printed official contracts */
+  .legal-contract-frame {
+    border: 2pt solid #0f172a !important;
+    padding: 16pt 20pt !important;
+    border-radius: 4pt !important;
+    position: relative !important;
+    background: #ffffff !important;
+    margin: 0 auto !important;
+  }
+
+  .legal-contract-frame::before {
+    content: "" !important;
+    position: absolute !important;
+    top: 3pt !important;
+    left: 3pt !important;
+    right: 3pt !important;
+    bottom: 3pt !important;
+    border: 0.75pt solid #64748b !important;
+    pointer-events: none !important;
+  }
+
+  /* 5. Typography & Structure */
+  h1, h2, h3, h4, h5, h6 {
+    color: #0f172a !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    font-family: 'Tajawal', 'Cairo', sans-serif !important;
+  }
+
+  p {
+    color: #1e293b !important;
+    margin: 0 0 8pt 0 !important;
+    orphans: 3 !important;
+    widows: 3 !important;
+    font-size: 10.5pt !important;
+    line-height: 1.65 !important;
+  }
+
+  /* Table formatting in Print */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+    margin: 10pt 0 !important;
+    font-size: 9.5pt !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tfoot {
+    display: table-footer-group !important;
+  }
+
+  th {
+    background-color: #f1f5f9 !important;
+    color: #0f172a !important;
+    font-weight: 700 !important;
+    border: 1pt solid #475569 !important;
+    padding: 6pt 8pt !important;
+    text-align: right !important;
+  }
+
+  td {
+    border: 1pt solid #94a3b8 !important;
+    padding: 5pt 8pt !important;
+    color: #1e293b !important;
+    text-align: right !important;
+  }
+
+  .avoid-break,
+  .signature-box,
+  .witness-section,
+  .signatures-grid,
+  .contract-signatures {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  img {
+    max-width: 100% !important;
+    page-break-inside: avoid !important;
+  }
+}
