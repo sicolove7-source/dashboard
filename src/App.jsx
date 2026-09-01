@@ -20,6 +20,7 @@ import QuotationBuilder from './pages/QuotationBuilder';
 import CompanyFinance from './pages/CompanyFinance';
 import NotificationCenter from './components/NotificationCenter';
 import Login from './pages/Login';
+import LandingPage from './pages/LandingPage';
 import EngineerView from './pages/EngineerView';
 import CompanySettings, { loadCompanySettings, applyCompanyBranding, COMPANY_SETTINGS_KEY } from './pages/CompanySettings';
 import MobileLayout from './components/MobileLayout';
@@ -188,6 +189,13 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null); // { role, name, engineerName, email }
   const userRole = currentUser?.role || 'engineer';
+
+  // Landing Page vs Login state
+  const [isLoginMode, setIsLoginMode] = useState(() => {
+    const p = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+    return p === 'login' || p === 'contractors' || p === 'projects' || p === 'finance';
+  });
+  const [isDemoUser, setIsDemoUser] = useState(false);
 
   // Mobile sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -498,10 +506,29 @@ export default function App() {
     loadTenantWorkspace(compId);
   };
 
+  const handleStartLiveDemo = () => {
+    const demoUser = {
+      id: 'demo_guest',
+      name: 'مهندس زائر (Demo Mode)',
+      role: 'owner',
+      isDemo: true,
+      companyId: 'comp_alain',
+    };
+    setCurrentUser(demoUser);
+    setIsAuthenticated(true);
+    setIsDemoUser(true);
+    setActiveTenantId('comp_alain');
+    loadTenantWorkspace('comp_alain');
+    setTab('overview');
+    setView('list');
+    setActiveId(null);
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('isAdmin');
     setCurrentUser(null);
     setIsAuthenticated(false);
+    setIsDemoUser(false);
     setTab('overview');
     setView('list');
     setActiveId(null);
@@ -514,7 +541,6 @@ export default function App() {
     setView('list');
   };
 
-
   // فلترة المشاريع: المهندس يرى مشاريعه فقط
   const displayedProjects = useMemo(() => {
     if (!projects) return [];
@@ -525,7 +551,28 @@ export default function App() {
   }, [projects, userRole, currentUser]);
 
   if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} companySettings={companySettings} />;
+    if (!isLoginMode) {
+      return (
+        <LandingPage
+          onGoToLogin={() => {
+            setIsLoginMode(true);
+            window.history.replaceState(null, '', '/login');
+          }}
+          onStartLiveDemo={handleStartLiveDemo}
+        />
+      );
+    }
+    return (
+      <Login
+        onLogin={handleLogin}
+        companySettings={companySettings}
+        onBackToLanding={() => {
+          setIsLoginMode(false);
+          window.history.replaceState(null, '', '/landing');
+        }}
+        onStartLiveDemo={handleStartLiveDemo}
+      />
+    );
   }
 
   // Active Client Portal View
@@ -554,9 +601,71 @@ export default function App() {
   }
 
   return (
-    <div dir="rtl" className="app-root">
+    <div dir="rtl" className="app-root" style={{ display: 'flex', flexDirection: 'column' }}>
+      {/* ─── Demo Mode Sticky Conversion Top Banner ─── */}
+      {isDemoUser && (
+        <div
+          style={{
+            background: 'linear-gradient(135deg, #B45309, #D97706)',
+            color: '#fff',
+            padding: '10px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            fontSize: 13,
+            fontWeight: 800,
+            boxShadow: '0 4px 15px rgba(217, 119, 6, 0.35)',
+            zIndex: 9999,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>🌟</span>
+            <span>أنت الآن في <strong>النسخة التجريبية الحية (Live Demo Sandbox)</strong> — هل ترغب في تفعيل مساحة عمل خاصة بشركتك؟</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button
+              onClick={() => window.open(`https://wa.me/971501234567?text=${encodeURIComponent('مرحباً، جربت النسخة الحية للمنصة وأرغب في الاشتراك وتفعيل مساحة عمل خاصة بشركتي')}`, '_blank')}
+              style={{
+                padding: '6px 14px',
+                fontSize: 12,
+                fontWeight: 800,
+                background: '#25D366',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6
+              }}
+            >
+              <span>اشترك الآن عبر واتساب 💬</span>
+            </button>
+
+            <button
+              onClick={() => { setIsAuthenticated(false); setIsDemoUser(false); setIsLoginMode(false); }}
+              style={{
+                padding: '6px 12px',
+                fontSize: 12,
+                fontWeight: 700,
+                background: 'rgba(0,0,0,0.25)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                cursor: 'pointer'
+              }}
+            >
+              الخروج من التجربة
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ─── Super Admin Impersonation Top Bar ─── */}
-      {currentUser?.role === 'super_admin' && tab !== 'tenants' && (
+      {currentUser?.role === 'super_admin' && tab !== 'tenants' && !isDemoUser && (
         <div
           style={{
             background: 'linear-gradient(90deg, #EC4899, #8B5CF6)',
@@ -568,11 +677,9 @@ export default function App() {
             fontSize: 13,
             fontWeight: 700,
             boxShadow: '0 4px 15px rgba(236, 72, 153, 0.35)',
-            position: 'fixed',
+            position: 'sticky',
             top: 0,
-            left: 0,
-            right: 0,
-            zIndex: 1100,
+            zIndex: 9999,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

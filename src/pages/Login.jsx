@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Building2, Lock, Mail, AlertTriangle, ShieldCheck } from "lucide-react";
 import { authenticateTenantUser } from "../services/tenantsManager";
 
-export default function Login({ onLogin, companySettings }) {
+export default function Login({ onLogin, companySettings, onBackToLanding, onStartLiveDemo }) {
   const companyName = 'منصة إدارة وتشطيبات المشاريع';
   const companySubtitle = 'بوابة الدخول الآمنة للنظام الموحد';
   const companyLogo = null;
@@ -213,6 +213,51 @@ export default function Login({ onLogin, companySettings }) {
               {loading ? "⏳ جاري التحقق..." : "تسجيل الدخول →"}
             </button>
           </form>
+
+          {/* خط فاصل */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0 16px' }}>
+            <div style={{ flex: 1, height: 1, background: 'var(--border)' }}></div>
+            <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>أو</span>
+            <div style={{ flex: 1, height: 1, background: 'var(--border)' }}></div>
+          </div>
+
+          {/* زر التجربة الحية الفورية */}
+          {onStartLiveDemo && (
+            <button
+              type="button"
+              onClick={onStartLiveDemo}
+              style={{
+                width: "100%", padding: "11px",
+                background: "rgba(217, 119, 6, 0.1)",
+                color: "#D97706",
+                border: "1.5px dashed rgba(217, 119, 6, 0.35)",
+                borderRadius: 12,
+                fontFamily: "'Cairo', sans-serif", fontSize: 14, fontWeight: 800,
+                cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                transition: "all 0.2s",
+              }}
+            >
+              <span>✨ تجربة المنصة الحية كزائر مجاناً (Demo)</span>
+            </button>
+          )}
+
+          {/* زر العودة للصفحة التعريفية */}
+          {onBackToLanding && (
+            <div style={{ textAlign: "center", marginTop: 14 }}>
+              <button
+                type="button"
+                onClick={onBackToLanding}
+                style={{
+                  background: "none", border: "none",
+                  color: "var(--muted)", fontSize: 13, fontWeight: 700,
+                  cursor: "pointer", textDecoration: "underline"
+                }}
+              >
+                ← العودة إلى الصفحة التعريفية والأسعار
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ─── شارة الحماية والأمان ─── */}
