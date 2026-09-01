@@ -290,10 +290,10 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
 
   /* ── Tab buttons ── */
   const tabs = [
-    { key: 'overview', label: 'نظرة عامة', icon: BarChart2 },
-    { key: 'monthly', label: 'التحليل الشهري', icon: Calendar },
-    { key: 'quarterly', label: 'التقرير الربع سنوي', icon: PieIcon },
-    { key: 'expenses', label: 'سجل المصروفات', icon: FileText },
+    { key: 'overview',   label: 'نظرة عامة',         shortLabel: 'عامة',   icon: BarChart2 },
+    { key: 'monthly',    label: 'التحليل الشهري',     shortLabel: 'شهري',   icon: Calendar },
+    { key: 'quarterly',  label: 'الربع سنوي',         shortLabel: 'ربعي',   icon: PieIcon },
+    { key: 'expenses',   label: 'سجل المصروفات',      shortLabel: 'مصروفات',icon: FileText },
   ];
 
   const currentQuarter = Math.floor(new Date().getMonth() / 3);
@@ -301,42 +301,53 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
   return (
     <div className="grid tab-fade" style={{ gap: 16 }}>
 
-      {/* Header with tabs */}
-      <div className="company-finance-toolbar">
-        <div className="company-finance-nav">
-          {tabs.map(t => {
-            const Icon = t.icon;
-            return (
-              <button key={t.key}
-                onClick={() => setActiveTab(t.key)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px',
-                  borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'Cairo', fontSize: 12, fontWeight: 600,
-                  whiteSpace: 'nowrap',
-                  background: activeTab === t.key ? 'var(--card)' : 'transparent',
-                  color: activeTab === t.key ? 'var(--ink)' : 'var(--muted)',
-                  boxShadow: activeTab === t.key ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
-                  transition: 'all 0.2s'
-                }}>
-                <Icon size={14} />{t.label}
-              </button>
-            );
-          })}
-        </div>
+      {/* ── Tab Bar ── */}
+      <div style={{
+        background: 'var(--card)', borderRadius: 14,
+        border: '1px solid var(--border)', padding: 4,
+        display: 'flex', gap: 4, overflowX: 'auto',
+        scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
+      }}>
+        {tabs.map(t => {
+          const Icon = t.icon;
+          const isActive = activeTab === t.key;
+          return (
+            <button key={t.key}
+              onClick={() => setActiveTab(t.key)}
+              style={{
+                flex: '1 1 0', minWidth: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                padding: '8px 6px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                fontFamily: 'Cairo', fontWeight: 700, whiteSpace: 'nowrap', transition: 'all 0.2s',
+                background: isActive ? 'var(--amber)' : 'transparent',
+                color: isActive ? '#fff' : 'var(--muted)',
+                boxShadow: isActive ? '0 2px 8px rgba(217,119,6,0.3)' : 'none',
+                fontSize: 11.5,
+              }}>
+              <Icon size={13} />
+              <span className="finance-tab-label-full">{t.label}</span>
+              <span className="finance-tab-label-short">{t.shortLabel}</span>
+            </button>
+          );
+        })}
+      </div>
 
-        <div className="company-finance-actions-row">
-          <select value={filterYear} onChange={e => setFilterYear(+e.target.value)}
-            style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontFamily: 'Cairo', fontSize: 12 }}>
-            {[2024, 2025, 2026, 2027].map(y => <option key={y}>{y}</option>)}
-          </select>
-          <button className="btn btn-primary" onClick={() => setShowAddExpense(true)} style={{ fontSize: 12, padding: '7px 12px' }}>
-            <Plus size={14} /> مصروف جديد
-          </button>
-          <button className="btn" onClick={() => window.print()}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--ink)', fontSize: 12, padding: '7px 12px' }}>
-            <Printer size={14} /> طباعة
-          </button>
-        </div>
+      {/* ── Actions Bar ── */}
+      <div style={{
+        display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
+      }}>
+        <select value={filterYear} onChange={e => setFilterYear(+e.target.value)}
+          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontFamily: 'Cairo', fontSize: 12, flexShrink: 0 }}>
+          {[2024, 2025, 2026, 2027].map(y => <option key={y}>{y}</option>)}
+        </select>
+        <button className="btn btn-primary" onClick={() => setShowAddExpense(true)}
+          style={{ fontSize: 12, padding: '8px 14px', flex: 1, justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <Plus size={14} /> مصروف جديد
+        </button>
+        <button className="btn" onClick={() => window.print()}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--ink)', fontSize: 12, padding: '8px 12px', flexShrink: 0 }}>
+          <Printer size={14} /> طباعة
+        </button>
       </div>
 
       {/* ══════════ OVERVIEW TAB ══════════ */}

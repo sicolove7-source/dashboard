@@ -1517,3 +1517,19 @@
     gap: 8px !important;
   }
 }
+
+/* ── Finance Tab Labels: full on desktop, short on mobile ── */
+.finance-tab-label-short { display: none; }
+.finance-tab-label-full  { display: inline; }
+
+@media (max-width: 600px) {
+  .finance-tab-label-full  { display: none; }
+  .finance-tab-label-short { display: inline; }
+}
+
+/* ── KPI cards on very small screens: overflow protection ── */
+@media (max-width: 400px) {
+  .company-finance-kpi-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
