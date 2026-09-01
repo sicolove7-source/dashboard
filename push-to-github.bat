@@ -8,65 +8,48 @@ echo        🚀 أداة رفع وتحديث المشروع على GitHub ال�
 echo ================================================================
 echo.
 
-:: 1. فحص وجود Git
+:: فحص مسار Git
+set "GIT_CMD=git"
 where git >nul 2>nul
 if %errorlevel% neq 0 (
     if exist "C:\Program Files\Git\cmd\git.exe" (
-        set "PATH=%PATH%;C:\Program Files\Git\cmd"
+        set "GIT_CMD=C:\Program Files\Git\cmd\git.exe"
     ) else if exist "%LOCALAPPDATA%\Programs\Git\cmd\git.exe" (
-        set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Git\cmd"
-    ) else (
-        echo [!] Git غير مثبت على جهازك بعد.
-        echo جاري فتح صفحة تحميل Git الرسمية...
-        start https://git-scm.com/download/win
-        echo بعد تثبيت Git، أعد تشغيل هذا الملف فقط.
-        pause
-        exit /b
+        set "GIT_CMD=%LOCALAPPDATA%\Programs\Git\cmd\git.exe"
     )
 )
 
-echo [1/4] تجهيز مستودع Git المحلي...
-if not exist ".git" (
-    git init
-    git branch -M main
-)
+echo [1/3] تجهيز وحفظ التعديلات...
+"%GIT_CMD%" add .
+"%GIT_CMD%" commit -m "تحديث لوحة التحكم" >nul 2>nul
 
-echo [2/4] إضافة وتجهيز جميع ملفات المشروع (مع استبعاد الملفات الزائدة)...
-git add .
-
-echo [3/4] حفظ التعديلات (Commit)...
-git commit -m "تحديث لوحة التحكم والمشاريع" >nul 2>nul
-
-:: 4. فحص الرابط السحابي
-git remote get-url origin >nul 2>nul
+echo.
+echo [2/3] فحص رابط المستودع على GitHub...
+"%GIT_CMD%" remote get-url origin >nul 2>nul
 if %errorlevel% neq 0 (
     echo.
     echo ================================================================
-    echo  يرجى لصق رابط المستودع الجديد من GitHub الخاص بك أدناه:
-    echo  (مثال: https://github.com/your-username/dashboard.git )
+    echo  الصق رابط المستودع الخاص بك من GitHub أدناه ثم اضغط Enter:
+    echo  (مثال: https://github.com/your-name/my-project.git )
     echo ================================================================
+    echo.
     set /p REPO_URL="رابط المستودع: "
-    if "!REPO_URL!"=="" (
-        echo [خطأ] لم يتم إدخال الرابط!
-        pause
-        exit /b
-    )
-    git remote add origin !REPO_URL!
+    "%GIT_CMD%" remote add origin !REPO_URL!
 )
 
 echo.
-echo [4/4] جاري رفع الكود سحابياً إلى GitHub...
-git push -u origin main
+echo [3/3] جاري رفع الكود إلى GitHub...
+"%GIT_CMD%" push -u origin main
 
 if %errorlevel% equ 0 (
     echo.
     echo ================================================================
-    echo   ✅ تم رفع المشروع بالكامل إلى GitHub بنجاح!
-    echo   الآن يمكنك ربطه بـ Vercel ليتم التحديث التلقائي دوماً.
+    echo   ✅ تم رفع المشروع إلى GitHub بنجاح تام!
+    echo   الآن افتح Vercel.com واربط المستودع ليبدأ النشر التلقائي.
     echo ================================================================
 ) else (
     echo.
-    echo [ملاحظة] إذا طلب منك GitHub تسجيل الدخول، وافق في المتصفح ثم أعد المحاولة.
+    echo [تنبيه] إذا فتح المتصفح ليطلب تسجيل الدخول إلى GitHub، وافق عليه.
 )
 
 pause
