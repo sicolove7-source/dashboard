@@ -602,6 +602,7 @@ export default function App() {
 
   return (
     <div dir="rtl" className="app-root" style={{ display: 'flex', flexDirection: 'column' }}>
+
       {/* ─── Demo Mode Sticky Conversion Top Banner ─── */}
       {isDemoUser && (
         <div
@@ -618,6 +619,7 @@ export default function App() {
             boxShadow: '0 4px 15px rgba(217, 119, 6, 0.35)',
             zIndex: 9999,
             flexWrap: 'wrap',
+            flexShrink: 0,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -677,9 +679,8 @@ export default function App() {
             fontSize: 13,
             fontWeight: 700,
             boxShadow: '0 4px 15px rgba(236, 72, 153, 0.35)',
-            position: 'sticky',
-            top: 0,
             zIndex: 9999,
+            flexShrink: 0,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -721,6 +722,9 @@ export default function App() {
         setSidebarOpen={setSidebarOpen}
         onOpenTour={() => setShowTour(true)}
       />
+
+      {/* ─── Main Layout: Sidebar + Content (flex row) ─── */}
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
 
       <Sidebar
         tab={tab}
@@ -911,6 +915,8 @@ export default function App() {
           )}
         </div>
       </div>
+
+      </div>{/* ─── End flex-row (Sidebar + Main) ─── */}
 
       {/* ─── Onboarding Tour Modal ─── */}
       <OnboardingTourModal
