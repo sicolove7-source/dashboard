@@ -800,8 +800,7 @@ export default function App() {
           )}
 
 
-          {tab === "overview" && can(userRole, 'projects_view_all') && <Overview projects={projects} />}
-          {tab === "overview" && userRole === 'engineer' && <Overview projects={displayedProjects} />}
+          {tab === "overview" && <Overview projects={displayedProjects} />}
 
           {tab === "automations" && (
             <AutomationsCenter

@@ -662,7 +662,7 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
       {/* ══════════ QUARTERLY TAB ══════════ */}
       {activeTab === 'quarterly' && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+          <div className="quarterly-cards-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
             {quarterlyData.map((q, i) => (
               <div key={i} style={{
                 background: 'var(--card)', borderRadius: 16, padding: '14px 16px',
@@ -769,7 +769,7 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
       {/* ══════════ EXPENSES TAB ══════════ */}
       {activeTab === 'expenses' && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+          <div className="expense-cat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
             {EXPENSE_CATS.map(cat => {
               const total = companyExpenses.filter(e => e.category === cat).reduce((s, e) => s + parseFloat(e.amount || 0), 0);
               return (

@@ -1384,4 +1384,136 @@
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   COMPANY FINANCE — ENHANCED MOBILE RESPONSIVENESS
+   ═══════════════════════════════════════════════════════════════ */
 
+/* Tables: force horizontal scroll on narrow screens */
+.finance-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+
+.finance-table-wrapper table {
+  min-width: 480px;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+/* Quarterly report table needs more min-width */
+.finance-table-wrapper table thead th {
+  white-space: nowrap;
+  padding: 10px 12px;
+  font-size: 11px;
+}
+
+.finance-table-wrapper table tbody td {
+  white-space: nowrap;
+  padding: 9px 12px;
+  font-size: 12px;
+}
+
+@media (max-width: 768px) {
+  /* KPI cards: 2 per row on mobile */
+  .company-finance-kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  /* Panels: reduce padding on mobile */
+  .company-finance-kpi-grid > div,
+  .finance-charts-grid > div {
+    padding: 12px !important;
+    border-radius: 12px !important;
+  }
+
+  /* Charts: shorter height on mobile */
+  .recharts-responsive-container {
+    min-height: 160px !important;
+  }
+
+  /* Expense category pills: 2 per row */
+  .expense-cat-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+  }
+
+  /* Finance table — make scrollable */
+  .finance-table-wrapper {
+    border-radius: 10px;
+  }
+
+  .finance-table-wrapper table {
+    min-width: 520px;
+  }
+
+  .finance-table-wrapper table thead th {
+    font-size: 10px;
+    padding: 8px 10px;
+  }
+
+  .finance-table-wrapper table tbody td {
+    font-size: 11px;
+    padding: 7px 10px;
+  }
+
+  /* Charts grid: single column */
+  .finance-charts-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* KPI card: smaller text on mobile */
+  .company-finance-kpi-grid > div {
+    padding: 10px 12px !important;
+  }
+
+  /* Profit gauge: tighter */
+  .finance-profit-gauge {
+    padding: 14px !important;
+    border-radius: 12px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Very small screens: 1 column for KPI */
+  .company-finance-kpi-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  /* Hide monospace overflow with ellipsis */
+  .company-finance-kpi-grid .kpi-value {
+    font-size: 14px !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Toolbar: stack vertically */
+  .company-finance-toolbar {
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  .company-finance-actions-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .company-finance-actions-row > * {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .quarterly-cards-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+}
