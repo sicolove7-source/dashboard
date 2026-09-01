@@ -150,72 +150,146 @@ function SuppliersSection() {
         <button className="btn btn-primary" onClick={openAdd}><Plus size={16}/> إضافة مورد</button>
       </div>
 
-      {/* Table */}
+      {/* Suppliers List: Desktop Table + Mobile Cards */}
       {filtered.length === 0
         ? <div className="panel"><EmptyState icon={Truck} title="لا يوجد موردون" sub="لم يتم العثور على موردين بهذه المعايير"/></div>
         : (
-        <div className="panel" style={{ padding:0, overflow:'hidden' }}>
-          <div style={{ overflowX:'auto' }}>
-            <table className="data-table" style={{ width:'100%' }}>
-              <thead>
-                <tr>
-                  <th>المورد</th><th>التصنيف</th><th>الهاتف</th>
-                  <th>التقييم</th><th>الحالة</th><th>المواد</th><th>إجراءات</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(it => (
-                  <React.Fragment key={it.id}>
-                    <tr style={{ cursor:'pointer' }} onClick={() => setExpanded(expanded === it.id ? null : it.id)}>
-                      <td>
-                        <div style={{ fontWeight:700, color:'var(--ink)' }}>{it.name}</div>
-                        {it.address && <div style={{ fontSize:12, color:'var(--muted)', display:'flex', alignItems:'center', gap:4, marginTop:2 }}><MapPin size={12}/> {it.address}</div>}
-                      </td>
-                      <td><span style={{ background:'rgba(59,130,246,.1)', color:'#3B82F6', padding:'4px 10px', borderRadius:12, fontSize:12, fontWeight:700 }}>{it.category}</span></td>
-                      <td>
-                        <a href={`tel:${it.phone}`} style={{ color:'var(--teal)', fontWeight:600, textDecoration:'none', display:'flex', alignItems:'center', gap:6 }}
-                           onClick={e => e.stopPropagation()}><Phone size={14}/> {it.phone}</a>
-                      </td>
-                      <td><StarRating value={it.rating}/></td>
-                      <td><StatusPill status={it.status}/></td>
-                      <td>
-                        <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
-                          {(it.materials||[]).slice(0,2).map(m => <span key={m} style={{ background:'rgba(245,158,11,.1)', color:'var(--amber)', padding:'2px 8px', borderRadius:8, fontSize:11, fontWeight:700 }}>{m}</span>)}
-                          {(it.materials||[]).length > 2 && <span style={{ fontSize:11, color:'var(--muted)' }}>+{it.materials.length-2}</span>}
-                        </div>
-                      </td>
-                      <td onClick={e => e.stopPropagation()}>
-                        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                          <button className="btn btn-ghost" style={{ padding:'6px 10px' }} onClick={() => openEdit(it)}><Pencil size={15}/></button>
-                          <button className="btn btn-ghost" style={{ padding:'6px 10px', color:'var(--danger)' }} onClick={() => del(it.id)}><Trash2 size={15}/></button>
-                          {expanded === it.id ? <ChevronUp size={18} color="var(--muted)"/> : <ChevronDown size={18} color="var(--muted)"/>}
-                        </div>
-                      </td>
-                    </tr>
-                    {expanded === it.id && (
-                      <tr>
-                        <td colSpan={7} style={{ background:'rgba(0,0,0,.02)', padding:'16px 24px' }}>
-                          <div style={{ display:'flex', gap:32, flexWrap:'wrap' }}>
-                            <div>
-                              <div style={{ fontSize:12, color:'var(--muted)', marginBottom:8, fontWeight:700 }}>جميع المواد</div>
-                              <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-                                {(it.materials||[]).length===0
-                                  ? <span style={{ color:'var(--muted)', fontSize:13 }}>—</span>
-                                  : it.materials.map(m => <span key={m} style={{ background:'rgba(245,158,11,.1)', color:'var(--amber)', padding:'4px 12px', borderRadius:12, fontSize:12, fontWeight:700 }}>{m}</span>)}
-                              </div>
-                            </div>
-                            {it.notes && <div>
-                              <div style={{ fontSize:12, color:'var(--muted)', marginBottom:8, fontWeight:700 }}>ملاحظات</div>
-                              <div style={{ fontSize:14, color:'var(--ink)', maxWidth:400 }}>{it.notes}</div>
-                            </div>}
+        <div>
+          {/* ── Desktop Table ── */}
+          <div className="panel desktop-only-table" style={{ padding:0, overflow:'hidden' }}>
+            <div style={{ overflowX:'auto' }}>
+              <table className="data-table" style={{ width:'100%' }}>
+                <thead>
+                  <tr>
+                    <th>المورد</th><th>التصنيف</th><th>الهاتف</th>
+                    <th>التقييم</th><th>الحالة</th><th>المواد</th><th>إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(it => (
+                    <React.Fragment key={it.id}>
+                      <tr style={{ cursor:'pointer' }} onClick={() => setExpanded(expanded === it.id ? null : it.id)}>
+                        <td>
+                          <div style={{ fontWeight:700, color:'var(--ink)' }}>{it.name}</div>
+                          {it.address && <div style={{ fontSize:12, color:'var(--muted)', display:'flex', alignItems:'center', gap:4, marginTop:2 }}><MapPin size={12}/> {it.address}</div>}
+                        </td>
+                        <td><span style={{ background:'rgba(59,130,246,.1)', color:'#3B82F6', padding:'4px 10px', borderRadius:12, fontSize:12, fontWeight:700 }}>{it.category}</span></td>
+                        <td>
+                          <a href={`tel:${it.phone}`} style={{ color:'var(--teal)', fontWeight:600, textDecoration:'none', display:'flex', alignItems:'center', gap:6 }}
+                             onClick={e => e.stopPropagation()}><Phone size={14}/> {it.phone}</a>
+                        </td>
+                        <td><StarRating value={it.rating}/></td>
+                        <td><StatusPill status={it.status}/></td>
+                        <td>
+                          <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                            {(it.materials||[]).slice(0,2).map(m => <span key={m} style={{ background:'rgba(245,158,11,.1)', color:'var(--amber)', padding:'2px 8px', borderRadius:8, fontSize:11, fontWeight:700 }}>{m}</span>)}
+                            {(it.materials||[]).length > 2 && <span style={{ fontSize:11, color:'var(--muted)' }}>+{it.materials.length-2}</span>}
+                          </div>
+                        </td>
+                        <td onClick={e => e.stopPropagation()}>
+                          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                            <button className="btn btn-ghost" style={{ padding:'6px 10px' }} onClick={() => openEdit(it)}><Pencil size={15}/></button>
+                            <button className="btn btn-ghost" style={{ padding:'6px 10px', color:'var(--danger)' }} onClick={() => del(it.id)}><Trash2 size={15}/></button>
+                            {expanded === it.id ? <ChevronUp size={18} color="var(--muted)"/> : <ChevronDown size={18} color="var(--muted)"/>}
                           </div>
                         </td>
                       </tr>
+                      {expanded === it.id && (
+                        <tr>
+                          <td colSpan={7} style={{ background:'rgba(0,0,0,.02)', padding:'16px 24px' }}>
+                            <div style={{ display:'flex', gap:32, flexWrap:'wrap' }}>
+                              <div>
+                                <div style={{ fontSize:12, color:'var(--muted)', marginBottom:8, fontWeight:700 }}>جميع المواد</div>
+                                <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                                  {(it.materials||[]).length===0
+                                    ? <span style={{ color:'var(--muted)', fontSize:13 }}>—</span>
+                                    : it.materials.map(m => <span key={m} style={{ background:'rgba(245,158,11,.1)', color:'var(--amber)', padding:'4px 12px', borderRadius:12, fontSize:12, fontWeight:700 }}>{m}</span>)}
+                                </div>
+                              </div>
+                              {it.notes && <div>
+                                <div style={{ fontSize:12, color:'var(--muted)', marginBottom:8, fontWeight:700 }}>ملاحظات</div>
+                                <div style={{ fontSize:14, color:'var(--ink)', maxWidth:400 }}>{it.notes}</div>
+                              </div>}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ── Mobile Cards ── */}
+          <div className="mobile-only-cards" style={{ flexDirection:'column', gap:10 }}>
+            {filtered.map(it => (
+              <div key={it.id} style={{
+                background:'var(--card)', border:'1px solid var(--border)',
+                borderRadius:14, padding:'14px 16px', display:'flex', flexDirection:'column', gap:10,
+                boxShadow:'0 2px 8px rgba(0,0,0,0.04)'
+              }}>
+                {/* Header */}
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontWeight:800, fontSize:14, color:'var(--ink)', marginBottom:3 }}>{it.name}</div>
+                    {it.address && <div style={{ fontSize:11, color:'var(--muted)', display:'flex', alignItems:'center', gap:4 }}><MapPin size={11}/> {it.address}</div>}
+                  </div>
+                  <StatusPill status={it.status}/>
+                </div>
+
+                {/* Info row */}
+                <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center' }}>
+                  <span style={{ background:'rgba(59,130,246,.1)', color:'#3B82F6', padding:'3px 10px', borderRadius:10, fontSize:11, fontWeight:700 }}>{it.category}</span>
+                  <a href={`tel:${it.phone}`} style={{ color:'var(--teal)', fontWeight:700, textDecoration:'none', display:'flex', alignItems:'center', gap:5, fontSize:12 }}>
+                    <Phone size={13}/>{it.phone}
+                  </a>
+                </div>
+
+                {/* Rating + Materials */}
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8 }}>
+                  <StarRating value={it.rating} size={15}/>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                    {(it.materials||[]).slice(0,2).map(m => <span key={m} style={{ background:'rgba(245,158,11,.1)', color:'var(--amber)', padding:'2px 7px', borderRadius:8, fontSize:10, fontWeight:700 }}>{m}</span>)}
+                    {(it.materials||[]).length > 2 && <span style={{ fontSize:10, color:'var(--muted)' }}>+{it.materials.length-2}</span>}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div style={{ display:'flex', gap:8, borderTop:'1px solid var(--border)', paddingTop:10 }}>
+                  <button className="btn btn-ghost" style={{ flex:1, padding:'7px', fontSize:12, justifyContent:'center' }} onClick={() => openEdit(it)}>
+                    <Pencil size={14}/> تعديل
+                  </button>
+                  <button
+                    style={{ flex:1, padding:'7px', fontSize:12, background:'rgba(239,68,68,0.08)', color:'var(--danger)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:8, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}
+                    onClick={() => del(it.id)}
+                  >
+                    <Trash2 size={14}/> حذف
+                  </button>
+                  <button
+                    style={{ flex:1, padding:'7px', fontSize:12, background:'rgba(16,185,129,0.08)', color:'#10B981', border:'1px solid rgba(16,185,129,0.2)', borderRadius:8, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}
+                    onClick={() => setExpanded(expanded === it.id ? null : it.id)}
+                  >
+                    {expanded === it.id ? <><ChevronUp size={14}/> إخفاء</> : <><ChevronDown size={14}/> التفاصيل</>}
+                  </button>
+                </div>
+
+                {/* Expanded details */}
+                {expanded === it.id && (
+                  <div style={{ background:'var(--bg)', borderRadius:10, padding:12, border:'1px solid var(--border)' }}>
+                    {it.notes && <div style={{ fontSize:12, color:'var(--muted)', marginBottom:8 }}>📝 {it.notes}</div>}
+                    {(it.materials||[]).length > 0 && (
+                      <div>
+                        <div style={{ fontSize:11, fontWeight:700, color:'var(--amber)', marginBottom:6 }}>المواد المتاحة:</div>
+                        <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+                          {it.materials.map(m => <span key={m} style={{ background:'rgba(245,158,11,.1)', color:'var(--amber)', padding:'3px 10px', borderRadius:10, fontSize:11, fontWeight:700 }}>{m}</span>)}
+                        </div>
+                      </div>
                     )}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}
