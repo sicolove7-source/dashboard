@@ -6,15 +6,16 @@
  */
 
 import { setGlobalCurrency } from '../utils/helpers';
+import { DEMO_ACCOUNTS } from '../utils/permissions';
 
 export const PLATFORM_TENANTS_KEY = 'platform-tenants-master-v1';
 export const ACTIVE_TENANT_ID_KEY = 'platform-active-tenant-id';
 export const SUPER_ADMIN_STORAGE_KEY = 'platform-superadmin-credentials-v1';
-export const SUB_ACCOUNTS_ACCESS_KEY = 'platform-subaccounts-access-v1';
+export const SUB_ACCOUNTS_ACCESS_KEY = 'platform-subaccounts-access-v2';
 
 /**
  * فحص هل دخول الحسابات الفرعية مسموح أم مقفل بقرار مالك المنصة
- * القيمة الافتراضية: false (مقفل حصرياً للمالك) لضمان أعلى مستويات الأمان والخصوصية
+ * القيمة الافتراضية: true (مفتوح ومتاح للجميع للعمل دون حظر)
  */
 export function isSubAccountsLoginAllowed() {
   try {
@@ -25,7 +26,7 @@ export function isSubAccountsLoginAllowed() {
   } catch (e) {
     console.error("Error checking sub-accounts access:", e);
   }
-  return false; // الافتراضي: مقفل ولا تفتح الحسابات الفرعية إلا بعد تفعيل المالك
+  return true; // متاح ومفتوح لجميع الشركات والموظفين والمهندسين تلقائياً
 }
 
 export function setSubAccountsLoginAllowed(allowed) {
@@ -103,8 +104,8 @@ export const DEFAULT_TENANTS = [
     status: 'trial',
     startDate: '2026-08-20',
     expiryDate: '2026-09-15',
-    primaryColor: '#0F766E',
-    accentColor: '#14B8A6',
+    primaryColor: '#1877F2',
+    accentColor: '#166FE5',
     adminEmail: 'ceo@alain-contract.ae',
     adminPassword: '123456',
     adminName: 'أ. هزاع الشامسي',
@@ -145,8 +146,8 @@ export const DEFAULT_TENANTS = [
     status: 'active',
     startDate: '2026-03-01',
     expiryDate: '2026-12-31',
-    primaryColor: '#2563EB',
-    accentColor: '#3B82F6',
+    primaryColor: '#1B3A4B',
+    accentColor: '#C4622D',
     adminEmail: 'admin@al-ofok.com',
     adminPassword: '123456',
     adminName: 'م. شريف عزمي',
@@ -192,8 +193,8 @@ export function createTenant(data) {
     status: data.status || (data.plan === 'trial' ? 'trial' : 'active'),
     startDate: new Date().toISOString().slice(0, 10),
     expiryDate: data.expiryDate || getFutureDate(data.plan === 'trial' ? 14 : 365),
-    primaryColor: data.primaryColor || '#0F766E',
-    accentColor: data.accentColor || '#14B8A6',
+    primaryColor: data.primaryColor || '#1877F2',
+    accentColor: data.accentColor || '#166FE5',
     adminEmail: data.adminEmail?.toLowerCase().trim() || `admin@${id}.ae`,
     adminPassword: data.adminPassword || '123456',
     adminName: data.adminName?.trim() || 'مدير الشركة',
@@ -514,6 +515,27 @@ export function authenticateTenantUser(email, password) {
         }
       }
     } catch (e) {}
+  }
+
+  // 4. فحص الحسابات التجريبية السريعة (Demo Accounts)
+  const demoMatch = (DEMO_ACCOUNTS || []).find(a => a.email.toLowerCase() === cleanEmail && a.password === password);
+  if (demoMatch) {
+    const defaultTenant = tenants[0] || INITIAL_PLATFORM_TENANTS[0];
+    return {
+      success: true,
+      user: {
+        id: `demo_${demoMatch.role}_${Date.now()}`,
+        email: demoMatch.email,
+        name: demoMatch.name,
+        role: demoMatch.role,
+        engineerName: demoMatch.engineerName,
+        companyId: defaultTenant.id,
+        companyName: defaultTenant.name,
+        currency: defaultTenant.currency || 'د.إ',
+      },
+      tenant: defaultTenant,
+      isSuperAdmin: false,
+    };
   }
 
   return { success: false, error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' };

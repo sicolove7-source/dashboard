@@ -7,10 +7,10 @@ export default function TeamTab({ projects, team, onAdd, onRemove }) {
   const [confirmId, setConfirmId] = useState(null); // format: "role-name"
 
   const groups = [
-    { key: "engineers",       title: "مهندسو المواقع", people: team?.engineers       || [], icon: Hammer,      color: "#3B82F6", bg: "rgba(59, 130, 246, 0.1)" },
-    { key: "accountants",     title: "المحاسبون",       people: team?.accountants     || [], icon: Wallet,      color: "#F59E0B", bg: "rgba(245, 158, 11, 0.1)" },
-    { key: "techOffice",      title: "المكتب الفني",    people: team?.techOffice      || [], icon: ClipboardList, color: "#10B981", bg: "rgba(16, 185, 129, 0.1)" },
-    { key: "customerService", title: "خدمة العملاء",   people: team?.customerService || [], icon: Headphones,  color: "#EC4899", bg: "rgba(236, 72, 153, 0.1)" },
+    { key: "engineers",       title: "مهندسو المواقع", people: team?.engineers       || [], icon: Hammer,      color: "#0F172A", bg: "#F1F5F9" },
+    { key: "accountants",     title: "المحاسبون",       people: team?.accountants     || [], icon: Wallet,      color: "#0F172A", bg: "#F1F5F9" },
+    { key: "techOffice",      title: "المكتب الفني",    people: team?.techOffice      || [], icon: ClipboardList, color: "#0F172A", bg: "#F1F5F9" },
+    { key: "customerService", title: "خدمة العملاء",   people: team?.customerService || [], icon: Headphones,  color: "#0F172A", bg: "#F1F5F9" },
   ];
 
 

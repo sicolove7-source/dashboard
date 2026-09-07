@@ -6,6 +6,7 @@ import {
   Building2, Users, Calendar, Award, Filter, ExternalLink, ArrowRight
 } from 'lucide-react';
 import { getGlobalCurrency } from '../utils/helpers';
+import { printElement } from '../utils/printHelper';
 import {
   SUBCONTRACTOR_SPECIALTIES,
   SEED_SUBCONTRACTORS,
@@ -235,9 +236,9 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40, width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
       {/* ─── Header & Top Actions ─── */}
-      <div style={{
+      <div className="sub-header-panel" style={{
         display: 'flex',
         flexWrap: 'wrap',
         justifyContent: 'space-between',
@@ -247,46 +248,50 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
         padding: '20px 24px',
         borderRadius: 'var(--radius)',
         border: '1px solid var(--border)',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.03)'
+        boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
+        width: '100%',
+        maxWidth: '100%',
+        boxSizing: 'border-box'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', minWidth: 0, flex: 1 }}>
           <div style={{
-            width: 48,
-            height: 48,
-            borderRadius: 14,
-            background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+            width: 44,
+            height: 44,
+            borderRadius: 10,
+            background: '#0F172A',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: '#fff',
-            boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)'
+            flexShrink: 0,
           }}>
-            <HardHat size={26} />
+            <HardHat size={22} />
           </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: 'var(--ink)' }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: 'var(--ink)', lineHeight: 1.3 }}>
                 إدارة مقاولي الباطن والمستخلصات
               </h2>
               <span style={{
                 background: 'rgba(245, 158, 11, 0.12)',
                 color: '#D97706',
-                padding: '3px 10px',
-                borderRadius: 12,
+                padding: '3px 8px',
+                borderRadius: 10,
                 fontSize: 11,
-                fontWeight: 700
+                fontWeight: 700,
+                whiteSpace: 'nowrap'
               }}>
                 نظام المقاولات والأعمال الميدانية
               </span>
             </div>
-            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--muted)' }}>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--muted)', lineHeight: 1.4 }}>
               إسناد أوامر العمل، إصدار المستخلصات التراكمية، حساب نسب الإنجاز، وإدارة الضمانات المحتجزة
             </p>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        <div className="sub-header-actions" style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
           <button
             className="btn btn-primary"
             onClick={() => { setEditingSub(null); setShowSubModal(true); }}
@@ -317,10 +322,13 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
       </div>
 
       {/* ─── KPI Summary Cards ─── */}
-      <div style={{
+      <div className="sub-kpi-grid" style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-        gap: 16
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: 16,
+        width: '100%',
+        maxWidth: '100%',
+        boxSizing: 'border-box'
       }}>
         <div className="panel" style={{ padding: 18, borderRight: '4px solid #F59E0B' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--muted)', fontSize: 12 }}>
@@ -389,7 +397,7 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
       </div>
 
       {/* ─── Navigation Tabs & Search Bar ─── */}
-      <div style={{
+      <div className="sub-nav-filter-panel" style={{
         display: 'flex',
         flexWrap: 'wrap',
         justifyContent: 'space-between',
@@ -398,19 +406,23 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
         background: 'var(--panel)',
         padding: '14px 18px',
         borderRadius: 'var(--radius)',
-        border: '1px solid var(--border)'
+        border: '1px solid var(--border)',
+        width: '100%',
+        maxWidth: '100%',
+        boxSizing: 'border-box'
       }}>
         {/* Navigation Tabs */}
-        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+        <div className="sub-inner-tabs" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
           {[
             { key: 'contractors', label: '👷‍♂️ دليل مقاولي الباطن', count: subcontractors.length },
             { key: 'orders',      label: '📜 أوامر العمل والعقود', count: workOrders.length },
             { key: 'extracts',    label: '📑 المستخلصات الهندسية', count: extracts.length },
             { key: 'guarantees',  label: '🔒 الضمانات المحتجزة',   count: extracts.filter(e => Number(e.retentionAmount) > 0).length }
           ].map(t => (
-            <button
+          <button
               key={t.key}
               onClick={() => { setActiveTab(t.key); setSearchTerm(''); }}
+              className={`sub-inner-tab-btn${activeTab === t.key ? ' sub-inner-tab-active' : ''}`}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -441,7 +453,7 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
         </div>
 
         {/* Filter Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div className="sub-filter-bar" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', minWidth: 220 }}>
             <Search size={16} style={{ position: 'absolute', right: 12, top: 12, color: 'var(--muted)' }} />
             <input
@@ -513,10 +525,13 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
 
       {/* ─── TAB 1: Subcontractors Directory ─── */}
       {activeTab === 'contractors' && (
-        <div style={{
+        <div className="sub-cards-grid" style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-          gap: 18
+          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+          gap: 18,
+          width: '100%',
+          maxWidth: '100%',
+          boxSizing: 'border-box'
         }}>
           {filteredSubcontractors.map(sub => {
             const subOrders = workOrders.filter(w => w.subcontractorId === sub.id);
@@ -538,8 +553,12 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 14,
-                  borderTop: '3px solid #F59E0B',
-                  position: 'relative'
+                  border: '1px solid var(--border)',
+                  position: 'relative',
+                  minWidth: 0,
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  boxSizing: 'border-box'
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
@@ -626,7 +645,7 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
                 </div>
 
                 {/* Bottom Actions */}
-                <div style={{
+                <div className="sub-card-actions" style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
@@ -689,7 +708,7 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
 
       {/* ─── TAB 2: Work Orders & Contracts ─── */}
       {activeTab === 'orders' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
           {filteredWorkOrders.map(order => {
             const orderExtracts = extracts.filter(e => e.workOrderId === order.id);
             const totalPaidForOrder = orderExtracts.filter(e => e.status === 'paid').reduce((acc, e) => acc + (Number(e.netAmount) || 0), 0);
@@ -705,12 +724,16 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 14,
-                  borderRight: '4px solid #6366F1'
+                  borderRight: '4px solid #6366F1',
+                  minWidth: 0,
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  boxSizing: 'border-box'
                 }}
               >
                 <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{
                         background: '#6366F1',
                         color: '#fff',
@@ -718,11 +741,12 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
                         borderRadius: 6,
                         fontWeight: 800,
                         fontSize: 12,
-                        fontFamily: 'monospace'
+                        fontFamily: 'monospace',
+                        whiteSpace: 'nowrap'
                       }}>
                         {order.code}
                       </span>
-                      <h3 style={{ fontSize: 16, fontWeight: 800, margin: 0, color: 'var(--ink)' }}>
+                      <h3 style={{ fontSize: 15, fontWeight: 800, margin: 0, color: 'var(--ink)', wordBreak: 'break-word' }}>
                         {order.title}
                       </h3>
                       <StatusBadge status={order.status} type="order" />
@@ -785,8 +809,8 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
                 </div>
 
                 {/* Items Table */}
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, textAlign: 'right' }}>
+                <div className="wo-items-table-wrap" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+                  <table style={{ width: '100%', minWidth: 520, borderCollapse: 'collapse', fontSize: 12, textAlign: 'right' }}>
                     <thead>
                       <tr style={{ background: 'rgba(0,0,0,0.03)', color: 'var(--muted)', borderBottom: '1px solid var(--border)' }}>
                         <th style={{ padding: '8px 10px' }}>م</th>
@@ -854,7 +878,7 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
 
       {/* ─── TAB 3: Subcontractor Extracts ─── */}
       {activeTab === 'extracts' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
           {filteredExtracts.map(extract => (
             <div
               key={extract.id}
@@ -864,23 +888,28 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 14,
-                borderRight: '4px solid #10B981'
+                borderRight: '4px solid #10B981',
+                minWidth: 0,
+                maxWidth: '100%',
+                overflow: 'hidden',
+                boxSizing: 'border-box'
               }}
             >
               <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{
                       background: '#10B981',
                       color: '#fff',
                       padding: '2px 8px',
                       borderRadius: 6,
                       fontWeight: 800,
-                      fontSize: 12
+                      fontSize: 12,
+                      whiteSpace: 'nowrap'
                     }}>
                       مستخلص {extract.type === 'final' ? 'ختامي' : `جاري رقم ${extract.extractNumber || 1}`}
                     </span>
-                    <h3 style={{ fontSize: 16, fontWeight: 800, margin: 0, color: 'var(--ink)' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, margin: 0, color: 'var(--ink)', wordBreak: 'break-word' }}>
                       أمر عمل: {extract.workOrderCode} — {extract.subcontractorName}
                     </h3>
                     <StatusBadge status={extract.status} type="extract" />
@@ -934,8 +963,8 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
               </div>
 
               {/* Items Breakdown */}
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, textAlign: 'right' }}>
+              <div className="extract-items-table-wrap" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+                <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse', fontSize: 12, textAlign: 'right' }}>
                   <thead>
                     <tr style={{ background: 'rgba(0,0,0,0.03)', color: 'var(--muted)', borderBottom: '1px solid var(--border)' }}>
                       <th style={{ padding: '8px 10px' }}>البند</th>
@@ -1027,8 +1056,8 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
 
       {/* ─── TAB 4: Retained Guarantees (ضمانات الأعمال) ─── */}
       {activeTab === 'guarantees' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="panel" style={{ padding: 20 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
+          <div className="panel" style={{ padding: 20, minWidth: 0, maxWidth: '100%', overflow: 'hidden', boxSizing: 'border-box' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div>
                 <h3 style={{ fontSize: 16, fontWeight: 800, margin: 0, color: 'var(--ink)' }}>
@@ -1040,8 +1069,8 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
               </div>
             </div>
 
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, textAlign: 'right' }}>
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+              <table style={{ width: '100%', minWidth: 520, borderCollapse: 'collapse', fontSize: 13, textAlign: 'right' }}>
                 <thead>
                   <tr style={{ background: 'rgba(0,0,0,0.03)', color: 'var(--muted)', borderBottom: '1px solid var(--border)' }}>
                     <th style={{ padding: '12px 14px' }}>المقاول</th>
@@ -1604,7 +1633,7 @@ function WorkOrderFormModal({ initial, projects, subcontractors, onClose, onSave
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
             <button type="button" className="btn" onClick={onClose}>إلغاء</button>
-            <button type="submit" className="btn btn-primary" style={{ background: '#6366F1', borderColor: '#6366F1' }}>
+            <button type="submit" className="btn btn-primary">
               {initial ? 'حفظ التعديلات' : 'إصدار أمر العمل'}
             </button>
           </div>
@@ -1928,13 +1957,13 @@ function PrintWorkOrderModal({ order, companySettings, onClose }) {
       <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 850, padding: 32, background: '#fff', color: '#0f172a' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }} className="no-print">
           <button className="btn" onClick={onClose}><X size={16} /> إغلاق</button>
-          <button className="btn btn-primary" onClick={() => window.print()} style={{ background: '#6366F1' }}>
+          <button className="btn btn-primary" onClick={() => printElement('print-work-order-sheet', `أمر عمل - ${order.code} - ${order.subcontractorName}`)}>
             <Printer size={16} /> طباعة أمر العمل / العقد
           </button>
         </div>
 
         {/* Contract Sheet */}
-        <div style={{ border: '2px solid #0f172a', padding: 24, borderRadius: 8 }}>
+        <div id="print-work-order-sheet" style={{ border: '2px solid #0f172a', padding: 24, borderRadius: 8 }}>
           {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #0f172a', paddingBottom: 16, marginBottom: 20 }}>
             <div>
@@ -2029,13 +2058,13 @@ function PrintExtractModal({ extract, companySettings, onClose }) {
       <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 880, padding: 32, background: '#fff', color: '#0f172a' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }} className="no-print">
           <button className="btn" onClick={onClose}><X size={16} /> إغلاق</button>
-          <button className="btn btn-primary" onClick={() => window.print()} style={{ background: '#10B981' }}>
+          <button className="btn btn-primary" onClick={() => printElement('print-extract-sheet', `مستخلص - ${extract.workOrderCode} - ${extract.subcontractorName}`)} style={{ background: '#10B981' }}>
             <Printer size={16} /> طباعة المستخلص الهندسي
           </button>
         </div>
 
         {/* Extract Sheet */}
-        <div style={{ border: '2px solid #0f172a', padding: 24, borderRadius: 8 }}>
+        <div id="print-extract-sheet" style={{ border: '2px solid #0f172a', padding: 24, borderRadius: 8 }}>
           {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #0f172a', paddingBottom: 16, marginBottom: 20 }}>
             <div>

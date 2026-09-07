@@ -1,18 +1,20 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   CalendarDays, Plus, Trash2, AlertTriangle, Camera, Image, Clock,
-  FileText, ArrowRight, BarChart3, X, Save, Target, ClipboardList
+  FileText, ArrowRight, BarChart3, X, Save, Target, ClipboardList, Package
 } from 'lucide-react';
 import { STAGES } from '../utils/constants';
 import { fmtDate, todayISO } from '../utils/helpers';
 import VoiceInput from '../components/VoiceInput';
 import InteractiveGantt from '../components/InteractiveGantt';
+import ProjectSupply from '../components/ProjectSupply';
 
 /* helpers */
 const SUBTABS = [
   { key: 'today',    label: 'يومية اليوم',    icon: ClipboardList },
   { key: 'plan',     label: 'خطة العمل',      icon: Target },
   { key: 'diary',    label: 'سجل اليوميات',   icon: CalendarDays },
+  { key: 'supply',   label: 'التوريدات والخامات', icon: Package },
   { key: 'photos',   label: 'صور الموقع',     icon: Image },
   { key: 'schedule', label: 'الجدول الزمني',  icon: BarChart3 },
   { key: 'overview', label: 'بيانات المشروع', icon: FileText },
@@ -75,6 +77,7 @@ export default function EngineerView({ project, currentUser, onUpdate, onBack })
         {sub === 'today'    && <TodayPanel    project={project} currentUser={currentUser} onUpdate={onUpdate} />}
         {sub === 'plan'     && <PlanPanel     project={project} onUpdate={onUpdate} />}
         {sub === 'diary'    && <DiaryPanel    project={project} />}
+        {sub === 'supply'   && <ProjectSupply project={project} currentUser={currentUser} onUpdate={onUpdate} />}
         {sub === 'photos'   && <PhotosPanel   project={project} onUpdate={onUpdate} />}
         {sub === 'schedule' && <SchedulePanel project={project} onUpdate={onUpdate} />}
         {sub === 'overview' && <OverviewPanel project={project} />}
@@ -200,10 +203,10 @@ function TodayPanel({ project, currentUser, onUpdate }) {
 
           <button type="submit" disabled={saving} style={{
             alignSelf: 'flex-end', padding: '12px 28px',
-            background: saved ? '#10B981' : 'linear-gradient(135deg,#6366F1,#3B82F6)',
-            color: '#fff', border: 'none', borderRadius: 12,
-            fontFamily: "'Cairo'", fontSize: 15, fontWeight: 700, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.3s'
+            background: saved ? '#16A34A' : '#1877F2',
+            color: '#fff', border: 'none', borderRadius: 10,
+            fontFamily: "'Cairo'", fontSize: 14, fontWeight: 700, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s'
           }}>
             <Save size={16} />
             {saving ? 'جاري الحفظ...' : saved ? 'تم الحفظ!' : 'حفظ التقرير'}
@@ -351,7 +354,7 @@ function PhotosPanel({ project, onUpdate }) {
           <input value={caption} onChange={e => setCaption(e.target.value)} placeholder="وصف الصور (اختياري)"
             style={{ flex: 1, minWidth: 200, padding: '10px 14px', border: '1.5px solid var(--border)', borderRadius: 10, background: 'transparent', color: 'var(--ink)', fontFamily: "'Cairo'", fontSize: 14 }}
           />
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 20px', background: 'linear-gradient(135deg,#F59E0B,#D97706)', color: '#fff', borderRadius: 10, cursor: 'pointer', fontFamily: "'Cairo'", fontWeight: 700, fontSize: 14 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', background: '#0F172A', color: '#fff', borderRadius: 10, cursor: 'pointer', fontFamily: "'Cairo'", fontWeight: 700, fontSize: 13.5 }}>
             <Camera size={16} /> {uploading ? 'جاري الرفع...' : 'اختر صور'}
             <input type="file" accept="image/*" multiple onChange={handleUpload} style={{ display: 'none' }} />
           </label>
@@ -412,11 +415,11 @@ function SchedulePanel({ project, onUpdate }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div className="panel">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}><BarChart3 size={18} color="#6366F1" /> مراحل المشروع</h3>
-          <div style={{ fontSize: 24, fontWeight: 900, color: '#10B981', fontFamily: 'monospace' }}>{project.progress}%</div>
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}><BarChart3 size={18} color="#0F172A" /> مراحل المشروع</h3>
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)', fontFamily: 'monospace' }}>{project.progress}%</div>
         </div>
-        <div style={{ height: 10, background: 'rgba(0,0,0,0.07)', borderRadius: 99, overflow: 'hidden', marginBottom: 20 }}>
-          <div style={{ height: '100%', width: project.progress + '%', background: 'linear-gradient(90deg,#6366F1,#10B981)', borderRadius: 99, transition: 'width 0.6s' }} />
+        <div style={{ height: 8, background: 'var(--border)', borderRadius: 99, overflow: 'hidden', marginBottom: 20 }}>
+          <div style={{ height: '100%', width: project.progress + '%', background: '#1877F2', borderRadius: 99, transition: 'width 0.6s' }} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {tasks.map(t => {

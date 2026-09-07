@@ -9,12 +9,12 @@ import { getGlobalCurrency } from "../utils/helpers";
 import { TYPES, AREAS } from "../utils/constants";
 
 export const CRM_STAGES = [
-  { id: "new_lead", label: "عميل جديد", color: "#3B82F6", bg: "rgba(59,130,246,0.1)", icon: Sparkles },
-  { id: "inspection", label: "معاينة ومقاسات", color: "#F59E0B", bg: "rgba(245,158,11,0.1)", icon: Calendar },
-  { id: "quotation", label: "إعداد المقايسة والـ 3D", color: "#8B5CF6", bg: "rgba(139,92,246,0.1)", icon: Layers },
-  { id: "negotiation", label: "مفاوضات وتعديلات", color: "#EC4899", bg: "rgba(236,72,153,0.1)", icon: Clock },
-  { id: "won", label: "تم التعاقد 🏆", color: "#10B981", bg: "rgba(16,185,129,0.15)", icon: CheckCircle2 },
-  { id: "lost", label: "ملغى / خسرنا الصفقة", color: "#64748B", bg: "rgba(100,116,139,0.1)", icon: XCircle },
+  { id: "new_lead",    label: "عميل جديد",            color: "#0F172A", bg: "#F1F5F9", icon: Sparkles },
+  { id: "inspection",  label: "معاينة ومقاسات",       color: "#334155", bg: "#F1F5F9", icon: Calendar },
+  { id: "quotation",   label: "إعداد المقايسة والـ 3D",color: "#334155", bg: "#F1F5F9", icon: Layers },
+  { id: "negotiation", label: "مفاوضات وتعديلات",     color: "#475569", bg: "#F8FAFC", icon: Clock },
+  { id: "won",         label: "تم التعاقد",          color: "#0F172A", bg: "#F1F5F9", icon: CheckCircle2 },
+  { id: "lost",        label: "ملغى / غير مناسب",     color: "#94A3B8", bg: "#F8FAFC", icon: XCircle },
 ];
 
 export const LEAD_SOURCES = [
@@ -165,17 +165,17 @@ export default function CrmPipeline({
         </div>
         <div className="kpi-card">
           <div className="label">القيمة المتوقعة للصفقات</div>
-          <div className="value" style={{ color: "#3B82F6" }}>
+          <div className="value">
             {totalPipelineValue.toLocaleString("ar-EG")} {getGlobalCurrency()}
           </div>
         </div>
         <div className="kpi-card">
           <div className="label">عقود تم إغلاقها بنجاح</div>
-          <div className="value" style={{ color: "#10B981" }}>{wonCount} عقد</div>
+          <div className="value">{wonCount} عقد</div>
         </div>
         <div className="kpi-card">
           <div className="label">معدل تحويل الصفقات (Win Rate)</div>
-          <div className="value" style={{ color: "#F59E0B" }}>{winRate}%</div>
+          <div className="value">{winRate}%</div>
         </div>
       </div>
 
@@ -218,16 +218,16 @@ export default function CrmPipeline({
           <button
             onClick={() => setIsFormShareOpen(true)}
             className="btn"
-            style={{ gap: 8, fontSize: 13, background: "rgba(99,102,241,0.1)", color: "#6366F1", border: "1px solid rgba(99,102,241,0.3)" }}
+            style={{ gap: 8, fontSize: 13, background: "#F8FAFC", color: "var(--ink)", border: "1px solid #E2E8F0" }}
           >
-            <Share2 size={16} /> رابط استقبال العملاء
+            <Share2 size={15} color="#64748B" /> رابط استقبال العملاء
           </button>
           <button
             onClick={openAddModal}
             className="btn btn-primary"
-            style={{ gap: 8, fontSize: 14 }}
+            style={{ gap: 8, fontSize: 13 }}
           >
-            <UserPlus size={16} /> إضافة عميل محتمل
+            <UserPlus size={15} /> إضافة عميل محتمل
           </button>
         </div>
       </div>
@@ -251,10 +251,9 @@ export default function CrmPipeline({
             <div
               key={stage.id}
               style={{
-                background: "var(--card, rgba(255,255,255,0.7))",
-                backdropFilter: "blur(12px)",
+                background: "var(--card)",
                 border: "1px solid var(--border)",
-                borderRadius: 16,
+                borderRadius: 12,
                 padding: "16px",
                 display: "flex",
                 flexDirection: "column",
@@ -269,7 +268,7 @@ export default function CrmPipeline({
                   alignItems: "center",
                   justifyContent: "space-between",
                   paddingBottom: 12,
-                  borderBottom: `2px solid ${stage.color}`,
+                  borderBottom: `1px solid var(--border)`,
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -356,14 +355,15 @@ export default function CrmPipeline({
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
-                        background: "rgba(0,0,0,0.02)",
+                        background: "#F8FAFC",
                         padding: "6px 10px",
-                        borderRadius: 8,
+                        borderRadius: 6,
+                        border: "1px solid #E2E8F0",
                         fontSize: 12,
                       }}
                     >
-                      <span style={{ fontWeight: 800, color: "#10B981" }}>
-                        💰 {Number(lead.budget || 0).toLocaleString("ar-EG")} {getGlobalCurrency()}
+                      <span style={{ fontWeight: 700, color: "var(--ink)" }}>
+                        {Number(lead.budget || 0).toLocaleString("ar-EG")} {getGlobalCurrency()}
                       </span>
                       <span style={{ color: "var(--muted)", fontSize: 11 }}>{lead.createdAt || "اليوم"}</span>
                     </div>
@@ -378,11 +378,12 @@ export default function CrmPipeline({
                           flex: 1,
                           fontSize: 12,
                           padding: "4px 8px",
-                          borderRadius: 8,
+                          borderRadius: 6,
                           border: "1px solid var(--border)",
                           background: "var(--card)",
                           fontFamily: "'Cairo', sans-serif",
                           fontWeight: 600,
+                          color: "var(--ink)",
                         }}
                       >
                         {CRM_STAGES.map((s) => (
@@ -402,16 +403,16 @@ export default function CrmPipeline({
                           justifyContent: "center",
                           gap: 6,
                           padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "none",
-                          background: "#25D366",
-                          color: "#fff",
-                          fontSize: 11,
-                          fontWeight: 700,
+                          borderRadius: 6,
+                          border: "1px solid #E2E8F0",
+                          background: "#F8FAFC",
+                          color: "#1E293B",
+                          fontSize: 11.5,
+                          fontWeight: 600,
                           cursor: "pointer",
                         }}
                       >
-                        <MessageCircle size={13} /> واتساب
+                        <MessageCircle size={13} color="#64748B" /> واتساب
                       </button>
 
                       {lead.stage !== "won" && (
@@ -422,12 +423,12 @@ export default function CrmPipeline({
                             alignItems: "center",
                             gap: 4,
                             padding: "6px 10px",
-                            borderRadius: 8,
-                            border: "1px solid rgba(16,185,129,0.3)",
-                            background: "rgba(16,185,129,0.1)",
-                            color: "#10B981",
-                            fontSize: 11,
-                            fontWeight: 700,
+                            borderRadius: 6,
+                            border: "1px solid #0F172A",
+                            background: "#0F172A",
+                            color: "#FFFFFF",
+                            fontSize: 11.5,
+                            fontWeight: 600,
                             cursor: "pointer",
                           }}
                           title="تحويل مباشر لمشروع نشط في المواقع"

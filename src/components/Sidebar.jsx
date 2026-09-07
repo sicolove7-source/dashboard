@@ -132,7 +132,7 @@ export default function Sidebar({
 
   const isSuperAdmin = userRole === 'super_admin';
   const roleInfo = ROLES[userRole] || ROLES['owner'];
-  const companyName = isSuperAdmin ? 'إدارة المنصة الرئيسية (Hub)' : (companySettings?.companyName || 'إدارة التشطيبات');
+  const companyName = isSuperAdmin ? 'إدارة منصة Tashteeb Pro' : (companySettings?.companyName || 'Tashteeb Pro');
   const companyLogo = isSuperAdmin ? null : (companySettings?.companyLogo || null);
 
   return (
@@ -163,9 +163,7 @@ export default function Sidebar({
         ) : (
           <div style={{
             width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-            background: isSuperAdmin 
-              ? 'linear-gradient(135deg, #EC4899, #8B5CF6)' 
-              : `linear-gradient(135deg, ${companySettings?.primaryColor || '#6366F1'}, ${companySettings?.accentColor || '#3B82F6'})`,
+            background: '#1877F2',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             {isSuperAdmin ? <Icons.Crown size={20} color="#fff" /> : <Icons.Building2 size={20} color="#fff" />}
@@ -179,21 +177,21 @@ export default function Sidebar({
 
       {/* ─── بيانات المستخدم ─── */}
       <div style={{
-        margin: "0 12px 8px",
+        margin: "0 12px 10px",
         padding: "10px 14px",
-        background: `${roleInfo.color}18`,
-        border: `1px solid ${roleInfo.color}30`,
-        borderRadius: 12,
+        background: isDarkMode ? `${roleInfo.color}18` : "var(--sidebar-hover-bg)",
+        border: `1px solid var(--sidebar-border)`,
+        borderRadius: 10,
         display: "flex",
         alignItems: "center",
         gap: 10,
       }}>
         <span style={{ fontSize: 22 }}>{roleInfo.badge}</span>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: roleInfo.color, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: isDarkMode ? roleInfo.color : "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {roleInfo.label}
           </div>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {currentUser?.name || ""}
           </div>
         </div>
@@ -202,7 +200,7 @@ export default function Sidebar({
       {/* ─── التنقل ─── */}
       <nav style={{ padding: "12px 0", flex: 1 }}>
         {NAV.map((n) => {
-          if (!canSeeNav(userRole, n.key)) return null;
+          if (!canSeeNav(currentUser || userRole, n.key)) return null;
           const Icon = Icons[n.icon];
           return (
             <div key={n.key} className={`nav-item ${tab === n.key ? "active" : ""}`}
@@ -212,8 +210,8 @@ export default function Sidebar({
             </div>
           );
         })}
-        {/* ── إعدادات الشركة — مدير فقط ── */}
-        {can(userRole, 'company_settings_view') && (
+        {/* ── إعدادات الشركة — مدير فقط أو من لديه صلاحية مخصصة ── */}
+        {can(currentUser || userRole, 'company_settings_view') && (
           <div
             className={`nav-item ${tab === 'settings' ? 'active' : ''}`}
             onClick={() => { setTab('settings'); setView('list'); setSidebarOpen?.(false); }}
@@ -225,44 +223,44 @@ export default function Sidebar({
       </nav>
 
       {/* Onboarding Tour Button */}
-      <div style={{ padding: "0 24px 8px" }}>
+      <div style={{ padding: "0 12px 8px" }}>
         <button 
           onClick={() => { onOpenTour?.(); setSidebarOpen?.(false); }}
           style={{ 
             display: "flex", alignItems: "center", gap: "10px", 
             width: "100%", padding: "10px 12px", 
-            background: "linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2))",
-            border: "1px solid rgba(99,102,241,0.4)",
-            borderRadius: "8px", color: "#A5B4FC", cursor: "pointer",
-            fontFamily: "Cairo", fontWeight: 700, fontSize: 13
+            background: "var(--sidebar-hover-bg)",
+            border: "1px solid var(--sidebar-border)",
+            borderRadius: "8px", color: "var(--sidebar-text)", cursor: "pointer",
+            fontFamily: "Cairo", fontWeight: 600, fontSize: 13
           }}
         >
-          <Icons.Compass size={16} color="#818CF8" />
-          <span>جولة تعريفية للنظام 🧭</span>
+          <Icons.Compass size={15} color="var(--muted)" />
+          <span>جولة تعريفية للنظام</span>
         </button>
       </div>
 
       {/* Dark mode toggle */}
-      <div style={{ padding: "0 24px 12px" }}>
+      <div style={{ padding: "0 12px 12px" }}>
         <button 
           onClick={() => setIsDarkMode(!isDarkMode)}
           style={{ 
             display: "flex", alignItems: "center", gap: "10px", 
-            width: "100%", padding: "10px", 
-            background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
-            borderRadius: "8px", color: "#F8FAFC", cursor: "pointer",
-            fontFamily: "Cairo"
+            width: "100%", padding: "9px 12px", 
+            background: "var(--sidebar-hover-bg)", border: "1px solid var(--sidebar-border)",
+            borderRadius: "8px", color: "var(--sidebar-text)", cursor: "pointer",
+            fontFamily: "Cairo", fontSize: 12.5, fontWeight: 600
           }}
         >
-          {isDarkMode ? <Icons.Sun size={16} /> : <Icons.Moon size={16} />}
+          {isDarkMode ? <Icons.Sun size={15} /> : <Icons.Moon size={15} />}
           {isDarkMode ? "الوضع الفاتح" : "الوضع الليلي"}
         </button>
       </div>
 
       {/* Backup / Restore section — مدير فقط */}
-      {can(userRole, 'backup_export') && (
-        <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textAlign: "center", fontWeight: 600, letterSpacing: 1, marginBottom: 2 }}>
+      {can(currentUser || userRole, 'backup_export') && (
+        <div style={{ padding: "0 12px 16px", display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: 10, color: "var(--muted)", textAlign: "center", fontWeight: 600, letterSpacing: 0.5, marginBottom: 2 }}>
             النسخ الاحتياطي
           </div>
 
@@ -271,16 +269,14 @@ export default function Sidebar({
             onClick={exportData}
             style={{
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              width: "100%", padding: "9px 12px",
-              background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.3)",
-              borderRadius: "8px", color: "#6EE7B7", cursor: "pointer",
-              fontFamily: "Cairo", fontSize: 13, fontWeight: 700,
-              transition: "all 0.2s"
+              width: "100%", padding: "8px 12px",
+              background: "var(--sidebar-hover-bg)", border: "1px solid var(--sidebar-border)",
+              borderRadius: "8px", color: "var(--sidebar-text)", cursor: "pointer",
+              fontFamily: "Cairo", fontSize: 12.5, fontWeight: 600,
+              transition: "all 0.15s"
             }}
-            onMouseEnter={e => e.currentTarget.style.background = "rgba(16,185,129,0.25)"}
-            onMouseLeave={e => e.currentTarget.style.background = "rgba(16,185,129,0.15)"}
           >
-            <Icons.Download size={15} />
+            <Icons.Download size={14} />
             تصدير البيانات
           </button>
 
@@ -289,35 +285,33 @@ export default function Sidebar({
             onClick={() => fileRef.current?.click()}
             style={{
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              width: "100%", padding: "9px 12px",
-              background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)",
-              borderRadius: "8px", color: "#A5B4FC", cursor: "pointer",
-              fontFamily: "Cairo", fontSize: 13, fontWeight: 700,
-              transition: "all 0.2s"
+              width: "100%", padding: "8px 12px",
+              background: "var(--sidebar-hover-bg)", border: "1px solid var(--sidebar-border)",
+              borderRadius: "8px", color: "var(--sidebar-text)", cursor: "pointer",
+              fontFamily: "Cairo", fontSize: 12.5, fontWeight: 600,
+              transition: "all 0.15s"
             }}
-            onMouseEnter={e => e.currentTarget.style.background = "rgba(99,102,241,0.25)"}
-            onMouseLeave={e => e.currentTarget.style.background = "rgba(99,102,241,0.15)"}
           >
-            <Icons.Upload size={15} />
+            <Icons.Upload size={14} />
             استيراد بيانات
           </button>
           <input ref={fileRef} type="file" accept=".json" onChange={handleImport} style={{ display: "none" }} />
 
           {/* Feedback message */}
           {importMsg === 'ok' && (
-            <div style={{ fontSize: 12, color: "#6EE7B7", textAlign: "center", fontWeight: 700, padding: "6px 0" }}>
+            <div style={{ fontSize: 12, color: "var(--success)", textAlign: "center", fontWeight: 700, padding: "6px 0" }}>
               ✅ تم الاستيراد — جاري إعادة التشغيل...
             </div>
           )}
           {importMsg === 'err' && (
-            <div style={{ fontSize: 12, color: "#FCA5A5", textAlign: "center", fontWeight: 700, padding: "6px 0" }}>
-              ❌ ملف غير صالح، حاول مرة أخرى
+            <div style={{ fontSize: 12, color: "var(--danger)", textAlign: "center", fontWeight: 700, padding: "6px 0" }}>
+              ❌ فشل استيراد الملف
             </div>
           )}
         </div>
       )}
 
-      <div className="sidebar-foot">v2.0 · {companyName}</div>
+      <div className="sidebar-foot">v2.0 · Tashteeb Pro</div>
     </aside>
   );
 }

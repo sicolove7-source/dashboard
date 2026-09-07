@@ -10,9 +10,9 @@ export default function WhatsAppSupportWidget({ companySettings }) {
   const [isOpen, setIsOpen] = useState(false);
   const [customMsg, setCustomMsg] = useState('');
 
-  // Default support WhatsApp phone number (from companySettings or default)
-  const supportPhone = companySettings?.supportPhone || companySettings?.companyPhone || '01011223344';
-  const companyName = companySettings?.companyName || 'فريق المبيعات والدعم الفني';
+  // Dedicated WhatsApp number for platform sales, subscription activation, and support
+  const supportPhone = '201018160582';
+  const companyName = 'فريق مبيعات ودعم Tashteeb Pro';
 
   const QUICK_INTENTS = [
     {
@@ -21,7 +21,7 @@ export default function WhatsAppSupportWidget({ companySettings }) {
       badge: 'الأكثر طلباً',
       title: 'طلب تجربة وعرض توضيحي (Demo)',
       sub: 'حجز جلسة شرح مباشر لمميزات النظام',
-      msg: 'مرحباً! أود طلب موعد لعرض توضيحي (Demo) للتعرف على مميزات نظام إدارة المقاولات والتشطيبات وإمكانية تطبيقه في شركتنا.'
+      msg: 'مرحباً! أود طلب موعد لعرض توضيحي (Demo) للتعرف على مميزات منصة Tashteeb Pro لإدارة التشطيبات والمقاولات وإمكانية تطبيقها في شركتنا.'
     },
     {
       id: 'pricing',
@@ -29,7 +29,7 @@ export default function WhatsAppSupportWidget({ companySettings }) {
       badge: 'أسعار وعروض',
       title: 'الاستفسار عن باقات وأسعار الاشتراك',
       sub: 'معرفة خطط الأسعار والخصومات للشركات',
-      msg: 'السلام عليكم، أود الاستفسار عن خطط وأسعار الاشتراك في نظام إدارة التشطيبات والمقاولات للباقات الشهرية والسنوية.'
+      msg: 'السلام عليكم، أود الاستفسار عن خطط وأسعار الاشتراك في منصة Tashteeb Pro لإدارة التشطيبات والمقاولات للباقات الشهرية والسنوية.'
     },
     {
       id: 'custom',

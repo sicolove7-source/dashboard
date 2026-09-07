@@ -10,7 +10,7 @@ export const AUTOMATIONS_LOG_KEY = 'dashboard_automations_log_v1';
 export const DEFAULT_AUTOMATION_RULES = [
   {
     id: 'client_payment_reminder',
-    name: 'تذكير دفعات العملاء المستحقة 💰',
+    name: 'تذكير دفعات العملاء المستحقة',
     desc: 'فحص تواريخ استحقاق الدفعات وتجهيز رسائل الواتساب والتنبيهات للعميل قبل موعد السداد.',
     category: 'finance',
     icon: 'Wallet',
@@ -19,11 +19,11 @@ export const DEFAULT_AUTOMATION_RULES = [
     thresholdDays: 3, // قبل الاستحقاق بـ 3 أيام
     targetRole: 'accountant',
     badge: 'مالية وعملاء',
-    color: '#F59E0B',
+    color: '#0F172A',
   },
   {
     id: 'budget_overrun_alert',
-    name: 'إنذار تجاوز ميزانية المشروع 🚨',
+    name: 'إنذار تجاوز ميزانية المشروع',
     desc: 'تنبيه عاجل وفوري للإدارة عند وصول مصروفات المشروع إلى نسبة حرجة من الميزانية المرصودة.',
     category: 'finance',
     icon: 'AlertTriangle',
@@ -32,11 +32,11 @@ export const DEFAULT_AUTOMATION_RULES = [
     thresholdPercent: 90, // عند بلوغ 90%
     targetRole: 'owner',
     badge: 'مراقبة التكاليف',
-    color: '#EF4444',
+    color: '#0F172A',
   },
   {
     id: 'missing_daily_log',
-    name: 'تذكير يوميات الموقع المفقودة 📝',
+    name: 'تذكير يوميات الموقع المفقودة',
     desc: 'فحص يوميات المواقع النشطة وتنبيه المهندس المشرف في نهاية اليوم لتسجيل التقرير قبل مغادرة الموقع.',
     category: 'site',
     icon: 'CalendarCheck',
@@ -44,11 +44,11 @@ export const DEFAULT_AUTOMATION_RULES = [
     channel: 'whatsapp_notification',
     targetRole: 'engineer',
     badge: 'متابعة ميدانية',
-    color: '#3B82F6',
+    color: '#0F172A',
   },
   {
     id: 'craftsman_snag_dispatch',
-    name: 'تكليف الصنايعي بالملاحظات الجديدة 📲',
+    name: 'تكليف الصنايعي بالملاحظات الجديدة',
     desc: 'إرسال تفاصيل الملاحظة الهندسية وموقعها وصورها تلقائياً للصنايعي/المقاول بالواتساب مع تحديد مهلة.',
     category: 'quality',
     icon: 'Wrench',
@@ -56,11 +56,11 @@ export const DEFAULT_AUTOMATION_RULES = [
     channel: 'whatsapp_direct',
     targetRole: 'engineer',
     badge: 'جودة واستلامات',
-    color: '#10B981',
+    color: '#0F172A',
   },
   {
     id: 'stale_lead_followup',
-    name: 'متابعة العملاء المحتملين الراكدين (CRM) ⏰',
+    name: 'متابعة العملاء المحتملين الراكدين (CRM)',
     desc: 'تنبيه مسؤول المبيعات لمتابعة العملاء الذين مر عليهم أكثر من 4 أيام بعد تقديم المقايسة دون استجابة.',
     category: 'sales',
     icon: 'BadgePercent',
@@ -69,11 +69,11 @@ export const DEFAULT_AUTOMATION_RULES = [
     thresholdDays: 4,
     targetRole: 'owner',
     badge: 'مبيعات CRM',
-    color: '#8B5CF6',
+    color: '#0F172A',
   },
   {
     id: 'schedule_delay_cascade',
-    name: 'تنبيه تأخير المراحل والمسار الحرج ⏱️',
+    name: 'تنبيه تأخير المراحل والمسار الحرج',
     desc: 'رصد تأخر مراحل التنفيذ عن موعدها المحدد واقتراح تعديل الجداول وتفادي تعارض مواعيد الصنايعية.',
     category: 'schedule',
     icon: 'Clock',
@@ -81,7 +81,7 @@ export const DEFAULT_AUTOMATION_RULES = [
     channel: 'system_alert',
     targetRole: 'owner',
     badge: 'جدول زمني',
-    color: '#EC4899',
+    color: '#0F172A',
   },
 ];
 

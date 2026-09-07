@@ -89,13 +89,13 @@ export default function ClientReportModal({ project, onClose }) {
         {/* Modal Action Bar (No-Print) */}
         <div className="no-print" style={{
           padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg, #1E1B4B, #312E81)', color: '#fff'
+          borderBottom: '1px solid var(--border)', background: '#0F172A', color: '#fff'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Sparkles size={22} color="#FCD34D" />
+            <Sparkles size={20} color="#94A3B8" />
             <div>
               <div style={{ fontWeight: 800, fontSize: 16 }}>تقرير العميل الرسمي للمتابعة</div>
-              <div style={{ fontSize: 12, opacity: 0.8 }}>جاهز للإرسال على الواتساب أو الطباعة PDF (بدون التكاليف السرية)</div>
+              <div style={{ fontSize: 12, color: '#94A3B8' }}>جاهز للإرسال على الواتساب أو الطباعة PDF (بدون التكاليف السرية)</div>
             </div>
           </div>
 
@@ -156,8 +156,8 @@ export default function ClientReportModal({ project, onClose }) {
 
           {/* Project Details Banner */}
           <div style={{
-            background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(236,72,153,0.05))',
-            border: '1.5px solid rgba(99,102,241,0.2)', borderRadius: 16, padding: '20px 24px', marginBottom: 24
+            background: 'var(--bg-color)',
+            border: '1px solid var(--border)', borderRadius: 12, padding: '18px 20px', marginBottom: 24
           }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
               <div>
@@ -189,10 +189,10 @@ export default function ClientReportModal({ project, onClose }) {
               <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>محسوبة من بنود واختبارات المراحل الأربعة</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ width: 140, height: 10, background: 'rgba(0,0,0,0.08)', borderRadius: 99, overflow: 'hidden' }}>
-                <div style={{ width: `${project.progress || overallPhasePct}%`, height: '100%', background: 'linear-gradient(90deg, #10B981, #059669)', borderRadius: 99 }} />
+              <div style={{ width: 140, height: 8, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
+                <div style={{ width: `${project.progress || overallPhasePct}%`, height: '100%', background: '#2563EB', borderRadius: 99 }} />
               </div>
-              <span className="font-mono" style={{ fontSize: 26, fontWeight: 900, color: 'var(--teal)' }}>{project.progress || overallPhasePct}%</span>
+              <span className="font-mono" style={{ fontSize: 24, fontWeight: 900, color: 'var(--ink)' }}>{project.progress || overallPhasePct}%</span>
             </div>
           </div>
 

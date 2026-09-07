@@ -16,9 +16,9 @@ export default function ScheduleTab({ projects, onSelect }) {
           <h3 style={{ display: "flex", alignItems: "center", gap: 10, margin: 0 }}>
             <span style={{ 
               display: "flex", alignItems: "center", justifyContent: "center", 
-              width: 32, height: 32, borderRadius: 8, background: "rgba(245, 158, 11, 0.1)" 
+              width: 32, height: 32, borderRadius: 8, background: "#F1F5F9" 
             }}>
-              <CalendarRange size={16} color="#F59E0B" />
+              <CalendarRange size={16} color="#0F172A" />
             </span>
             الجدول الزمني للمشاريع
           </h3>

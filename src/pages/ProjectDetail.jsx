@@ -33,10 +33,10 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
     { key: "workplan", label: "خطة العمل",     icon: Target,      perm: 'project_tab_diary' },
     { key: "drawings", label: "الرسومات 3D",    icon: Sparkles,    perm: 'project_tab_drawings' },
     { key: "rooms",    label: "الغرف",         icon: Home,        perm: 'project_tab_rooms', count: project.rooms?.length },
-    { key: "supply",   label: "التوريدات",     icon: Package,     perm: 'project_tab_supply' },
+    { key: "supply",   label: "التوريدات",     icon: Package,     perm: 'project_tab_supply', count: project.resources?.materials?.filter(m => m.status !== 'تم التوريد')?.length || (project.resources?.materials?.length ? project.resources.materials.length : undefined) },
     { key: "finance",  label: "المالية",        icon: Wallet,      perm: 'project_tab_finance' },
     { key: "overview", label: "البيانات",       icon: Building2,   perm: null },
-  ].filter(t => !t.perm || can(userRole, t.perm));
+  ].filter(t => !t.perm || can(currentUser || userRole, t.perm));
 
   // التبويب الافتراضي: أول تبويب متاح
   const defaultSub = SUBTABS[0]?.key || 'overview';
@@ -100,7 +100,7 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
         {/* ── Action Toolbar (Contracts, Portal, Report, Manage) ── */}
         <div className="project-action-toolbar">
           <div className="primary-action-group">
-            {can(userRole, 'projects_edit') && (
+            {can(currentUser || userRole, 'projects_edit') && (
               <button 
                 className="contract-action-btn btn-craftsman-contract" 
                 onClick={() => setShowCraftsmanContract(true)}
@@ -109,7 +109,7 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
               </button>
             )}
 
-            {can(userRole, 'projects_edit') && (
+            {can(currentUser || userRole, 'projects_edit') && (
               <button 
                 className="contract-action-btn btn-client-contract" 
                 onClick={() => setShowContract(true)}
@@ -129,18 +129,19 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
             <button 
               className="contract-action-btn btn-whatsapp" 
               onClick={() => setShowClientReport(true)} 
+              title="تقرير العميل عبر واتساب"
             >
               <MessageCircle size={16} /> <span>تقرير العميل 📱</span>
             </button>
           </div>
 
           <div className="secondary-action-group">
-            {can(userRole, 'projects_edit') && (
+            {can(currentUser || userRole, 'projects_edit') && (
               <button className="btn btn-edit-proj" onClick={onEdit}>
                 <Pencil size={15} /> <span>تعديل</span>
               </button>
             )}
-            {can(userRole, 'projects_delete') && (
+            {can(currentUser || userRole, 'projects_delete') && (
               <button className="btn btn-ghost btn-delete-proj" onClick={() => setConfirming(true)}>
                 <Trash2 size={15} /> <span>حذف</span>
               </button>
@@ -217,8 +218,8 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
         {sub === "workplan" && <WorkPlanPanel project={project} onUpdate={onUpdate} />}
         {sub === "rooms"    && <ProjectRooms project={project} onUpdate={onUpdate} />}
         {sub === "schedule" && <ProjectSchedule project={project} onUpdate={onUpdate} />}
-        {sub === "supply"   && <ProjectSupply project={project} onUpdate={onUpdate} />}
-        {sub === "finance"  && can(userRole, 'project_tab_finance') && <ProjectFinance project={project} onUpdate={onUpdate} />}
+        {sub === "supply"   && <ProjectSupply project={project} currentUser={currentUser} userRole={userRole} onUpdate={onUpdate} />}
+        {sub === "finance"  && can(currentUser || userRole, 'project_tab_finance') && <ProjectFinance project={project} onUpdate={onUpdate} />}
         {sub === "overview" && <OverviewPanel project={project} onUpdate={onUpdate} />}
       </div>
     </div>

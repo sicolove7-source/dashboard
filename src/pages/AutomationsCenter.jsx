@@ -169,84 +169,81 @@ export default function AutomationsCenter({
   ];
 
   return (
-    <div className="tab-fade" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div className="tab-fade ac-root" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* ─── Hero Header & Stats ─── */}
       <div
-        className="panel"
+        className="panel ac-hero-panel"
         style={{
-          background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(59, 130, 246, 0.04) 100%)',
-          borderColor: 'rgba(99, 102, 241, 0.25)',
-          padding: '28px 24px',
+          background: 'var(--card)',
+          borderColor: 'var(--border)',
+          padding: '24px',
           position: 'relative',
-          overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
-          <div style={{ maxWidth: 650 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <div className="ac-hero-inner" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
+          <div className="ac-hero-info" style={{ maxWidth: 650 }}>
+            <div className="ac-badge-row" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
               <span
                 style={{
-                  background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
-                  color: '#fff',
-                  padding: '6px 12px',
-                  borderRadius: 10,
+                  background: '#F1F5F9',
+                  color: '#1E293B',
+                  border: '1px solid #E2E8F0',
+                  padding: '4px 10px',
+                  borderRadius: 6,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
-                  fontSize: 13,
-                  fontWeight: 800,
-                  boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)',
+                  fontSize: 12.5,
+                  fontWeight: 700,
                 }}
               >
-                <Zap size={16} /> مركز الأتمتة الذكي ⚡
+                <Zap size={14} /> مركز الأتمتة الذكي
               </span>
-              <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 600 }}>
+              <span className="ac-hero-en" style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 500 }}>
                 Workflow Automations & AI Triggers
               </span>
             </div>
-            <h2 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 10px', color: 'var(--ink)' }}>
-              أتمتة دورة عمل المشاريع والتحصيل الميداني 🚀
+            <h2 className="ac-hero-title" style={{ fontSize: 20, fontWeight: 800, margin: '0 0 8px', color: 'var(--ink)' }}>
+              أتمتة دورة عمل المشاريع والتحصيل الميداني
             </h2>
-            <p style={{ fontSize: 14, color: 'var(--muted)', lineHeight: 1.6, margin: 0 }}>
-              يعمل هذا المحرك تلقائياً على مدار الساعة لمراقبة مواعيد الدفعات، تنبيهات تجاوز الميزانيات، متابعة تسجيل اليوميات، وتكليف الصنايعية بالملاحظات عبر الواتساب فوراً.
+            <p className="ac-hero-desc" style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.6, margin: 0 }}>
+              يعمل هذا المحرك تلقائياً لمراقبة مواعيد الدفعات، تنبيهات الميزانيات، متابعة تسجيل اليوميات، وتكليف الصنايعية بالملاحظات عبر الواتساب.
             </p>
           </div>
 
           {/* Actions & Live Eval Button */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div className="ac-hero-actions" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <button
               onClick={handleRunEvaluation}
               disabled={isEvaluating}
-              className="btn btn-primary"
+              className="btn btn-primary ac-btn-eval"
               style={{
-                background: 'linear-gradient(135deg, #6366F1, #3B82F6)',
-                padding: '12px 20px',
-                fontSize: 14,
-                fontWeight: 800,
+                padding: '9px 18px',
+                fontSize: 13,
+                fontWeight: 600,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
-                boxShadow: '0 4px 15px rgba(99, 102, 241, 0.4)',
+                gap: 6,
                 cursor: isEvaluating ? 'not-allowed' : 'pointer',
               }}
             >
-              <Play size={16} className={isEvaluating ? 'spin' : ''} />
-              {isEvaluating ? 'جاري الفحص الشامل...' : 'تشغيل وفحص فوري الآن ⚡'}
+              <Play size={14} className={isEvaluating ? 'spin' : ''} />
+              {isEvaluating ? 'جاري الفحص...' : 'تشغيل فحص فوري'}
             </button>
 
             <button
               onClick={handleResetDefaults}
-              className="btn"
+              className="btn ac-btn-reset"
               style={{
                 background: 'var(--card)',
                 border: '1px solid var(--border)',
                 color: 'var(--muted)',
-                padding: '10px 14px',
+                padding: '9px 12px',
                 fontSize: 13,
               }}
               title="استعادة الضبط الافتراضي"
             >
-              <RefreshCw size={15} />
+              <RefreshCw size={14} />
             </button>
           </div>
         </div>
@@ -256,37 +253,39 @@ export default function AutomationsCenter({
             className="tab-fade"
             style={{
               marginTop: 16,
-              background: 'rgba(16, 185, 129, 0.15)',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-              color: '#10B981',
-              padding: '10px 16px',
-              borderRadius: 10,
-              fontSize: 14,
-              fontWeight: 700,
+              background: '#F0FDF4',
+              border: '1px solid #BBF7D0',
+              color: '#16A34A',
+              padding: '8px 14px',
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 600,
               display: 'flex',
               alignItems: 'center',
               gap: 8,
             }}
           >
-            <CheckCircle2 size={18} /> {evalMessage}
+            <CheckCircle2 size={16} /> {evalMessage}
           </div>
         )}
 
         {/* Quick KPI Stats Cards */}
         <div
+          className="ac-kpi-grid"
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: 14,
-            marginTop: 24,
+            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+            gap: 12,
+            marginTop: 20,
           }}
         >
           <div
+            className="ac-kpi-card"
             style={{
-              background: 'var(--card)',
+              background: 'var(--bg-color)',
               border: '1px solid var(--border)',
-              padding: '14px 16px',
-              borderRadius: 12,
+              padding: '12px 14px',
+              borderRadius: 8,
               display: 'flex',
               alignItems: 'center',
               gap: 12,
@@ -294,33 +293,35 @@ export default function AutomationsCenter({
           >
             <div
               style={{
-                width: 42,
-                height: 42,
-                borderRadius: 10,
-                background: 'rgba(99, 102, 241, 0.12)',
-                color: '#6366F1',
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                background: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+                color: '#64748B',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
               }}
             >
-              <Zap size={22} />
+              <Zap size={18} />
             </div>
             <div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>الأتمتات المفعلة</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ink)' }}>
-                {activeRulesCount} <span style={{ fontSize: 13, color: 'var(--muted)' }}>من {rules.length}</span>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 500 }}>الأتمتات المفعلة</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--ink)' }}>
+                {activeRulesCount} <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500 }}>من {rules.length}</span>
               </div>
             </div>
           </div>
 
           <div
+            className="ac-kpi-card"
             style={{
-              background: 'var(--card)',
+              background: 'var(--bg-color)',
               border: '1px solid var(--border)',
-              padding: '14px 16px',
-              borderRadius: 12,
+              padding: '12px 14px',
+              borderRadius: 8,
               display: 'flex',
               alignItems: 'center',
               gap: 12,
@@ -328,33 +329,35 @@ export default function AutomationsCenter({
           >
             <div
               style={{
-                width: 42,
-                height: 42,
-                borderRadius: 10,
-                background: 'rgba(245, 158, 11, 0.12)',
-                color: '#F59E0B',
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                background: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+                color: '#64748B',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
               }}
             >
-              <Bell size={22} />
+              <Bell size={18} />
             </div>
             <div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>إجراءات وتنبيهات جاهزة</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#F59E0B' }}>
-                {liveResults.length} <span style={{ fontSize: 13, color: 'var(--muted)' }}>تنبيه</span>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 500 }}>إجراءات تتطلب تدخلاً</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: liveResults.length > 0 ? '#DC2626' : 'var(--ink)' }}>
+                {liveResults.length}
               </div>
             </div>
           </div>
 
           <div
+            className="ac-kpi-card"
             style={{
-              background: 'var(--card)',
+              background: 'var(--bg-color)',
               border: '1px solid var(--border)',
-              padding: '14px 16px',
-              borderRadius: 12,
+              padding: '12px 14px',
+              borderRadius: 8,
               display: 'flex',
               alignItems: 'center',
               gap: 12,
@@ -362,34 +365,35 @@ export default function AutomationsCenter({
           >
             <div
               style={{
-                width: 42,
-                height: 42,
-                borderRadius: 10,
-                background: 'rgba(16, 185, 129, 0.12)',
-                color: '#10B981',
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                background: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+                color: '#64748B',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
               }}
             >
-              <MessageSquare size={22} />
+              <MessageSquare size={18} />
             </div>
             <div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>رسائل واتساب مجهزة</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#10B981' }}>
-                {liveResults.filter((r) => r.whatsappMessage).length}{' '}
-                <span style={{ fontSize: 13, color: 'var(--muted)' }}>رسالة</span>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 500 }}>رسائل واتساب مجهزة</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--ink)' }}>
+                {liveResults.filter((r) => r.whatsappMessage).length}
               </div>
             </div>
           </div>
 
           <div
+            className="ac-kpi-card"
             style={{
-              background: 'var(--card)',
+              background: 'var(--bg-color)',
               border: '1px solid var(--border)',
-              padding: '14px 16px',
-              borderRadius: 12,
+              padding: '12px 14px',
+              borderRadius: 8,
               display: 'flex',
               alignItems: 'center',
               gap: 12,
@@ -397,23 +401,24 @@ export default function AutomationsCenter({
           >
             <div
               style={{
-                width: 42,
-                height: 42,
-                borderRadius: 10,
-                background: 'rgba(236, 72, 153, 0.12)',
-                color: '#EC4899',
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                background: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+                color: '#64748B',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
               }}
             >
-              <Sparkles size={22} />
+              <Sparkles size={18} />
             </div>
             <div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>الوفر التقديري في الوقت</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#EC4899' }}>
-                18 <span style={{ fontSize: 13, color: 'var(--muted)' }}>ساعة/أسبوعياً</span>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 500 }}>الوفر التقديري</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--ink)' }}>
+                18 <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500 }}>ساعة/أسبوع</span>
               </div>
             </div>
           </div>
@@ -421,83 +426,87 @@ export default function AutomationsCenter({
       </div>
 
       {/* ─── Navigation Tabs & Filters ─── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
-        <div style={{ display: 'flex', gap: 8, background: 'var(--card)', padding: 4, borderRadius: 12, border: '1px solid var(--border)' }}>
+      <div className="ac-nav-wrapper" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
+        <div className="ac-tabs-bar" style={{ display: 'flex', gap: 4, background: 'var(--card)', padding: 3, borderRadius: 8, border: '1px solid var(--border)', flexWrap: 'wrap', maxWidth: '100%' }}>
           <button
             onClick={() => setActiveTab('rules')}
+            className={`ac-tab-btn ${activeTab === 'rules' ? 'active' : ''}`}
             style={{
-              padding: '8px 18px',
-              borderRadius: 8,
+              padding: '7px 14px',
+              borderRadius: 6,
               border: 'none',
-              fontSize: 13,
-              fontWeight: 800,
+              fontSize: 12.5,
+              fontWeight: 600,
               cursor: 'pointer',
-              background: activeTab === 'rules' ? 'var(--brand-primary, #6366F1)' : 'transparent',
-              color: activeTab === 'rules' ? '#fff' : 'var(--muted)',
-              transition: 'all 0.2s',
+              background: activeTab === 'rules' ? '#0F172A' : 'transparent',
+              color: activeTab === 'rules' ? '#FFFFFF' : 'var(--muted)',
+              transition: 'all 0.15s',
               display: 'flex',
               alignItems: 'center',
               gap: 6,
             }}
           >
-            <Sliders size={15} /> قواعد الأتمتة ({rules.length})
+            <Sliders size={14} /> قواعد الأتمتة ({rules.length})
           </button>
 
           <button
             onClick={() => setActiveTab('live_actions')}
+            className={`ac-tab-btn ${activeTab === 'live_actions' ? 'active' : ''}`}
             style={{
-              padding: '8px 18px',
-              borderRadius: 8,
+              padding: '7px 14px',
+              borderRadius: 6,
               border: 'none',
-              fontSize: 13,
-              fontWeight: 800,
+              fontSize: 12.5,
+              fontWeight: 600,
               cursor: 'pointer',
-              background: activeTab === 'live_actions' ? 'var(--brand-primary, #6366F1)' : 'transparent',
-              color: activeTab === 'live_actions' ? '#fff' : 'var(--muted)',
-              transition: 'all 0.2s',
+              background: activeTab === 'live_actions' ? '#0F172A' : 'transparent',
+              color: activeTab === 'live_actions' ? '#FFFFFF' : 'var(--muted)',
+              transition: 'all 0.15s',
               display: 'flex',
               alignItems: 'center',
               gap: 6,
             }}
           >
-            <Bell size={15} /> الإجراءات المرصودة حالياً ({liveResults.length})
+            <Bell size={14} /> الإجراءات المرصودة ({liveResults.length})
           </button>
 
           <button
             onClick={() => setActiveTab('logs')}
+            className={`ac-tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
             style={{
-              padding: '8px 18px',
-              borderRadius: 8,
+              padding: '7px 14px',
+              borderRadius: 6,
               border: 'none',
-              fontSize: 13,
-              fontWeight: 800,
+              fontSize: 12.5,
+              fontWeight: 600,
               cursor: 'pointer',
-              background: activeTab === 'logs' ? 'var(--brand-primary, #6366F1)' : 'transparent',
-              color: activeTab === 'logs' ? '#fff' : 'var(--muted)',
-              transition: 'all 0.2s',
+              background: activeTab === 'logs' ? '#0F172A' : 'transparent',
+              color: activeTab === 'logs' ? '#FFFFFF' : 'var(--muted)',
+              transition: 'all 0.15s',
               display: 'flex',
               alignItems: 'center',
               gap: 6,
             }}
           >
-            <Clock size={15} /> سجل النشاطات ({logs.length})
+            <Clock size={14} /> سجل النشاطات ({logs.length})
           </button>
         </div>
 
         {activeTab === 'rules' && (
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+          <div className="ac-categories-scroll" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
             {CATEGORIES.map((cat) => (
               <button
                 key={cat.key}
                 onClick={() => setActiveCategory(cat.key)}
+                className={`ac-cat-btn ${activeCategory === cat.key ? 'active' : ''}`}
                 style={{
-                  padding: '6px 14px',
-                  borderRadius: 20,
+                  padding: '5px 12px',
+                  borderRadius: 6,
                   fontSize: 12,
-                  fontWeight: 700,
-                  border: activeCategory === cat.key ? '1px solid var(--brand-primary, #6366F1)' : '1px solid var(--border)',
-                  background: activeCategory === cat.key ? 'rgba(99, 102, 241, 0.1)' : 'var(--card)',
-                  color: activeCategory === cat.key ? 'var(--brand-primary, #6366F1)' : 'var(--muted)',
+                  fontWeight: 600,
+                  border: activeCategory === cat.key ? '1px solid #0F172A' : '1px solid var(--border)',
+                  background: activeCategory === cat.key ? '#0F172A' : 'var(--card)',
+                  color: activeCategory === cat.key ? '#FFFFFF' : 'var(--muted)',
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
                 }}
@@ -511,61 +520,62 @@ export default function AutomationsCenter({
 
       {/* ─── TAB 1: AUTOMATION RULES ─── */}
       {activeTab === 'rules' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 18 }}>
+        <div className="ac-rules-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
           {filteredRules.map((rule) => {
             const ruleActiveMatches = liveResults.filter((r) => r.ruleId === rule.id);
 
             return (
               <div
                 key={rule.id}
-                className="panel"
+                className="panel ac-rule-card"
                 style={{
-                  border: rule.enabled ? `1px solid ${rule.color}40` : '1px solid var(--border)',
-                  background: rule.enabled ? 'var(--card)' : 'rgba(0,0,0,0.02)',
-                  opacity: rule.enabled ? 1 : 0.75,
-                  padding: 20,
-                  borderRadius: 16,
+                  border: '1px solid var(--border)',
+                  background: rule.enabled ? 'var(--card)' : '#F8FAFC',
+                  opacity: rule.enabled ? 1 : 0.7,
+                  padding: 18,
+                  borderRadius: 12,
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
-                  gap: 16,
-                  transition: 'all 0.25s',
+                  gap: 14,
+                  transition: 'all 0.2s',
                   position: 'relative',
-                  boxShadow: rule.enabled ? 'var(--shadow-sm)' : 'none',
                 }}
               >
                 {/* Header: Title + Toggle */}
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div className="ac-rule-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div
                         style={{
-                          width: 44,
-                          height: 44,
-                          borderRadius: 12,
-                          background: `${rule.color}15`,
-                          color: rule.color,
+                          width: 36,
+                          height: 36,
+                          borderRadius: 8,
+                          background: '#F1F5F9',
+                          border: '1px solid #E2E8F0',
+                          color: '#334155',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                           flexShrink: 0,
                         }}
                       >
-                        <Zap size={22} />
+                        <Zap size={18} />
                       </div>
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>{rule.name}</h3>
+                          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{rule.name}</h3>
                         </div>
                         <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
                           <span
                             style={{
                               fontSize: 11,
-                              fontWeight: 700,
+                              fontWeight: 600,
                               padding: '2px 8px',
-                              borderRadius: 6,
-                              background: `${rule.color}15`,
-                              color: rule.color,
+                              borderRadius: 4,
+                              background: '#F1F5F9',
+                              border: '1px solid #E2E8F0',
+                              color: '#475569',
                             }}
                           >
                             {rule.badge}
@@ -573,21 +583,22 @@ export default function AutomationsCenter({
                           <span
                             style={{
                               fontSize: 11,
-                              fontWeight: 600,
+                              fontWeight: 500,
                               padding: '2px 8px',
-                              borderRadius: 6,
-                              background: 'rgba(0,0,0,0.05)',
-                              color: 'var(--muted)',
+                              borderRadius: 4,
+                              background: '#F8FAFC',
+                              border: '1px solid #E2E8F0',
+                              color: '#64748B',
                             }}
                           >
-                            {rule.channel === 'whatsapp_notification' ? 'واتساب + تنبيه 💬' : rule.channel === 'whatsapp_direct' ? 'واتساب مباشر 📲' : 'تنبيه نظام 🔔'}
+                            {rule.channel === 'whatsapp_notification' ? 'واتساب + تنبيه' : rule.channel === 'whatsapp_direct' ? 'واتساب مباشر' : 'تنبيه نظام'}
                           </span>
                         </div>
                       </div>
                     </div>
 
                     {/* Toggle Switch */}
-                    <label style={{ position: 'relative', display: 'inline-block', width: 46, height: 26, cursor: 'pointer' }}>
+                    <label style={{ position: 'relative', display: 'inline-block', width: 40, height: 22, cursor: 'pointer' }}>
                       <input
                         type="checkbox"
                         checked={rule.enabled}
@@ -601,30 +612,29 @@ export default function AutomationsCenter({
                           left: 0,
                           right: 0,
                           bottom: 0,
-                          backgroundColor: rule.enabled ? rule.color : 'var(--border)',
-                          borderRadius: 34,
-                          transition: '0.3s',
+                          backgroundColor: rule.enabled ? '#0F172A' : '#CBD5E1',
+                          borderRadius: 22,
+                          transition: '0.2s',
                         }}
                       >
                         <span
                           style={{
                             position: 'absolute',
                             content: '""',
-                            height: 20,
-                            width: 20,
-                            left: rule.enabled ? 22 : 3,
+                            height: 16,
+                            width: 16,
+                            left: rule.enabled ? 20 : 3,
                             bottom: 3,
                             backgroundColor: 'white',
                             borderRadius: '50%',
-                            transition: '0.3s',
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                            transition: '0.2s',
                           }}
                         />
                       </span>
                     </label>
                   </div>
 
-                  <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5, margin: '0 0 14px' }}>
+                  <p style={{ fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.5, margin: '0 0 12px' }}>
                     {rule.desc}
                   </p>
 
@@ -709,6 +719,7 @@ export default function AutomationsCenter({
 
                 {/* Footer status & preview button */}
                 <div
+                  className="ac-rule-footer"
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -816,80 +827,76 @@ export default function AutomationsCenter({
               </p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
+            <div className="ac-live-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
               {liveResults.map((item) => (
                 <div
                   key={item.id}
-                  className="panel"
+                  className="panel ac-live-card"
                   style={{
-                    padding: 18,
-                    borderRadius: 14,
-                    border: item.type === 'critical' ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)',
-                    background: item.type === 'critical' ? 'rgba(239, 68, 68, 0.02)' : 'rgba(245, 158, 11, 0.02)',
+                    padding: 16,
+                    borderRadius: 10,
+                    border: '1px solid var(--border)',
+                    background: 'var(--card)',
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between',
-                    gap: 14,
+                    gap: 12,
                   }}
                 >
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
                       <span
                         style={{
                           fontSize: 11,
-                          fontWeight: 800,
-                          padding: '3px 10px',
-                          borderRadius: 8,
-                          background: item.type === 'critical' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(245, 158, 11, 0.12)',
-                          color: item.type === 'critical' ? '#EF4444' : '#F59E0B',
+                          fontWeight: 600,
+                          padding: '2px 8px',
+                          borderRadius: 4,
+                          background: item.type === 'critical' ? '#FEF2F2' : '#F1F5F9',
+                          color: item.type === 'critical' ? '#DC2626' : '#475569',
+                          border: item.type === 'critical' ? '1px solid #FECACA' : '1px solid #E2E8F0',
                         }}
                       >
                         {item.time}
                       </span>
 
-                      <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>
-                        {item.category === 'finance' ? '💰 مالية' : item.category === 'site' ? '🏗️ موقع' : item.category === 'quality' ? '🛠️ جودة' : '🤝 مبيعات'}
+                      <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 500 }}>
+                        {item.category === 'finance' ? 'مالية' : item.category === 'site' ? 'موقع' : item.category === 'quality' ? 'جودة' : 'مبيعات'}
                       </span>
                     </div>
 
-                    <h4 style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 800, color: 'var(--ink)' }}>
+                    <h4 style={{ margin: '0 0 6px', fontSize: 14.5, fontWeight: 700, color: 'var(--ink)' }}>
                       {item.title}
                     </h4>
-                    <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>
+                    <p style={{ margin: 0, fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.5 }}>
                       {item.desc}
                     </p>
                   </div>
 
-                  <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+                  <div className="ac-live-card-actions" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 10, borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
                     {item.projectId && onNavigateToProject && (
                       <button
                         onClick={() => onNavigateToProject(item.projectId, item.targetTab)}
                         className="btn btn-ghost"
-                        style={{ fontSize: 12, padding: '8px 12px' }}
+                        style={{ fontSize: 12, padding: '6px 10px' }}
                       >
-                        عرض المشروع 📂
+                        عرض المشروع
                       </button>
                     )}
 
                     <button
                       onClick={() => handleExecuteAction(item)}
-                      className="btn"
+                      className="btn btn-primary"
                       style={{
-                        background: item.whatsappMessage ? '#25D366' : 'var(--brand-primary, #6366F1)',
-                        color: '#fff',
-                        fontSize: 13,
-                        fontWeight: 800,
-                        padding: '8px 16px',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        padding: '6px 14px',
                         display: 'flex',
                         alignItems: 'center',
                         gap: 6,
-                        border: 'none',
-                        borderRadius: 8,
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                        cursor: 'pointer',
+                        borderRadius: 6,
                       }}
                     >
-                      {item.whatsappMessage ? <MessageSquare size={14} /> : <Zap size={14} />}
+                      {item.whatsappMessage ? <MessageSquare size={13} /> : <Zap size={13} />}
                       {item.actionLabel}
                     </button>
                   </div>
@@ -902,59 +909,61 @@ export default function AutomationsCenter({
 
       {/* ─── TAB 3: ACTIVITY & EXECUTION LOGS ─── */}
       {activeTab === 'logs' && (
-        <div className="panel" style={{ padding: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Clock size={18} color="var(--brand-primary, #6366F1)" />
+        <div className="panel ac-logs-panel" style={{ padding: 18 }}>
+          <div className="ac-logs-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Clock size={16} color="#64748B" />
               سجل نشاطات وإجراءات الأتمتة ({logs.length})
             </h3>
 
             {logs.length > 0 && (
               <button
                 onClick={handleClearLogs}
-                className="btn btn-ghost"
-                style={{ color: 'var(--danger)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                className="btn btn-ghost ac-btn-clear-logs"
+                style={{ color: 'var(--muted)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
               >
-                <Trash2 size={14} /> مسح السجل
+                <Trash2 size={13} /> مسح السجل
               </button>
             )}
           </div>
 
           {logs.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', fontSize: 14 }}>
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', fontSize: 13 }}>
               لا توجد نشاطات مسجلة بعد. سيتم تسجيل كل إجراء تنبيهي أو إرسال واتساب هنا تلقائياً.
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {logs.map((log) => (
                 <div
                   key={log.id}
+                  className="ac-log-item"
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    padding: '12px 16px',
-                    background: 'var(--bg)',
-                    borderRadius: 10,
+                    padding: '10px 14px',
+                    background: 'var(--bg-color)',
+                    borderRadius: 8,
                     border: '1px solid var(--border)',
-                    fontSize: 13,
+                    fontSize: 12.5,
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span
                       style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: 8,
-                        background: log.type === 'whatsapp_sent' ? 'rgba(37, 211, 102, 0.15)' : 'rgba(99, 102, 241, 0.15)',
-                        color: log.type === 'whatsapp_sent' ? '#25D366' : '#6366F1',
+                        width: 28,
+                        height: 28,
+                        borderRadius: 6,
+                        background: '#FFFFFF',
+                        border: '1px solid #E2E8F0',
+                        color: '#64748B',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         flexShrink: 0,
                       }}
                     >
-                      {log.type === 'whatsapp_sent' ? <MessageSquare size={16} /> : <Zap size={16} />}
+                      {log.type === 'whatsapp_sent' ? <MessageSquare size={14} /> : <Zap size={14} />}
                     </span>
                     <div>
                       <div style={{ fontWeight: 700, color: 'var(--ink)' }}>{log.action}</div>
@@ -964,7 +973,7 @@ export default function AutomationsCenter({
                     </div>
                   </div>
 
-                  <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'left', fontWeight: 600 }}>
+                  <div className="ac-log-date" style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'left', fontWeight: 600 }}>
                     {fmtDate(log.timestamp?.slice(0, 10))}
                   </div>
                 </div>

@@ -122,8 +122,8 @@ function PhasesPanel({ project, onUpdate }) {
       <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 32 }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8, fontWeight: 600 }}>التقدم الكلي للمشروع</div>
-          <div style={{ height: 10, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${overallPct}%`, background: 'linear-gradient(90deg,#6366F1,#EC4899)', borderRadius: 99, transition: 'width 0.5s' }} />
+          <div style={{ height: 8, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${overallPct}%`, background: '#2563EB', borderRadius: 99, transition: 'width 0.5s' }} />
           </div>
         </div>
         <div style={{ textAlign: 'center', minWidth: 60 }}>
@@ -431,7 +431,7 @@ function PricingPanel({ project, onUpdate }) {
       })}
 
       {/* Grand total footer */}
-      <div style={{ background: 'linear-gradient(135deg,#1E1B4B,#312E81)', borderRadius: 16, padding: '20px 28px', display: 'flex', alignItems: 'center', gap: 32, color: '#fff', flexWrap: 'wrap' }}>
+      <div style={{ background: '#0F172A', borderRadius: 12, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 32, color: '#fff', flexWrap: 'wrap' }}>
         <div style={{ fontSize: 16, fontWeight: 700 }}>الإجمالي الكلي للمشروع</div>
         <div style={{ display: 'flex', gap: 32, marginRight: 'auto', flexWrap: 'wrap' }}>
           <div style={{ textAlign: 'center' }}>
@@ -714,15 +714,16 @@ function QualityGatesPanel({ project, onUpdate }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* KPI Overview Banner */}
       <div style={{
-        background: 'linear-gradient(135deg, #064E3B, #0F766E)', color: '#fff',
-        borderRadius: 16, padding: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 20
+        background: 'var(--card)', color: 'var(--ink)',
+        borderRadius: 12, padding: '22px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 20,
+        border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 56, height: 56, borderRadius: 16, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <ShieldCheck size={32} color="#6EE7B7" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0F172A' }}>
+            <ShieldCheck size={22} />
           </div>
           <div>
-            <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>منظومة بوابات الجودة والاستلام الفني</h3>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--ink)' }}>منظومة بوابات الجودة والاستلام الفني</h3>
             <div style={{ fontSize: 13, opacity: 0.85, marginTop: 4 }}>
               معايير واختبارات إلزامية لكل مرحلة لضمان صفر عيوب ومطابقة الكود الهندسي
             </div>

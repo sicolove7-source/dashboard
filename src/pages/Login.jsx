@@ -3,11 +3,11 @@ import { Building2, Lock, Mail, AlertTriangle, ShieldCheck } from "lucide-react"
 import { authenticateTenantUser } from "../services/tenantsManager";
 
 export default function Login({ onLogin, companySettings, onBackToLanding, onStartLiveDemo }) {
-  const companyName = 'منصة إدارة وتشطيبات المشاريع';
-  const companySubtitle = 'بوابة الدخول الآمنة للنظام الموحد';
+  const companyName = 'Tashteeb Pro | تشطيب برو';
+  const companySubtitle = 'المنصة الذكية لإدارة التشطيبات والمقاولات والمشاريع';
   const companyLogo = null;
-  const primaryColor = '#6366F1';
-  const accentColor = '#3B82F6';
+  const primaryColor = '#1877F2';
+  const accentColor = '#166FE5';
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [error, setError]       = useState(null);

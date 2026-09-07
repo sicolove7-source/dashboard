@@ -32,9 +32,9 @@ export const MATERIAL_STATUS = ["مطلوبة", "جاري الشراء", "تم �
 export const EQUIPMENT_LIST = ["سقالات معدنية", "خلاطة أسمنت", "مثقاب كهربائي", "مولد كهرباء احتياطي", "ماكينة قص سيراميك"];
 
 export const STATUS_META = {
-  on_track: { label: "على المسار", color: "#10B981", bg: "rgba(16, 185, 129, 0.1)" },
-  at_risk: { label: "يحتاج متابعة", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.1)" },
-  delayed: { label: "متأخر", color: "#EF4444", bg: "rgba(239, 68, 68, 0.1)" },
+  on_track: { label: "على المسار", color: "#166534", bg: "#DCFCE7" },
+  at_risk: { label: "يحتاج متابعة", color: "#9A3412", bg: "#FFEDD5" },
+  delayed: { label: "متأخر", color: "#991B1B", bg: "#FEE2E2" },
 };
 
 export const PROJECT_PHASES = [
@@ -43,8 +43,8 @@ export const PROJECT_PHASES = [
     name: "المرحلة الأولى",
     subtitle: "أعمال التأسيسات",
     durationDays: 10,
-    color: "#6366F1",
-    colorBg: "rgba(99,102,241,0.1)",
+    color: "#0F172A",
+    colorBg: "#F1F5F9",
     items: [
       { id: "p1_1", label: "اعمال تأسيس سباكة", note: "أنابيب تأسيس + لاتزي + مطبخ (صرف وتغذية)" },
       { id: "p1_2", label: "اعمال العزل المائي", note: "عزل الحمامات والمطبخ" },
@@ -59,8 +59,8 @@ export const PROJECT_PHASES = [
     name: "المرحلة الثانية",
     subtitle: "التشطيبات الخام",
     durationDays: 25,
-    color: "#F59E0B",
-    colorBg: "rgba(245,158,11,0.1)",
+    color: "#334155",
+    colorBg: "#F1F5F9",
     items: [
       { id: "p2_1", label: "اعمال الجبس المعلق", note: "أعواد فيناتيك" },
       { id: "p2_2", label: "اعمال محارة الأرضيات", note: "تجهيزات البورسلان" },
@@ -79,8 +79,8 @@ export const PROJECT_PHASES = [
     name: "المرحلة الثالثة",
     subtitle: "التشطيبات العليا",
     durationDays: 10,
-    color: "#10B981",
-    colorBg: "rgba(16,185,129,0.1)",
+    color: "#475569",
+    colorBg: "#F8FAFC",
     items: [
       { id: "p3_1", label: "اعمال الرخام", note: "" },
       { id: "p3_2", label: "اعمال الـ PVC للنوافذ", note: "" },
@@ -94,8 +94,8 @@ export const PROJECT_PHASES = [
     name: "المرحلة الرابعة",
     subtitle: "اللمسات النهائية",
     durationDays: 15,
-    color: "#EC4899",
-    colorBg: "rgba(236,72,153,0.1)",
+    color: "#2563EB",
+    colorBg: "#EFF6FF",
     items: [
       { id: "p4_1", label: "اعمال تشطيب النقاشة", note: "" },
       { id: "p4_2", label: "توريد الباب المصفح", note: "" },
@@ -157,15 +157,12 @@ export const QUALITY_GATES = [
 export const NAV = [
   { key: "tenants",       label: "إدارة الشركات (Hub) 👑",  icon: "Crown" },
   { key: "overview",      label: "لوحة المتابعة",          icon: "LayoutDashboard" },
-  { key: "automations",   label: "مركز الأتمتة الذكي ⚡",   icon: "Zap" },
   { key: "crm",           label: "العملاء والمبيعات (CRM)",icon: "BadgePercent" },
   { key: "finance",       label: "المالية الشاملة",         icon: "TrendingUp" },
   { key: "team",          label: "أداء المهندسين",          icon: "Users" },
   { key: "projects",     label: "مواقع العمل",             icon: "Building2" },
-  { key: "subcontractors",label: "مقاولو الباطن والمستخلصات 👷‍♂️", icon: "HardHat" },
   { key: "suppliers",    label: "الموردون والصنايعية",     icon: "Truck" },
   { key: "quotations",   label: "حاسبة المقايسات",        icon: "Calculator" },
-  { key: "specs",        label: "مساعد التوصيف",           icon: "BrainCircuit" },
 ];
 
 export const SUBCONTRACTOR_SPECIALTIES = [

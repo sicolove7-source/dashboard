@@ -224,20 +224,21 @@ export default function ProjectDrawings({ project, onUpdate }) {
 
       {/* Top Banner */}
       <div style={{
-        background: 'linear-gradient(135deg, #1E1B4B, #312E81)', color: '#fff',
-        borderRadius: 16, padding: '24px 28px', display: 'flex', justifyContent: 'space-between',
-        alignItems: 'center', flexWrap: 'wrap', gap: 16, border: '1px solid rgba(255,255,255,0.1)'
+        background: 'var(--card)', color: 'var(--ink)',
+        borderRadius: 12, padding: '22px 24px', display: 'flex', justifyContent: 'space-between',
+        alignItems: 'center', flexWrap: 'wrap', gap: 16, border: '1px solid var(--border)',
+        boxShadow: 'var(--shadow-sm)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{
-            width: 56, height: 56, borderRadius: 16, background: 'rgba(255,255,255,0.15)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center'
+            width: 44, height: 44, borderRadius: 10, background: '#F1F5F9',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0F172A'
           }}>
-            <Sparkles size={30} color="#FCD34D" />
+            <Sparkles size={22} />
           </div>
           <div>
-            <h3 style={{ margin: 0, fontSize: 20, fontWeight: 900 }}>مكتبة المناظير ثلاثية الأبعاد (3D) والرسومات التنفيذية</h3>
-            <div style={{ fontSize: 13, opacity: 0.85, marginTop: 4 }}>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--ink)' }}>مكتبة المناظير ثلاثية الأبعاد (3D) والرسومات التنفيذية</h3>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>
               المخططات التفصيلية المعتمدة ومطابقة التصميم 3D بالواقع الفعلي المنفذ
             </div>
           </div>
@@ -246,10 +247,10 @@ export default function ProjectDrawings({ project, onUpdate }) {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button
             onClick={() => setShowAddModal(true)}
+            className="btn btn-primary"
             style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 12,
-              background: 'linear-gradient(135deg, #F59E0B, #D97706)', color: '#fff', border: 'none',
-              fontWeight: 800, fontSize: 13, cursor: 'pointer', boxShadow: '0 4px 12px rgba(245,158,11,0.3)'
+              display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 10,
+              fontSize: 13.5
             }}
           >
             <Plus size={18} /> إضافة رسم أو منظور 3D
@@ -344,7 +345,7 @@ export default function ProjectDrawings({ project, onUpdate }) {
                       return (
                         <div style={{
                           height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                          background: 'linear-gradient(135deg, #0F172A, #1E293B)', padding: 20, textAlign: 'center', color: '#fff'
+                          background: '#0F172A', padding: 20, textAlign: 'center', color: '#fff'
                         }}>
                           <div style={{
                             width: 58, height: 58, borderRadius: 16, background: 'rgba(239,68,68,0.15)',
@@ -408,10 +409,10 @@ export default function ProjectDrawings({ project, onUpdate }) {
 
                   {hasReality && activeCat !== 'comparison' && (
                     <span style={{
-                      position: 'absolute', bottom: 10, left: 10, background: 'linear-gradient(135deg, #6366F1, #4338CA)',
-                      color: '#fff', fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4
+                      position: 'absolute', bottom: 10, left: 10, background: '#2563EB',
+                      color: '#fff', fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4
                     }}>
-                      <Eye size={12} /> متوفر مقارنة بالواقع 📸
+                      <Eye size={12} /> مقارنة بالواقع
                     </span>
                   )}
 
@@ -751,12 +752,12 @@ export default function ProjectDrawings({ project, onUpdate }) {
                         <button
                           onClick={() => window.open(blobUrl, '_blank')}
                           style={{
-                            background: 'linear-gradient(135deg, #3B82F6, #1D4ED8)', color: '#fff', border: 'none',
-                            padding: '7px 16px', borderRadius: 8, fontWeight: 800, fontSize: 12, cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 2px 8px rgba(59,130,246,0.4)'
+                            background: '#2563EB', color: '#fff', border: 'none',
+                            padding: '7px 16px', borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: 6
                           }}
                         >
-                          <ExternalLink size={14} /> استعراض وتكبير الـ PDF في شاشة كاملة ↗️
+                          <ExternalLink size={14} /> فتح الـ PDF في نافذة جديدة
                         </button>
                       </div>
                       <div style={{ flex: 1, position: 'relative', background: '#475569' }}>

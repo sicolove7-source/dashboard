@@ -264,17 +264,17 @@ export default function InteractiveGantt({ project, onUpdate }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 12,
-                background: 'linear-gradient(135deg, #0284C7, #0369A1)',
+                width: 38,
+                height: 38,
+                borderRadius: 10,
+                background: '#0F172A',
                 color: '#fff',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Calendar size={22} />
+              <Calendar size={20} />
             </div>
             <div>
               <div style={{ fontWeight: 800, fontSize: 16, color: 'var(--ink)' }}>
@@ -682,8 +682,8 @@ export default function InteractiveGantt({ project, onUpdate }) {
                             width: `${widthPct}%`,
                             height: 32,
                             borderRadius: 8,
-                            background: `linear-gradient(135deg, ${ph.color}, ${ph.color}DD)`,
-                            boxShadow: `0 3px 10px ${ph.color}40`,
+                            background: ph.color,
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',

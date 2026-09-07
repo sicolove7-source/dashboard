@@ -109,7 +109,7 @@ export default function SpecsAssistant({ userRole }) {
             </tbody>
           </table>
           <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background: #0ea5e9; color: white; border: none; border-radius: 6px; display: block; margin: 0 auto;">طباعة المقايسة الآن</button>
-          <div class="footer">تم إنشاء هذه المقايسة بواسطة نظام إدارة التشطيبات</div>
+          <div class="footer">تم إنشاء هذه المقايسة بواسطة منصة Tashteeb Pro</div>
         </body>
       </html>
     `);
@@ -119,20 +119,20 @@ export default function SpecsAssistant({ userRole }) {
   return (
     <div className="grid" style={{ gap: 24, paddingBottom: 40 }}>
       {/* Search Header */}
-      <div className="panel" style={{ background: "linear-gradient(135deg, var(--navy), var(--ink))", color: "#fff", border: "none" }}>
+      <div className="panel" style={{ background: "var(--card)", border: "1px solid var(--border)", padding: 24 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 12, background: "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <BrainCircuit size={28} color="#F59E0B" />
+            <div style={{ width: 44, height: 44, borderRadius: 10, background: "#F1F5F9", display: "flex", alignItems: "center", justifyContent: "center", color: "#0F172A" }}>
+              <BrainCircuit size={24} />
             </div>
             <div>
-              <h2 style={{ margin: 0, fontSize: 24, fontFamily: "Tajawal", color: "#F8FAFC" }}>مساعد التوصيف والمقايسات</h2>
-              <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 14 }}>ابحث عن البنود، انسخ التوصيفات، وقم بتجميع مقايسة مشروعك في ثوانٍ</div>
+              <h2 style={{ margin: 0, fontSize: 20, fontFamily: "Tajawal", color: "var(--ink)" }}>مساعد التوصيف والمقايسات</h2>
+              <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>ابحث عن البنود، انسخ التوصيفات، وقم بتجميع مقايسة مشروعك في ثوانٍ</div>
             </div>
           </div>
           <div style={{ display: "flex", gap: 12 }}>
             {userRole === 'manager' && (
-              <button className="btn" style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)" }} onClick={() => setShowAddForm(true)}>
+              <button className="btn" onClick={() => setShowAddForm(true)}>
                 <Plus size={18} /> إضافة بند جديد
               </button>
             )}
@@ -147,16 +147,16 @@ export default function SpecsAssistant({ userRole }) {
           </div>
         </div>
 
-        <div className="search-box" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", backdropFilter: "blur(10px)", color: "#fff" }}>
-          <Search size={18} color="rgba(255,255,255,0.6)" />
+        <div className="search-box" style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--ink)", borderRadius: 8, padding: "8px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+          <Search size={18} color="var(--muted)" />
           <input 
             type="text" 
             placeholder="اكتب اسم البند للبحث..." 
             value={query}
             onChange={e => setQuery(e.target.value)}
-            style={{ color: "#fff" }}
+            style={{ color: "var(--ink)", background: "transparent", border: "none", outline: "none", width: "100%", fontFamily: "Cairo", fontSize: 14 }}
           />
-          {query && <X size={18} color="rgba(255,255,255,0.6)" style={{ cursor: "pointer" }} onClick={() => setQuery('')} />}
+          {query && <X size={18} color="var(--muted)" style={{ cursor: "pointer" }} onClick={() => setQuery('')} />}
         </div>
       </div>
 
@@ -172,14 +172,14 @@ export default function SpecsAssistant({ userRole }) {
           {results.map(item => {
             const inCart = boqCart.some(i => i.id === item.id);
             return (
-              <div key={item.id} className="project-card" onClick={() => setSelectedSpec(item)} style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", border: inCart ? "2px solid var(--teal)" : "" }}>
+              <div key={item.id} className="project-card" onClick={() => setSelectedSpec(item)} style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", border: inCart ? "2px solid #2563EB" : "" }}>
                 <div style={{ width: "100%", height: 160, position: "relative" }}>
                   <img src={item.image} alt={item.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   <div style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)", color: "#fff", padding: "4px 10px", borderRadius: 16, fontSize: 12, fontWeight: 700 }}>
                     {item.category}
                   </div>
                   {inCart && (
-                    <div style={{ position: "absolute", top: 12, left: 12, background: "var(--teal)", color: "#fff", padding: "4px 8px", borderRadius: 8, fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+                    <div style={{ position: "absolute", top: 12, left: 12, background: "#2563EB", color: "#fff", padding: "4px 8px", borderRadius: 8, fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
                       <CheckCircle2 size={14} /> مضاف للمقايسة
                     </div>
                   )}
@@ -202,7 +202,7 @@ export default function SpecsAssistant({ userRole }) {
                       onClick={(e) => copyToClipboard(item.specs, item.id, e)}
                       title="نسخ التوصيف السريع"
                     >
-                      {copiedId === item.id ? <CheckCircle2 size={18} color="var(--teal)" /> : <Copy size={18} />}
+                      {copiedId === item.id ? <CheckCircle2 size={18} color="#2563EB" /> : <Copy size={18} />}
                     </button>
                   </div>
                 </div>
@@ -333,11 +333,11 @@ export default function SpecsAssistant({ userRole }) {
               <button onClick={() => setSelectedSpec(null)} style={{ position: "absolute", top: 16, left: 16, width: 36, height: 36, borderRadius: "50%", background: "rgba(0,0,0,0.5)", color: "#fff", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><X size={20} /></button>
             </div>
             <div style={{ padding: 32 }}>
-              <div style={{ color: "var(--amber)", fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{selectedSpec.category}</div>
+              <div style={{ color: "#2563EB", fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{selectedSpec.category}</div>
               <h2 style={{ fontFamily: "Tajawal", fontSize: 28, margin: "0 0 16px 0", color: "var(--ink)" }}>{selectedSpec.title}</h2>
               <p style={{ color: "var(--muted)", fontSize: 15, lineHeight: 1.6, marginBottom: 24 }}>{selectedSpec.description}</p>
               <div style={{ background: "rgba(0,0,0,0.03)", padding: 24, borderRadius: 12, border: "1px solid var(--border)" }}>
-                <h4 style={{ margin: "0 0 16px 0", fontFamily: "Tajawal", display: "flex", alignItems: "center", gap: 8, color: "var(--ink)" }}><FileText size={18} color="var(--teal)" /> نص التوصيف الهندسي المعتمد</h4>
+                <h4 style={{ margin: "0 0 16px 0", fontFamily: "Tajawal", display: "flex", alignItems: "center", gap: 8, color: "var(--ink)" }}><FileText size={18} color="#0F172A" /> نص التوصيف الهندسي المعتمد</h4>
                 <div style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.8, color: "var(--ink)", fontFamily: "Cairo", fontWeight: 600 }}>{selectedSpec.specs}</div>
               </div>
               <div style={{ display: "flex", gap: 16, marginTop: 32, justifyContent: "flex-end" }}>

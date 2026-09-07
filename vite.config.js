@@ -9,4 +9,7 @@ export default defineConfig({
     host: true, // يتيح فتح الموقع من أي جهاز على نفس شبكة الواي فاي
     port: 5173,
   },
+  build: {
+    chunkSizeWarningLimit: 3500,
+  },
 })

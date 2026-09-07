@@ -24,14 +24,13 @@ import LandingPage from './pages/LandingPage';
 import EngineerView from './pages/EngineerView';
 import CompanySettings, { loadCompanySettings, applyCompanyBranding, COMPANY_SETTINGS_KEY } from './pages/CompanySettings';
 import MobileLayout from './components/MobileLayout';
-import UserManagement from './pages/UserManagement';
 import CrmPipeline from './pages/CrmPipeline';
 import ClientPortal from './pages/ClientPortal';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
-import AutomationsCenter from './pages/AutomationsCenter';
 import OnboardingTourModal from './components/OnboardingTourModal';
 import WhatsAppSupportWidget from './components/WhatsAppSupportWidget';
 import { getActiveTenantId, setActiveTenantId, getTenantData, loadAllTenants, isSubAccountsLoginAllowed } from './services/tenantsManager';
+import { syncProjectsToCloud, syncTeamToCloud, syncLeadsToCloud, subscribeToCloudProjects } from './services/cloudSync';
 
 // Utils
 import { NAV, ENGINEERS, ACCOUNTANTS, TECH_OFFICE, TYPES, AREAS, SUBMITTAL_ITEMS, SUB_STATUS, DIARY_WORK_SAMPLES, DIARY_ISSUE_SAMPLES, LABOR_TRADES, MATERIALS_LIST, MATERIAL_STATUS, EQUIPMENT_LIST, STAGES, SEED_LEADS } from './utils/constants';
@@ -179,7 +178,14 @@ export default function App() {
   const [team, setTeam] = useState(null); // {engineers, accountants, techOffice, customerService}
   const [leads, setLeads] = useState(null); // crm leads
   const [companySettings, setCompanySettings] = useState(() => loadCompanySettings());
-  const [tab, setTab] = useState(() => getTabFromPath() || "overview");
+  const [tab, setTab] = useState(() => {
+    const p = getTabFromPath();
+    if (p === 'automations') return 'settings';
+    return p || "overview";
+  });
+  const [settingsSubTab, setSettingsSubTab] = useState(() => {
+    return getTabFromPath() === 'automations' ? 'automations' : 'branding';
+  });
   const [view, setView] = useState("list"); // list | detail | form
   const [activeId, setActiveId] = useState(null);
   const [activeClientPortalProjectId, setActiveClientPortalProjectId] = useState(null);
@@ -200,10 +206,21 @@ export default function App() {
   // Mobile sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Central tab navigation handler supporting subtabs
+  const handleNavigateToTab = (t) => {
+    if (t === 'automations') {
+      setTab('settings');
+      setSettingsSubTab('automations');
+    } else {
+      setTab(t);
+    }
+    setView("list");
+  };
+
   // Onboarding Tour state
   const [showTour, setShowTour] = useState(false);
 
-  // Theme State
+  // Theme State (Default to Clean Calm Light Mode for daily work)
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   // Apply company branding and currency on startup
@@ -233,9 +250,13 @@ export default function App() {
   // Initialize theme
   useEffect(() => {
     const savedTheme = localStorage.getItem(THEME_KEY);
-    if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    if (savedTheme === 'dark') {
       setIsDarkMode(true);
       document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      setIsDarkMode(false);
+      document.documentElement.removeAttribute('data-theme');
+      localStorage.setItem(THEME_KEY, 'light');
     }
   }, []);
 
@@ -265,10 +286,27 @@ export default function App() {
     if (data.settings?.currency) {
       setGlobalCurrency(data.settings.currency);
     }
+    if (data.projects && data.projects.length > 0) {
+      syncProjectsToCloud(companyId, data.projects);
+    }
   };
 
   useEffect(() => {
     loadTenantWorkspace(activeCompanyId);
+  }, [activeCompanyId]);
+
+  // استماع ومزامنة سحابية حية لمشاريع الشركة عبر Firebase
+  useEffect(() => {
+    if (!activeCompanyId) return;
+    const unsub = subscribeToCloudProjects(activeCompanyId, (cloudProjects) => {
+      if (Array.isArray(cloudProjects) && cloudProjects.length > 0) {
+        setProjects(cloudProjects);
+        try {
+          localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(cloudProjects));
+        } catch (e) {}
+      }
+    });
+    return () => unsub();
   }, [activeCompanyId]);
 
   function flashSave(ok) {
@@ -283,6 +321,7 @@ export default function App() {
       flashSave(true); 
     }
     catch (e) { console.error("storage error", e); flashSave(false); }
+    syncProjectsToCloud(activeCompanyId, next);
   }
 
   async function persistTeam(next) {
@@ -292,6 +331,7 @@ export default function App() {
       flashSave(true); 
     }
     catch (e) { console.error("storage error", e); flashSave(false); }
+    syncTeamToCloud(activeCompanyId, next);
   }
 
   async function persistLeads(next) {
@@ -301,6 +341,7 @@ export default function App() {
       flashSave(true); 
     }
     catch (e) { console.error("storage error", e); flashSave(false); }
+    syncLeadsToCloud(activeCompanyId, next);
   }
 
   function addLead(lead) {
@@ -541,10 +582,10 @@ export default function App() {
     setView('list');
   };
 
-  // فلترة المشاريع: المهندس يرى مشاريعه فقط
+  // فلترة المشاريع: المهندس يرى مشاريعه فقط (إلا إذا كان لديه صلاحية رؤية الكل)
   const displayedProjects = useMemo(() => {
     if (!projects) return [];
-    if (userRole === 'engineer' && currentUser?.engineerName) {
+    if (userRole === 'engineer' && currentUser?.engineerName && !can(currentUser || userRole, 'projects_view_all')) {
       return projects.filter(p => p.engineer === currentUser.engineerName);
     }
     return projects;
@@ -584,6 +625,8 @@ export default function App() {
         companySettings={companySettings}
         onBack={() => setActiveClientPortalProjectId(null)}
         onUpdateProject={(id, patch) => updateProject(id, patch)}
+        userRole={userRole}
+        currentUser={currentUser}
       />
     );
   }
@@ -592,7 +635,7 @@ export default function App() {
     return (
       <div className="app-root" style={{ alignItems: "center", justifyContent: "center" }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-          <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid var(--border)", borderTopColor: "var(--amber)", animation: "spin 1s linear infinite" }}></div>
+          <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid var(--border)", borderTopColor: "#1877F2", animation: "spin 1s linear infinite" }}></div>
           <div style={{ color: "var(--muted)", fontFamily: "Cairo", fontSize: 16 }}>جاري تحميل مساحة العمل...</div>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
@@ -603,107 +646,128 @@ export default function App() {
   return (
     <div dir="rtl" className="app-root" style={{ display: 'flex', flexDirection: 'column' }}>
 
-      {/* ─── Demo Mode Sticky Conversion Top Banner ─── */}
+      {/* ─── Demo Mode Minimal Calm Top Banner ─── */}
       {isDemoUser && (
         <div
           style={{
-            background: 'linear-gradient(135deg, #B45309, #D97706)',
-            color: '#fff',
-            padding: '10px 20px',
+            background: '#F1F5F9',
+            color: '#334155',
+            padding: '5px 16px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 12,
-            fontSize: 13,
-            fontWeight: 800,
-            boxShadow: '0 4px 15px rgba(217, 119, 6, 0.35)',
+            fontSize: 12,
+            fontWeight: 500,
+            borderBottom: '1px solid #E2E8F0',
             zIndex: 9999,
             flexWrap: 'wrap',
             flexShrink: 0,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>🌟</span>
-            <span>أنت الآن في <strong>النسخة التجريبية الحية (Live Demo Sandbox)</strong> — هل ترغب في تفعيل مساحة عمل خاصة بشركتك؟</span>
+            <span style={{
+              background: '#E2E8F0',
+              color: '#475569',
+              fontSize: 10,
+              fontWeight: 700,
+              padding: '1px 6px',
+              borderRadius: 4,
+            }}>
+              DEMO
+            </span>
+            <span>أنت الآن في <strong>النسخة التجريبية</strong> — هل ترغب في تفعيل مساحة عمل خاصة بشركتك؟</span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
-              onClick={() => window.open(`https://wa.me/971501234567?text=${encodeURIComponent('مرحباً، جربت النسخة الحية للمنصة وأرغب في الاشتراك وتفعيل مساحة عمل خاصة بشركتي')}`, '_blank')}
+              onClick={() => window.open(`https://wa.me/201018160582?text=${encodeURIComponent('مرحباً، جربت النسخة الحية لمنصة Tashteeb Pro وأرغب في الاشتراك وتفعيل مساحة عمل خاصة بشركتي')}`, '_blank')}
               style={{
-                padding: '6px 14px',
-                fontSize: 12,
-                fontWeight: 800,
-                background: '#25D366',
+                padding: '4px 10px',
+                fontSize: 11.5,
+                fontWeight: 600,
+                background: '#1877F2',
                 color: '#fff',
                 border: 'none',
-                borderRadius: 8,
+                borderRadius: 6,
                 cursor: 'pointer',
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 6
+                gap: 4
               }}
             >
-              <span>اشترك الآن عبر واتساب 💬</span>
+              <span>تفعيل الاشتراك 💬</span>
             </button>
 
             <button
               onClick={() => { setIsAuthenticated(false); setIsDemoUser(false); setIsLoginMode(false); }}
               style={{
-                padding: '6px 12px',
-                fontSize: 12,
-                fontWeight: 700,
-                background: 'rgba(0,0,0,0.25)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 8,
+                padding: '4px 8px',
+                fontSize: 11,
+                fontWeight: 500,
+                background: '#FFFFFF',
+                color: '#64748B',
+                border: '1px solid #CBD5E1',
+                borderRadius: 6,
                 cursor: 'pointer'
               }}
             >
-              الخروج من التجربة
+              الخروج
             </button>
           </div>
         </div>
       )}
 
-      {/* ─── Super Admin Impersonation Top Bar ─── */}
+      {/* ─── Super Admin Impersonation Top Bar (Calm & Professional) ─── */}
       {currentUser?.role === 'super_admin' && tab !== 'tenants' && !isDemoUser && (
         <div
+          className="impersonation-top-bar"
           style={{
-            background: 'linear-gradient(90deg, #EC4899, #8B5CF6)',
-            color: '#fff',
-            padding: '10px 20px',
+            background: '#1877F2',
+            color: '#FFFFFF',
+            padding: '8px 20px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             fontSize: 13,
-            fontWeight: 700,
-            boxShadow: '0 4px 15px rgba(236, 72, 153, 0.35)',
+            fontWeight: 600,
+            borderBottom: '1px solid #166FE5',
             zIndex: 9999,
             flexShrink: 0,
+            flexWrap: 'wrap',
+            gap: 8,
+            boxSizing: 'border-box',
+            width: '100%',
+            maxWidth: '100vw',
+            boxShadow: '0 2px 8px rgba(24, 119, 242, 0.25)',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>👑 وضع المالك: أنت الآن تتصفح مساحة عمل:</span>
-            <span style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 10px', borderRadius: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', minWidth: 0 }}>
+            <span style={{ whiteSpace: 'nowrap', color: 'rgba(255,255,255,0.9)', fontWeight: 700 }}>👑 وضع المالك:</span>
+            <span style={{ background: 'rgba(255,255,255,0.2)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.35)', padding: '3px 12px', borderRadius: 20, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 700 }}>
               {companySettings?.companyName || 'الشركة المحددة'}
             </span>
           </div>
           <button
             onClick={() => setTab('tenants')}
             style={{
-              background: '#fff',
-              color: '#EC4899',
+              background: '#FFFFFF',
+              color: '#1877F2',
               border: 'none',
-              padding: '5px 14px',
-              borderRadius: 8,
+              padding: '6px 16px',
+              borderRadius: 20,
               fontSize: 12,
               fontWeight: 800,
               cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              whiteSpace: 'nowrap',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+              transition: 'transform 0.15s ease',
             }}
           >
-            العودة للوحة إدارة الشركات 👑
+            إدارة الشركات 👑
           </button>
         </div>
       )}
@@ -724,7 +788,7 @@ export default function App() {
       />
 
       {/* ─── Main Layout: Sidebar + Content (flex row) ─── */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0, width: '100%', maxWidth: '100vw' }}>
 
       <Sidebar
         tab={tab}
@@ -752,23 +816,23 @@ export default function App() {
 
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <button
-              className="btn"
+              className="btn desktop-only-action"
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
-                background: "linear-gradient(135deg, rgba(99,102,241,0.12), rgba(139,92,246,0.12))",
-                color: "#6366F1",
-                border: "1px solid rgba(99,102,241,0.3)",
-                fontWeight: 700,
+                background: "#F8FAFC",
+                color: "#334155",
+                border: "1px solid #E2E8F0",
+                fontWeight: 600,
                 padding: "6px 14px",
-                borderRadius: 20
+                borderRadius: 8
               }}
               onClick={() => setShowTour(true)}
               title="بدء الجولة التعريفية للنظام"
             >
-              <Compass size={16} />
-              <span>جولة تعريفية 🧭</span>
+              <Compass size={15} color="#64748B" />
+              <span>جولة تعريفية</span>
             </button>
 
             <NotificationCenter
@@ -777,20 +841,20 @@ export default function App() {
               team={team}
               companySettings={companySettings}
               onSelectProject={handleNotificationSelect}
-              onNavigateToTab={(t) => { setTab(t); setView("list"); }}
+              onNavigateToTab={handleNavigateToTab}
               isDarkMode={isDarkMode}
             />
 
-            <button className="btn" style={{ background: "var(--danger-subtle)", color: "var(--danger)", border: "none" }} onClick={handleLogout}>خروج</button>
-            {/* زر إضافة مشروع — مدير فقط */}
-            {tab === "projects" && view === "list" && can(userRole, 'projects_create') && (
+            <button className="btn desktop-only-action" style={{ background: "#F1F5F9", color: "#64748B", border: "1px solid #E2E8F0" }} onClick={handleLogout}>خروج</button>
+            {/* زر إضافة مشروع — مدير فقط أو من لديه صلاحية */}
+            {tab === "projects" && view === "list" && can(currentUser || userRole, 'projects_create') && (
               <button className="btn btn-primary" onClick={openNew}><Plus size={16} /> إضافة مشروع جديد</button>
             )}
             
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               {saveState === "saved" && <span className="save-pill save-ok tab-fade">تم الحفظ</span>}
               {saveState === "offline" && <span className="save-pill save-err tab-fade">حفظ محلي فقط</span>}
-              <div className="meta" style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(0,0,0,0.03)", padding: "4px 10px", borderRadius: 20 }}>
+              <div className="meta" style={{ display: "flex", alignItems: "center", gap: 6, background: "#F1F5F9", padding: "4px 10px", borderRadius: 6, color: "#64748B", fontSize: 11.5 }}>
                 <Clock size={12} />
                 <span>REV. {projects.length} • {todayISO()}</span>
               </div>
@@ -805,18 +869,6 @@ export default function App() {
 
 
           {tab === "overview" && <Overview projects={displayedProjects} />}
-
-          {tab === "automations" && (
-            <AutomationsCenter
-              projects={projects}
-              leads={leads || []}
-              team={team}
-              companySettings={companySettings}
-              userRole={userRole}
-              onNavigateToProject={(projId, subTab) => openDetail(projId, subTab)}
-              onNavigateToTab={(t) => { setTab(t); setView("list"); }}
-            />
-          )}
 
           {tab === "crm" && (
 
@@ -835,11 +887,11 @@ export default function App() {
             />
           )}
 
-          {tab === "finance" && can(userRole, 'finance_view') && (
+          {tab === "finance" && can(currentUser || userRole, 'finance_view') && (
             <CompanyFinance projects={projects} />
           )}
 
-          {tab === "team" && can(userRole, 'team_view') && (
+          {tab === "team" && can(currentUser || userRole, 'team_view') && (
             <TeamPerformance
               projects={projects}
               team={team}
@@ -849,15 +901,13 @@ export default function App() {
             />
           )}
 
-          {tab === "subcontractors" && (
-            <SubcontractorsTab
+          {tab === "suppliers" && (
+            <SuppliersTab
               projects={projects}
-              userRole={userRole}
               companySettings={companySettings}
+              userRole={userRole}
             />
           )}
-
-          {tab === "suppliers" && <SuppliersTab />}
 
           {tab === "quotations" && (
             <QuotationBuilder
@@ -869,21 +919,36 @@ export default function App() {
             />
           )}
 
-          {tab === "specs" && <SpecsAssistant userRole={userRole} />}
-
-          {tab === "settings" && can(userRole, 'company_settings_view') && (
-            <div className="grid" style={{ gap: 32 }}>
-              <CompanySettings
-                team={team}
-                onTeamChange={(nextTeam) => {
-                  persistTeam(nextTeam);
-                  const updated = loadCompanySettings();
-                  setCompanySettings(updated);
-                  applyCompanyBranding(updated);
-                }}
-              />
-              <UserManagement currentUser={currentUser} companyId={activeCompanyId} />
-            </div>
+          {(tab === "settings" || tab === "automations") && can(currentUser || userRole, 'company_settings_view') && (
+            <CompanySettings
+              companySettings={companySettings}
+              onCompanySettingsChange={(updated) => {
+                setCompanySettings(updated);
+                applyCompanyBranding(updated);
+                if (updated?.currency) {
+                  setGlobalCurrency(updated.currency);
+                }
+              }}
+              team={team}
+              onTeamChange={(nextTeam) => {
+                persistTeam(nextTeam);
+                const updated = loadCompanySettings(activeCompanyId);
+                setCompanySettings(updated);
+                applyCompanyBranding(updated);
+              }}
+              currentUser={currentUser}
+              activeCompanyId={activeCompanyId}
+              projects={projects || []}
+              leads={leads || []}
+              userRole={userRole}
+              onNavigateToProject={(projId, subTab) => openDetail(projId, subTab)}
+              onNavigateToTab={handleNavigateToTab}
+              activeSubTab={tab === 'automations' ? 'automations' : settingsSubTab}
+              onSubTabChange={(sub) => {
+                setSettingsSubTab(sub);
+                if (tab !== 'settings') setTab('settings');
+              }}
+            />
           )}
 
           {tab === "projects" && view === "list" && (
@@ -922,7 +987,7 @@ export default function App() {
       <OnboardingTourModal
         isOpen={showTour}
         onClose={() => setShowTour(false)}
-        onNavigateToTab={(t) => { setTab(t); setView("list"); }}
+        onNavigateToTab={handleNavigateToTab}
       />
 
       {/* ─── Floating WhatsApp Support & Sales Widget ─── */}

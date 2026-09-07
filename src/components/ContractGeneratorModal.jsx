@@ -237,11 +237,11 @@ export default function ContractGeneratorModal({ project, onUpdate, onClose }) {
         {/* Top Header / Actions Bar (No-Print) */}
         <div className="no-print" style={{
           padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg, #0F172A, #1E293B)', color: '#fff',
+          borderBottom: '1px solid var(--border)', background: '#0F172A', color: '#fff',
           position: 'sticky', top: 0, zIndex: 10
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <FileText size={22} color="#F59E0B" />
+            <FileText size={20} color="#94A3B8" />
             <div>
               <div style={{ fontWeight: 800, fontSize: 16 }}>منظومة صياغة وطباعة عقود المقاولة والتشطيب</div>
               <div style={{ fontSize: 12, color: '#94A3B8' }}>عقد رسمي ملزم قانونياً يشمل المواصفات وجدول الدفعات والضمانات</div>

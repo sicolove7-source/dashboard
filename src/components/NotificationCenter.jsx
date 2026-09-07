@@ -33,7 +33,10 @@ export default function NotificationCenter({
   useEffect(() => {
     function handleClickOutside(e) {
       if (panelRef.current && !panelRef.current.contains(e.target)) {
-        setIsOpen(false);
+        // Only if clicking outside not on a toggle button
+        if (!e.target.closest('.hamburger-btn')) {
+          setIsOpen(false);
+        }
       }
     }
     if (isOpen) {
@@ -43,6 +46,32 @@ export default function NotificationCenter({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isOpen]);
+
+  // Prevent background scroll on mobile when modal/bottom-sheet is open
+  useEffect(() => {
+    if (isOpen && window.innerWidth <= 768) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isOpen]);
+
+  // Custom event listener to open/toggle notifications from anywhere (e.g. mobile top bar)
+  useEffect(() => {
+    const handleToggle = () => setIsOpen((prev) => !prev);
+    const handleOpen = () => setIsOpen(true);
+    const handleClose = () => setIsOpen(false);
+    window.addEventListener('toggle-notifications', handleToggle);
+    window.addEventListener('open-notifications', handleOpen);
+    window.addEventListener('close-notifications', handleClose);
+    return () => {
+      window.removeEventListener('toggle-notifications', handleToggle);
+      window.removeEventListener('open-notifications', handleOpen);
+      window.removeEventListener('close-notifications', handleClose);
+    };
+  }, []);
 
   // Persist read notifications
   const markAsRead = (id) => {
@@ -117,8 +146,17 @@ export default function NotificationCenter({
   };
 
 
+  // Broadcast unread count to other components (e.g. mobile top bar)
+  useEffect(() => {
+    try {
+      window.dispatchEvent(new CustomEvent('notifications-count-updated', {
+        detail: { count: unreadAlerts.length }
+      }));
+    } catch {}
+  }, [unreadAlerts.length]);
+
   return (
-    <div style={{ position: 'relative' }} ref={panelRef}>
+    <div className="notif-center-wrapper" ref={panelRef}>
       {/* Bell Trigger Button */}
       <button
         type="button"
@@ -129,22 +167,15 @@ export default function NotificationCenter({
           width: 42,
           height: 42,
           borderRadius: 12,
-          border: '1px solid var(--glass-border)',
-          background: isOpen ? 'var(--card-hover)' : 'var(--card)',
+          border: '1px solid var(--border)',
+          background: isOpen ? 'var(--fb-blue-light, #E7F3FF)' : 'var(--card)',
           color: unreadAlerts.length > 0 ? 'var(--ink)' : 'var(--muted)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           cursor: 'pointer',
           boxShadow: 'var(--shadow-sm)',
-          transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-          backdropFilter: 'var(--blur)',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = 'scale(1.05)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = 'scale(1)';
+          transition: 'all 0.2s ease',
         }}
       >
         <Bell size={20} className={hasCritical ? 'bell-ringing' : ''} />
@@ -158,16 +189,14 @@ export default function NotificationCenter({
               height: 19,
               padding: '0 4px',
               borderRadius: 10,
-              background: hasCritical
-                ? 'linear-gradient(135deg, #EF4444, #DC2626)'
-                : 'linear-gradient(135deg, #F59E0B, #D97706)',
+              background: '#E41E3F',
               color: '#fff',
               fontSize: 11,
-              fontWeight: 800,
+              fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 2px 6px rgba(239,68,68,0.4)',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
               border: '2px solid var(--card)',
             }}
           >
@@ -176,67 +205,50 @@ export default function NotificationCenter({
         )}
       </button>
 
-      {/* Flyout Modal Drawer */}
+      {/* Backdrop for Mobile (and outside tap) */}
       {isOpen && (
         <div
-          className="tab-fade"
-          style={{
-            position: 'absolute',
-            top: 52,
-            left: 0,
-            width: 410,
-            maxWidth: '92vw',
-            maxHeight: '82vh',
-            background: isDarkMode ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.96)',
-            backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
-            borderRadius: 20,
-            border: '1px solid var(--glass-border)',
-            boxShadow: '0 20px 40px -10px rgba(0,0,0,0.3), 0 0 1px 1px rgba(255,255,255,0.1)',
-            zIndex: 9999,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
-        >
+          className="notif-backdrop"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+
+      {/* Flyout Modal Drawer (Desktop Dropdown & Mobile Bottom-Sheet) */}
+      {isOpen && (
+        <div className="notif-panel tab-fade">
+          {/* Mobile Drag Handle */}
+          <div className="notif-mobile-handle" />
+
           {/* Header */}
-          <div
-            style={{
-              padding: '18px 20px',
-              borderBottom: '1px solid var(--border)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: isDarkMode ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)',
-            }}
-          >
+          <div className="notif-header">
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div
                 style={{
-                  width: 34,
-                  height: 34,
+                  width: 36,
+                  height: 36,
                   borderRadius: 10,
-                  background: 'rgba(245, 158, 11, 0.15)',
+                  background: 'var(--fb-blue-light, #E7F3FF)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  color: '#1877F2',
                 }}
               >
-                <Bell size={18} color="var(--amber)" />
+                <Bell size={19} />
               </div>
               <div>
-                <div style={{ fontWeight: 800, fontSize: 16, color: 'var(--ink)' }}>
+                <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--ink)' }}>
                   التنبيهات الذكية للمشاريع
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
                   {unreadAlerts.length > 0
                     ? `${unreadAlerts.length} تنبيه يتطلب انتباهك`
-                    : 'جميع المشاريع بحالة جيدة'}
+                    : 'جميع المشاريع تسير بانتظام'}
                 </div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {unreadAlerts.length > 0 && (
                 <button
                   type="button"
@@ -245,18 +257,18 @@ export default function NotificationCenter({
                     display: 'flex',
                     alignItems: 'center',
                     gap: 4,
-                    padding: '5px 9px',
+                    padding: '5px 12px',
                     borderRadius: 8,
                     border: '1px solid var(--border)',
-                    background: 'transparent',
-                    color: 'var(--muted)',
-                    fontSize: 11,
-                    fontWeight: 600,
+                    background: 'var(--fb-bg, #F0F2F5)',
+                    color: 'var(--ink)',
+                    fontSize: 12,
+                    fontWeight: 700,
                     cursor: 'pointer',
                   }}
                   title="تحديد الكل كمقروء"
                 >
-                  <Check size={12} />
+                  <Check size={13} />
                   مقروء
                 </button>
               )}
@@ -264,33 +276,26 @@ export default function NotificationCenter({
                 type="button"
                 onClick={() => setIsOpen(false)}
                 style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 8,
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
                   border: 'none',
-                  background: 'rgba(0,0,0,0.05)',
-                  color: 'var(--muted)',
+                  background: 'var(--fb-bg, #F0F2F5)',
+                  color: 'var(--ink)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   cursor: 'pointer',
                 }}
+                title="إغلاق التنبيهات"
               >
-                <X size={15} />
+                <X size={18} />
               </button>
             </div>
           </div>
 
           {/* Filter Bar */}
-          <div
-            style={{
-              display: 'flex',
-              gap: 6,
-              padding: '10px 16px',
-              borderBottom: '1px solid var(--border)',
-              background: 'transparent',
-            }}
-          >
+          <div className="notif-filters">
             {[
               { key: 'all', label: `الكل (${notifications.length})` },
               {
@@ -309,19 +314,8 @@ export default function NotificationCenter({
               <button
                 key={tab.key}
                 type="button"
+                className={`notif-filter-pill ${filter === tab.key ? 'active' : ''}`}
                 onClick={() => setFilter(tab.key)}
-                style={{
-                  flex: 1,
-                  padding: '6px 8px',
-                  borderRadius: 8,
-                  border: 'none',
-                  fontSize: 11,
-                  fontWeight: filter === tab.key ? 800 : 600,
-                  background: filter === tab.key ? 'var(--amber)' : 'rgba(0,0,0,0.03)',
-                  color: filter === tab.key ? '#fff' : 'var(--muted)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
               >
                 {tab.label}
               </button>
@@ -329,22 +323,13 @@ export default function NotificationCenter({
           </div>
 
           {/* Notification List */}
-          <div
-            style={{
-              padding: '12px 14px',
-              overflowY: 'auto',
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 10,
-            }}
-          >
+          <div className="notif-list">
             {filteredAlerts.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '36px 16px', color: 'var(--muted)' }}>
-                <CheckCircle2 size={40} color="var(--teal)" style={{ margin: '0 auto 12px', opacity: 0.8 }} />
-                <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)' }}>لا توجد تنبيهات</div>
-                <div style={{ fontSize: 12, marginTop: 4 }}>
-                  كافة الجداول والميزانيات ضمن الحدود الطبيعية والمخططة.
+                <CheckCircle2 size={42} color="#1877F2" style={{ margin: '0 auto 12px', opacity: 0.85 }} />
+                <div style={{ fontWeight: 800, fontSize: 16, color: 'var(--ink)' }}>لا توجد تنبيهات جديدة</div>
+                <div style={{ fontSize: 12.5, marginTop: 4, color: 'var(--muted)' }}>
+                  كافة الجداول الزمنية والميزانيات ضمن الحدود الطبيعية والمخططة.
                 </div>
               </div>
             ) : (
@@ -354,42 +339,25 @@ export default function NotificationCenter({
                 const isWarn = alert.type === 'warning';
 
                 const borderCol = isCrit ? '#EF4444' : isWarn ? '#F59E0B' : '#10B981';
-                const bgTint = isCrit
-                  ? 'rgba(239, 68, 68, 0.08)'
+                const cardClass = isRead
+                  ? 'notif-card'
+                  : isCrit
+                  ? 'notif-card unread-critical'
                   : isWarn
-                  ? 'rgba(245, 158, 11, 0.08)'
-                  : 'rgba(16, 185, 129, 0.08)';
+                  ? 'notif-card unread-warning'
+                  : 'notif-card unread-info';
 
                 return (
                   <div
                     key={alert.id}
+                    className={cardClass}
                     onClick={() => handleAlertClick(alert)}
-                    style={{
-                      padding: '14px 16px',
-                      borderRadius: 14,
-                      background: isRead ? 'rgba(0,0,0,0.02)' : bgTint,
-                      border: `1.5px solid ${isRead ? 'var(--border)' : borderCol + '60'}`,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      gap: 12,
-                      alignItems: 'flex-start',
-                      transition: 'all 0.2s cubic-bezier(0.4,0,0.2,1)',
-                      position: 'relative',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.borderColor = borderCol;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.borderColor = isRead ? 'var(--border)' : borderCol + '60';
-                    }}
                   >
                     {/* Icon */}
                     <div
                       style={{
-                        width: 32,
-                        height: 32,
+                        width: 34,
+                        height: 34,
                         borderRadius: 10,
                         background: `${borderCol}20`,
                         color: borderCol,
@@ -401,11 +369,11 @@ export default function NotificationCenter({
                       }}
                     >
                       {isCrit ? (
-                        <AlertCircle size={18} />
+                        <AlertCircle size={19} />
                       ) : isWarn ? (
-                        <AlertTriangle size={18} />
+                        <AlertTriangle size={19} />
                       ) : (
-                        <CheckCircle2 size={18} />
+                        <CheckCircle2 size={19} />
                       )}
                     </div>
 
@@ -415,17 +383,17 @@ export default function NotificationCenter({
                         style={{
                           display: 'flex',
                           justifyContent: 'space-between',
-                          alignItems: 'center',
-                          gap: 6,
+                          alignItems: 'flex-start',
+                          gap: 8,
                           marginBottom: 4,
                         }}
                       >
                         <span
                           style={{
                             fontWeight: isRead ? 600 : 800,
-                            fontSize: 13,
+                            fontSize: 13.5,
                             color: 'var(--ink)',
-                            lineHeight: 1.3,
+                            lineHeight: 1.35,
                           }}
                         >
                           {alert.title}
@@ -438,6 +406,7 @@ export default function NotificationCenter({
                               borderRadius: '50%',
                               background: borderCol,
                               flexShrink: 0,
+                              marginTop: 4,
                             }}
                           />
                         )}
@@ -445,10 +414,11 @@ export default function NotificationCenter({
 
                       <div
                         style={{
-                          fontSize: 12,
+                          fontSize: 12.5,
                           color: 'var(--muted)',
-                          lineHeight: 1.4,
+                          lineHeight: 1.45,
                           marginBottom: 8,
+                          wordBreak: 'break-word',
                         }}
                       >
                         {alert.desc}
@@ -461,43 +431,45 @@ export default function NotificationCenter({
                           justifyContent: 'space-between',
                           flexWrap: 'wrap',
                           gap: 8,
-                          fontSize: 11,
+                          fontSize: 11.5,
                           color: 'var(--muted)',
-                          marginTop: 4,
+                          marginTop: 6,
                         }}
                       >
                         <span
                           style={{
-                            padding: '2px 6px',
+                            padding: '3px 8px',
                             borderRadius: 6,
-                            background: 'rgba(0,0,0,0.05)',
+                            background: 'var(--fb-bg, #F0F2F5)',
                             fontWeight: 600,
+                            color: 'var(--fb-text-secondary, #65676B)',
                           }}
                         >
                           {alert.time}
                         </span>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           {alert.actionLabel && (
                             <button
                               type="button"
                               onClick={(e) => handleActionClick(e, alert)}
                               style={{
-                                background: alert.whatsappMessage ? '#25D366' : 'var(--brand-primary, #6366F1)',
+                                background: alert.whatsappMessage ? '#25D366' : '#1877F2',
                                 color: '#fff',
                                 border: 'none',
-                                borderRadius: 6,
-                                padding: '4px 10px',
-                                fontSize: 11,
+                                borderRadius: 8,
+                                padding: '5px 12px',
+                                minHeight: 32,
+                                fontSize: 12,
                                 fontWeight: 800,
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: 4,
+                                gap: 5,
                                 boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                               }}
                             >
-                              {alert.whatsappMessage ? <MessageSquare size={12} /> : <Zap size={12} />}
+                              {alert.whatsappMessage ? <MessageSquare size={13} /> : <Zap size={13} />}
                               {alert.actionLabel}
                             </button>
                           )}
@@ -509,9 +481,10 @@ export default function NotificationCenter({
                               display: 'flex',
                               alignItems: 'center',
                               gap: 2,
+                              fontSize: 12,
                             }}
                           >
-                            عرض <ChevronLeft size={13} />
+                            عرض <ChevronLeft size={14} />
                           </span>
                         </div>
                       </div>
@@ -524,20 +497,10 @@ export default function NotificationCenter({
           </div>
 
           {/* Footer summary */}
-          <div
-            style={{
-              padding: '10px 16px',
-              borderTop: '1px solid var(--border)',
-              fontSize: 11,
-              color: 'var(--muted)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              background: isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.02)',
-            }}
-          >
-            <span>يتم تحديث التنبيهات تلقائياً مع كل حركة موقع</span>
+          <div className="notif-footer">
+            <span>يتم تحديث التنبيهات تلقائياً مع حركة الموقع</span>
             <span style={{ fontWeight: 700, color: 'var(--ink)' }}>
-              إجمالي المشاريع: {projects.length}
+              المشاريع: {projects.length}
             </span>
           </div>
         </div>

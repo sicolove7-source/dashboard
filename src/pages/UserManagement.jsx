@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   UserPlus, Trash2, KeyRound, Eye, EyeOff, CheckCircle2,
-  AlertTriangle, X, Pencil, Shield, Users, Copy, Check
+  AlertTriangle, X, Pencil, Shield, Users, Copy, Check,
+  ChevronDown, Sliders, CheckSquare, Square
 } from 'lucide-react';
-import { ROLES } from '../utils/permissions';
+import {
+  ROLES, NAV_PERMISSIONS, PERMISSIONS,
+  CUSTOMIZABLE_NAV_TABS, CUSTOMIZABLE_ACTIONS
+} from '../utils/permissions';
 import { getActiveTenantId } from '../services/tenantsManager';
 
 // أدوار الشركة المشتركة فقط (استبعاد Super Admin الخاص بالمنصة)
@@ -29,23 +33,26 @@ export function loadUsers(companyId) {
     }
   } catch (e) {}
   
-  // إذا لم توجد مستخدمين للشركة
+  // إذا لم توجد مستخدمين للشركة، ننشئ الافتراضيين بما فيهم مسؤول التوريدات
   const cId = companyId || getActiveTenantId() || 'comp_alain';
   let defaults = [];
   if (cId === 'comp_alain') {
     defaults = [
       { id: 'u_alain_1', email: 'ceo@alain-contract.ae', password: '123456', role: 'owner', name: 'أ. هزاع الشامسي', engineerName: null, companyId: 'comp_alain' },
       { id: 'u_alain_2', email: 'eng@alain-contract.ae', password: '123456', role: 'engineer', name: 'م. هزاع المنصوري', engineerName: 'م. هزاع المنصوري', companyId: 'comp_alain' },
+      { id: 'u_alain_3', email: 'supply@alain-contract.ae', password: '123456', role: 'procurement', name: 'أ. محمود فوزي (مسؤول التوريدات)', engineerName: null, companyId: 'comp_alain' },
     ];
   } else if (cId === 'comp_dhabi') {
     defaults = [
       { id: 'u_dhabi_1', email: 'admin@dar-dhabi.ae', password: '123456', role: 'owner', name: 'م. عبد الله الظاهري', engineerName: null, companyId: 'comp_dhabi' },
       { id: 'u_dhabi_2', email: 'eng@dar-dhabi.ae', password: '123456', role: 'engineer', name: 'م. ناصر الهاشمي', engineerName: 'م. ناصر الهاشمي', companyId: 'comp_dhabi' },
+      { id: 'u_dhabi_3', email: 'supply@dar-dhabi.ae', password: '123456', role: 'procurement', name: 'أ. راشد الكعبي (مسؤول التوريدات)', engineerName: null, companyId: 'comp_dhabi' },
     ];
   } else {
     defaults = [
       { id: 'u_cairo_1', email: 'admin@al-ofok.com', password: '123456', role: 'owner', name: 'م. شريف عزمي', engineerName: null, companyId: 'comp_cairo' },
       { id: 'u_cairo_2', email: 'eng@al-ofok.com', password: '123456', role: 'engineer', name: 'م. أحمد كامل', engineerName: 'م. أحمد كامل', companyId: 'comp_cairo' },
+      { id: 'u_cairo_3', email: 'supply@al-ofok.com', password: '123456', role: 'procurement', name: 'أ. مصطفى ممدوح (مسؤول التوريدات)', engineerName: null, companyId: 'comp_cairo' },
     ];
   }
   try { localStorage.setItem(key, JSON.stringify(defaults)); } catch (e) {}
@@ -75,20 +82,37 @@ function RoleBadge({ role }) {
 }
 
 /* ────────────────────────────────────────────────────────────
-   Add / Edit User Modal
+   Add / Edit User Modal with Custom Permissions Support
 ──────────────────────────────────────────────────────────── */
 function UserModal({ user, onSave, onClose, existingEmails }) {
   const isEdit = !!user?.id;
+  const initialRole = user?.role === 'super_admin' ? 'owner' : (user?.role || 'engineer');
+
   const [form, setForm] = useState({
     name: user?.name || '',
     email: user?.email || '',
     password: user?.password || '',
-    role: user?.role === 'super_admin' ? 'owner' : (user?.role || 'engineer'),
+    role: initialRole,
     engineerName: user?.engineerName || '',
   });
+
   const [showPass, setShowPass] = useState(false);
   const [errors, setErrors] = useState({});
   const [copied, setCopied] = useState(false);
+
+  // ── حالة تخصيص الصلاحيات يدوياً ──
+  const [isCustom, setIsCustom] = useState(() => {
+    return Boolean(user?.hasCustomPermissions || (user?.customNav && user.customNav.length > 0) || user?.customPermissions);
+  });
+
+  const [customNav, setCustomNav] = useState(() => {
+    if (user?.customNav && Array.isArray(user.customNav)) return user.customNav;
+    return NAV_PERMISSIONS[initialRole] || [];
+  });
+
+  const [customPermissions, setCustomPermissions] = useState(() => {
+    return user?.customPermissions ? { ...user.customPermissions } : {};
+  });
 
   function validate() {
     const e = {};
@@ -102,6 +126,51 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
     return Object.keys(e).length === 0;
   }
 
+  function handleRoleChange(newRole) {
+    setForm(f => ({ ...f, role: newRole, engineerName: '' }));
+    if (!isCustom) {
+      setCustomNav(NAV_PERMISSIONS[newRole] || []);
+      setCustomPermissions({});
+    }
+  }
+
+  function toggleNavTab(navKey) {
+    setCustomNav(prev => {
+      if (prev.includes(navKey)) {
+        return prev.filter(k => k !== navKey);
+      } else {
+        return [...prev, navKey];
+      }
+    });
+  }
+
+  function isActionAllowed(actionKey) {
+    if (typeof customPermissions[actionKey] === 'boolean') {
+      return customPermissions[actionKey];
+    }
+    return (PERMISSIONS[actionKey] || []).includes(form.role);
+  }
+
+  function toggleActionPermission(actionKey, nextVal) {
+    setCustomPermissions(prev => ({
+      ...prev,
+      [actionKey]: nextVal,
+    }));
+  }
+
+  function resetToRoleDefaults() {
+    setCustomNav(NAV_PERMISSIONS[form.role] || []);
+    setCustomPermissions({});
+  }
+
+  function selectAllNavTabs() {
+    setCustomNav(CUSTOMIZABLE_NAV_TABS.map(t => t.key));
+  }
+
+  function clearAllNavTabs() {
+    setCustomNav([]);
+  }
+
   function handleSave() {
     if (!validate()) return;
     onSave({
@@ -112,6 +181,9 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
       password: form.password,
       role: form.role,
       engineerName: form.role === 'engineer' ? form.engineerName.trim() : null,
+      hasCustomPermissions: isCustom,
+      customNav: isCustom ? customNav : null,
+      customPermissions: isCustom ? customPermissions : null,
     });
   }
 
@@ -146,25 +218,25 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
       <div style={{
         background: 'var(--card)', backdropFilter: 'blur(20px)',
         border: '1px solid var(--border)', borderRadius: 20,
-        padding: 28, width: '100%', maxWidth: 460,
+        padding: 24, width: '100%', maxWidth: 560,
+        maxHeight: '90vh', overflowY: 'auto',
         boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
         animation: 'slideUpFade 0.3s ease',
       }} dir="rtl">
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{
               width: 42, height: 42, borderRadius: 12,
-              background: 'linear-gradient(135deg, #6366F1, #3B82F6)',
+              background: '#0F172A',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 4px 16px rgba(99,102,241,0.3)',
             }}>
               {isEdit ? <Pencil size={18} color="#fff" /> : <UserPlus size={18} color="#fff" />}
             </div>
             <div>
-              <div style={{ fontWeight: 800, fontSize: 16 }}>{isEdit ? 'تعديل حساب' : 'إضافة مستخدم جديد'}</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)' }}>سيتمكن من الدخول فوراً</div>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>{isEdit ? 'تعديل حساب وصلاحيات المستخدم' : 'إضافة مستخدم جديد وتحديد صلاحياته'}</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>تحكم في التبويبات والإجراءات المسموحة له فوراً</div>
             </div>
           </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: 4 }}>
@@ -180,23 +252,23 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
               type="text"
               className="filter-input"
               style={{ width: '100%' }}
-              placeholder="مثال: م. أحمد علي"
+              placeholder="مثال: أ. محمود فوزي (مسؤول التوريدات) أو م. أحمد كامل"
               value={form.name}
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             />
           </Field>
 
-          <Field label="البريد الإلكتروني *" error={errors.email}>
+          <Field label="البريد الإلكتروني للدخول *" error={errors.email}>
             <input
               type="email"
               className="filter-input"
               style={{ width: '100%', direction: 'ltr', textAlign: 'right' }}
-              placeholder="ahmed@company.com"
+              placeholder="supply@company.com"
               value={form.email}
               onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
               disabled={isEdit}
             />
-            {isEdit && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>⚠️ لا يمكن تغيير البريد بعد الإنشاء</div>}
+            {isEdit && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>⚠️ لا يمكن تغيير البريد بعد الإنشاء لربط البيانات</div>}
           </Field>
 
           <Field label="كلمة المرور *" error={errors.password}>
@@ -219,12 +291,12 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
             </div>
           </Field>
 
-          <Field label="الدور / الصلاحية *" error={errors.role}>
+          <Field label="الدور الوظيفي الأساسي *" error={errors.role}>
             <select
               className="filter-select"
               style={{ width: '100%' }}
               value={form.role}
-              onChange={e => setForm(f => ({ ...f, role: e.target.value, engineerName: '' }))}
+              onChange={e => handleRoleChange(e.target.value)}
             >
               {Object.entries(COMPANY_ROLES).map(([key, info]) => (
                 <option key={key} value={key}>{info.badge} {info.label}</option>
@@ -247,14 +319,14 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
                 onChange={e => setForm(f => ({ ...f, engineerName: e.target.value }))}
               />
               <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-                ⚠️ سيشاهد هذا المهندس فقط المشاريع التي يُعيّن فيها اسمه كمهندس موقع.
+                ⚠️ سيشاهد هذا المهندس فقط المشاريع التي يُعيّن فيها اسمه كمهندس موقع (ما لم تمنحه صلاحية رؤية الكل أدناه).
               </div>
             </Field>
           )}
 
           {/* Permissions Preview */}
           <div style={{
-            background: 'rgba(0,0,0,0.03)', borderRadius: 12, padding: '10px 14px',
+            background: 'rgba(0,0,0,0.02)', borderRadius: 12, padding: '10px 14px',
             border: '1px solid var(--border)', fontSize: 12,
           }}>
             <div style={{ fontWeight: 700, marginBottom: 4, color: COMPANY_ROLES[form.role]?.color }}>
@@ -262,17 +334,191 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
             </div>
             <div style={{ color: 'var(--muted)', lineHeight: 1.6 }}>
               {form.role === 'owner' && '• صلاحية كاملة: إضافة وتعديل وحذف المشاريع، المالية، الموردين، وإدارة المستخدمين.'}
+              {form.role === 'procurement' && '• مسؤول التوريدات والمشتريات: دليل الموردين، أوامر التوريد، ومتابعة واعتماد طلبيات المواد والمعدات لكافة المواقع.'}
               {form.role === 'accountant' && '• المالية الشاملة والموردين والمقايسات، وعرض تفاصيل المشاريع المالية.'}
-              {form.role === 'engineer' && '• مشاريعه المسندة إليه فقط: الجدول الزمني، اليوميات، الملاحظات، والمواصفات.'}
+              {form.role === 'engineer' && '• مشاريعه المسندة إليه فقط: الجدول الزمني، اليوميات، الملاحظات، وطلب توريدات موقعه.'}
               {form.role === 'tech_office' && '• المواصفات، الجداول، المخططات، والمقايسات لجميع المشاريع.'}
               {form.role === 'customer_service' && '• عرض حالة المشاريع ونسب الإنجاز والتقارير لمتابعة العملاء.'}
             </div>
           </div>
 
+          {/* ────────────────────────────────────────────────────────────
+             Advanced Custom Permissions Accordion
+          ──────────────────────────────────────────────────────────── */}
+          <div style={{
+            border: `1.5px solid ${isCustom ? '#D97706' : 'var(--border)'}`,
+            borderRadius: 14,
+            background: isCustom ? 'rgba(217, 119, 6, 0.02)' : 'transparent',
+            overflow: 'hidden',
+            transition: 'all 0.2s ease',
+          }}>
+            {/* Accordion Header / Toggle */}
+            <div
+              onClick={() => setIsCustom(v => !v)}
+              style={{
+                padding: '12px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                background: isCustom ? 'rgba(217, 119, 6, 0.08)' : 'rgba(0,0,0,0.02)',
+                userSelect: 'none',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={isCustom}
+                  onChange={e => { e.stopPropagation(); setIsCustom(e.target.checked); }}
+                  style={{ width: 17, height: 17, cursor: 'pointer', accentColor: '#D97706' }}
+                />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: isCustom ? '#B45309' : 'var(--ink)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span>⚙️</span> تخصيص الصلاحيات يدوياً لهذا المستخدم
+                    {isCustom && <span style={{ fontSize: 10, background: '#D97706', color: '#fff', padding: '1px 6px', borderRadius: 6 }}>مفعّل</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                    {isCustom
+                      ? 'يمكنك تحديد التبويبات والإجراءات المسموحة بدقة، وتجاوز صلاحيات الدور الافتراضية'
+                      : 'انقر لتخصيص تبويبات وإجراءات معينة لهذا الموظف بشكل مستقل'}
+                  </div>
+                </div>
+              </div>
+              <ChevronDown
+                size={18}
+                style={{
+                  transform: isCustom ? 'rotate(180deg)' : 'none',
+                  transition: 'transform 0.2s',
+                  color: isCustom ? '#D97706' : 'var(--muted)',
+                }}
+              />
+            </div>
+
+            {/* Customization Body */}
+            {isCustom && (
+              <div style={{ padding: 14, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                
+                {/* 1. Navigation Tabs Access */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--ink)' }}>
+                      📑 التبويبات المسموحة في القائمة الجانبية:
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={selectAllNavTabs}
+                        style={{ fontSize: 11, padding: '2px 8px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', color: 'var(--muted)' }}
+                      >
+                        تحديد الكل
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearAllNavTabs}
+                        style={{ fontSize: 11, padding: '2px 8px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', color: 'var(--muted)' }}
+                      >
+                        إلغاء الكل
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetToRoleDefaults}
+                        style={{ fontSize: 11, padding: '2px 8px', background: 'transparent', border: '1px solid #D9770650', borderRadius: 6, cursor: 'pointer', color: '#D97706', fontWeight: 700 }}
+                      >
+                        ↺ ضبط للافتراضي
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
+                    {CUSTOMIZABLE_NAV_TABS.map(tabItem => {
+                      const isChecked = customNav.includes(tabItem.key);
+                      return (
+                        <div
+                          key={tabItem.key}
+                          onClick={() => toggleNavTab(tabItem.key)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            padding: '8px 10px', borderRadius: 8,
+                            border: `1.5px solid ${isChecked ? '#D97706' : 'var(--border)'}`,
+                            background: isChecked ? 'rgba(217, 119, 6, 0.08)' : 'rgba(0,0,0,0.01)',
+                            cursor: 'pointer', transition: 'all 0.15s',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {}} // handled by parent div onClick
+                            style={{ accentColor: '#D97706', cursor: 'pointer' }}
+                          />
+                          <div>
+                            <div style={{ fontSize: 12, fontWeight: isChecked ? 800 : 500, color: isChecked ? '#92400E' : 'var(--ink)' }}>
+                              {tabItem.badge} {tabItem.label}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. Granular Action Permissions by Category */}
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--ink)', marginBottom: 8 }}>
+                    🛡️ الصلاحيات والإجراءات الدقيقة:
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {CUSTOMIZABLE_ACTIONS.map(cat => (
+                      <div
+                        key={cat.category}
+                        style={{
+                          background: 'rgba(0,0,0,0.02)',
+                          borderRadius: 10,
+                          padding: '10px 12px',
+                          border: '1px solid var(--border)',
+                        }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--ink)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>{cat.icon}</span> {cat.category}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 6 }}>
+                          {cat.items.map(item => {
+                            const allowed = isActionAllowed(item.key);
+                            return (
+                              <label
+                                key={item.key}
+                                style={{
+                                  display: 'flex', alignItems: 'flex-start', gap: 7,
+                                  cursor: 'pointer', fontSize: 11.5,
+                                  padding: '4px 6px', borderRadius: 6,
+                                  background: allowed ? 'rgba(16,185,129,0.05)' : 'transparent',
+                                  color: allowed ? 'var(--ink)' : 'var(--muted)',
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={allowed}
+                                  onChange={e => toggleActionPermission(item.key, e.target.checked)}
+                                  style={{ marginTop: 2, accentColor: '#10B981', cursor: 'pointer' }}
+                                />
+                                <span>{item.label}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+            )}
+          </div>
+
         </div>
 
         {/* Actions */}
-        <div style={{ display: 'flex', gap: 10, marginTop: 24, justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: 10, marginTop: 24, justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: 16 }}>
           {isEdit && (
             <button
               type="button"
@@ -287,7 +533,7 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
           <button type="button" className="btn btn-ghost" onClick={onClose}>
             إلغاء
           </button>
-          <button type="button" className="btn btn-primary" onClick={handleSave}>
+          <button type="button" className="btn btn-primary" onClick={handleSave} style={{ minWidth: 120 }}>
             {isEdit ? 'حفظ التعديلات' : 'إنشاء الحساب'}
           </button>
         </div>
@@ -364,22 +610,22 @@ export default function UserManagement({ currentUser, companyId }) {
     <div className="grid tab-fade" style={{ gap: 24 }} dir="rtl">
 
       {/* ─── Header ─── */}
-      <div className="panel" style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.1), rgba(59,130,246,0.08))', border: '1px solid rgba(99,102,241,0.2)' }}>
+      <div className="panel" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <div style={{
-            width: 52, height: 52, borderRadius: 14,
-            background: 'linear-gradient(135deg, #6366F1, #3B82F6)',
+            width: 48, height: 48, borderRadius: 12,
+            background: '#0F172A',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 6px 20px rgba(99,102,241,0.35)', flexShrink: 0,
+            flexShrink: 0,
           }}>
-            <Shield size={26} color="#fff" />
+            <Shield size={24} color="#fff" />
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 900, fontSize: 18, color: 'var(--ink)' }}>
-              إدارة حسابات مستخدمي الشركة
+              إدارة حسابات وصلاحيات مستخدمي الشركة
             </div>
             <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 2 }}>
-              أضف أو عدّل حسابات الدخول والصلاحيات لمهندسي وموظفي مكتبك
+              أضف مسؤولي التوريدات والمهندسين والمحاسبين وخصص الصلاحيات والتبويبات المسموحة لكل مستخدم بدقة
             </div>
           </div>
           <button
@@ -400,7 +646,7 @@ export default function UserManagement({ currentUser, companyId }) {
           display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700,
           animation: 'fadeIn 0.2s ease',
         }}>
-          <CheckCircle2 size={16} /> تم حفظ التغييرات بنجاح
+          <CheckCircle2 size={16} /> تم حفظ حسابات وصلاحيات المستخدمين بنجاح
         </div>
       )}
 
@@ -427,14 +673,14 @@ export default function UserManagement({ currentUser, companyId }) {
 
       {/* ─── Users Table ─── */}
       <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="data-table">
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <table className="data-table" style={{ minWidth: 720 }}>
             <thead>
               <tr>
                 <th>المستخدم</th>
                 <th>البريد الإلكتروني</th>
-                <th>الدور والصلاحية</th>
-                <th>مهندس الموقع المرتبط</th>
+                <th>الدور والصلاحيات</th>
+                <th>المهندس المرتبط</th>
                 <th>كلمة المرور</th>
                 <th style={{ textAlign: 'center' }}>الإجراءات</th>
               </tr>
@@ -452,6 +698,7 @@ export default function UserManagement({ currentUser, companyId }) {
                   const isCurrent = u.id === currentUser?.id || u.email === currentUser?.email;
                   const isPassVisible = showPassFor === u.id;
                   const isCopied = copiedId === u.id;
+                  const hasCustom = Boolean(u.hasCustomPermissions || (u.customNav && u.customNav.length > 0) || u.customPermissions);
 
                   return (
                     <tr key={u.id}>
@@ -460,7 +707,7 @@ export default function UserManagement({ currentUser, companyId }) {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <div style={{
                             width: 36, height: 36, borderRadius: '50%',
-                            background: `linear-gradient(135deg, ${COMPANY_ROLES[u.role]?.color || '#6366F1'}, #3B82F6)`,
+                            background: '#0F172A',
                             color: '#fff', fontWeight: 800, fontSize: 13,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             flexShrink: 0,
@@ -472,9 +719,10 @@ export default function UserManagement({ currentUser, companyId }) {
                               {u.name}
                               {isCurrent && (
                                 <span style={{
-                                  marginRight: 6, fontSize: 10, padding: '2px 6px',
-                                  borderRadius: 8, background: 'rgba(99,102,241,0.15)',
-                                  color: '#6366F1', fontWeight: 700,
+                                  marginRight: 6, fontSize: 10, padding: '2px 8px',
+                                  borderRadius: 8, background: '#F1F5F9',
+                                  color: '#0F172A', fontWeight: 700,
+                                  border: '1px solid #CBD5E1'
                                 }}>
                                   أنت
                                 </span>
@@ -492,9 +740,21 @@ export default function UserManagement({ currentUser, companyId }) {
                         </span>
                       </td>
 
-                      {/* Role */}
+                      {/* Role & Customization Badge */}
                       <td>
-                        <RoleBadge role={u.role} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <RoleBadge role={u.role} />
+                          {hasCustom && (
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 3,
+                              padding: '2px 8px', borderRadius: 12,
+                              background: '#D9770618', color: '#B45309',
+                              fontSize: 10, fontWeight: 800, border: '1px solid #D9770630',
+                            }}>
+                              ⚙️ مخصّص
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Engineer Name Link */}
@@ -502,6 +762,10 @@ export default function UserManagement({ currentUser, companyId }) {
                         {u.role === 'engineer' ? (
                           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--teal)' }}>
                             🏗️ {u.engineerName || u.name}
+                          </span>
+                        ) : u.role === 'procurement' ? (
+                          <span style={{ fontSize: 12, fontWeight: 700, color: '#D97706' }}>
+                            📦 مسؤول توريدات لجميع المواقع
                           </span>
                         ) : (
                           <span style={{ fontSize: 12, color: 'var(--muted)' }}>—</span>
@@ -545,7 +809,7 @@ export default function UserManagement({ currentUser, companyId }) {
                             className="btn btn-ghost"
                             style={{ padding: '6px 8px', fontSize: 12 }}
                             onClick={() => setModal(u)}
-                            title="تعديل"
+                            title="تعديل الحساب وتخصيص الصلاحيات"
                           >
                             <Pencil size={14} />
                           </button>

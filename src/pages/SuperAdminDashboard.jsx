@@ -76,8 +76,8 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
       adminPassword: '123456',
       subdomain: '',
       customDomain: '',
-      primaryColor: '#0F766E',
-      accentColor: '#14B8A6',
+      primaryColor: '#1877F2',
+      accentColor: '#166FE5',
       seedDemoProject: true,
     });
     setShowModal(true);
@@ -100,8 +100,8 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
       adminPassword: tenant.adminPassword || '',
       subdomain: tenant.subdomain || '',
       customDomain: tenant.customDomain || '',
-      primaryColor: tenant.primaryColor || '#6366F1',
-      accentColor: tenant.accentColor || '#3B82F6',
+      primaryColor: tenant.primaryColor || '#1877F2',
+      accentColor: tenant.accentColor || '#166FE5',
       seedDemoProject: false,
     });
     setShowModal(true);
@@ -164,12 +164,12 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg, #EC4899, #8B5CF6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', boxShadow: '0 4px 14px rgba(236, 72, 153, 0.35)' }}>
-              <Shield size={24} />
+            <div style={{ width: 40, height: 40, borderRadius: 8, background: '#F1F5F9', border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0F172A' }}>
+              <Shield size={20} />
             </div>
             <div>
-              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: 'var(--ink)' }}>
-                لوحة مالك المنصة (Super Admin) 👑
+              <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: 'var(--ink)' }}>
+                لوحة مالك المنصة (Super Admin)
               </h1>
               <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)' }}>
                 إدارة الشركات المشتركة، الاشتراكات، الدومينات المخصصة، وحسابات المديرين
@@ -186,12 +186,12 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
               setOwnerSuccess(false);
               setShowOwnerModal(true);
             }}
-            style={{ gap: 8, padding: '10px 18px', background: 'rgba(236, 72, 153, 0.1)', color: '#EC4899', borderColor: 'rgba(236, 72, 153, 0.3)' }}
+            style={{ gap: 8, padding: '8px 16px', background: '#F8FAFC', color: 'var(--ink)', borderColor: '#E2E8F0' }}
           >
-            <KeyRound size={16} /> أمان وبيانات المالك
+            <KeyRound size={15} color="#64748B" /> أمان وبيانات المالك
           </button>
-          <button className="btn btn-primary" onClick={openAddModal} style={{ gap: 8, padding: '10px 20px' }}>
-            <Plus size={16} /> إضافة شركة جديدة
+          <button className="btn btn-primary" onClick={openAddModal} style={{ gap: 8, padding: '8px 18px' }}>
+            <Plus size={15} /> إضافة شركة جديدة
           </button>
         </div>
       </div>
@@ -200,12 +200,10 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
       <div
         className="panel"
         style={{
-          background: subAccountsAllowed 
-            ? 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(59,130,246,0.05))' 
-            : 'linear-gradient(135deg, rgba(239,68,68,0.08), rgba(245,158,11,0.05))',
-          border: subAccountsAllowed ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(239,68,68,0.3)',
-          borderRadius: 16,
-          padding: '18px 24px',
+          background: 'var(--card)',
+          border: '1px solid var(--border)',
+          borderRadius: 12,
+          padding: '16px 20px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
@@ -216,42 +214,43 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <div
             style={{
-              width: 48,
-              height: 48,
-              borderRadius: 14,
-              background: subAccountsAllowed ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-              color: subAccountsAllowed ? '#10B981' : '#EF4444',
+              width: 42,
+              height: 42,
+              borderRadius: 10,
+              background: '#F1F5F9',
+              border: '1px solid #E2E8F0',
+              color: '#334155',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0,
             }}
           >
-            {subAccountsAllowed ? <CheckCircle2 size={26} /> : <Lock size={26} />}
+            {subAccountsAllowed ? <CheckCircle2 size={22} color="#16A34A" /> : <Lock size={22} color="#64748B" />}
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>
                 صلاحية دخول الحسابات الفرعية والمشتركين:
               </span>
               <span
                 style={{
-                  padding: '4px 14px',
-                  borderRadius: 20,
-                  fontSize: 12.5,
-                  fontWeight: 800,
-                  background: subAccountsAllowed ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-                  color: subAccountsAllowed ? '#10B981' : '#EF4444',
-                  border: `1px solid ${subAccountsAllowed ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)'}`,
+                  padding: '3px 10px',
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  background: '#F1F5F9',
+                  color: '#334155',
+                  border: '1px solid #E2E8F0',
                 }}
               >
-                {subAccountsAllowed ? '🟢 متاح دخول الشركات والمستخدمين' : '🔒 مقفل كلياً (حساب المالك فقط)'}
+                {subAccountsAllowed ? 'متاح دخول الشركات' : 'مقفل كلياً (حساب المالك فقط)'}
               </span>
             </div>
-            <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>
+            <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>
               {subAccountsAllowed
-                ? 'الحسابات الفرعية والمشتركون يمكنهم تسجيل الدخول لمساحات عملهم.'
-                : 'تم قفل دخول جميع الحسابات الفرعية والشركات — لا يمكن لأي حساب فتح المنصة سوى مالك المنصة.'}
+                ? 'الحسابات الفرعية والمشتركون يمكنهم تسجيل الدخول لمساحات عملهم بشكل طبيعي.'
+                : 'تم قفل دخول الحسابات الفرعية — لا يمكن لأي حساب فتح المنصة سوى مالك المنصة.'}
             </div>
           </div>
         </div>
@@ -264,28 +263,26 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
             setSubAccountsAllowed(next);
           }}
           style={{
-            padding: '11px 24px',
-            borderRadius: 12,
-            fontWeight: 800,
-            fontSize: 14,
-            background: subAccountsAllowed ? '#EF4444' : '#10B981',
-            color: '#fff',
-            border: 'none',
+            padding: '8px 18px',
+            borderRadius: 8,
+            fontWeight: 600,
+            fontSize: 13,
+            background: subAccountsAllowed ? '#F8FAFC' : '#0F172A',
+            color: subAccountsAllowed ? '#DC2626' : '#FFFFFF',
+            border: subAccountsAllowed ? '1px solid #FECACA' : '1px solid #0F172A',
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
+            gap: 6,
             cursor: 'pointer',
-            boxShadow: `0 4px 14px ${subAccountsAllowed ? 'rgba(239,68,68,0.35)' : 'rgba(16,185,129,0.35)'}`,
-            transition: 'all 0.2s',
           }}
         >
           {subAccountsAllowed ? (
             <>
-              <Lock size={17} /> قفل الحسابات الفرعية فوراً 🔒
+              <Lock size={15} /> قفل الحسابات الفرعية
             </>
           ) : (
             <>
-              <CheckCircle2 size={17} /> السماح بدخول الحسابات الفرعية 🟢
+              <CheckCircle2 size={15} /> السماح بدخول الحسابات
             </>
           )}
         </button>
@@ -293,47 +290,47 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
 
       {/* Stats Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-        <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(99, 102, 241, 0.12)', color: '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Building2 size={24} />
+        <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px' }}>
+          <div style={{ width: 40, height: 40, borderRadius: 8, background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Building2 size={20} />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>إجمالي الشركات</div>
-            <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--ink)' }}>{tenants.length}</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500 }}>إجمالي الشركات</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>{tenants.length}</div>
           </div>
         </div>
 
-        <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(16, 185, 129, 0.12)', color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <CheckCircle2 size={24} />
+        <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px' }}>
+          <div style={{ width: 40, height: 40, borderRadius: 8, background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <CheckCircle2 size={20} />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>الاشتراكات النشطة</div>
-            <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--ink)' }}>
+            <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500 }}>الاشتراكات النشطة</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>
               {tenants.filter((t) => t.status === 'active' || t.status === 'trial').length}
             </div>
           </div>
         </div>
 
-        <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(245, 158, 11, 0.12)', color: '#F59E0B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Clock size={24} />
+        <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px' }}>
+          <div style={{ width: 40, height: 40, borderRadius: 8, background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Clock size={20} />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>فترات تجريبية (Trial)</div>
-            <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--ink)' }}>
+            <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500 }}>فترات تجريبية (Trial)</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>
               {tenants.filter((t) => t.status === 'trial').length}
             </div>
           </div>
         </div>
 
-        <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(236, 72, 153, 0.12)', color: '#EC4899', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Layers size={24} />
+        <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px' }}>
+          <div style={{ width: 40, height: 40, borderRadius: 8, background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Layers size={20} />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>إجمالي المشاريع بالميدان</div>
-            <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--ink)' }}>
+            <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500 }}>إجمالي المشاريع بالميدان</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>
               {tenants.reduce((acc, t) => acc + (t.projectsCount || 0), 0)}
             </div>
           </div>
@@ -424,29 +421,29 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                             <div
                               style={{
-                                width: 44,
-                                height: 44,
-                                borderRadius: 12,
-                                background: `linear-gradient(135deg, ${t.primaryColor || '#6366F1'}, ${t.accentColor || '#3B82F6'})`,
-                                color: '#fff',
+                                width: 38,
+                                height: 38,
+                                borderRadius: 8,
+                                background: '#F1F5F9',
+                                border: '1px solid #E2E8F0',
+                                color: '#1E293B',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                fontWeight: 800,
-                                fontSize: 16,
-                                boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
+                                fontWeight: 700,
+                                fontSize: 14,
                                 flexShrink: 0,
                               }}
                             >
                               {t.name.slice(0, 2)}
                             </div>
                             <div>
-                              <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--ink)' }}>{t.name}</div>
+                              <div style={{ fontWeight: 700, fontSize: 14.5, color: 'var(--ink)' }}>{t.name}</div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                                <MapPin size={12} color="var(--amber)" />
+                                <MapPin size={12} color="#64748B" />
                                 <span>{t.city} - {t.country}</span>
                                 {t.customDomain && (
-                                  <span style={{ color: '#6366F1', fontWeight: 700, direction: 'ltr' }}>• 🌐 {t.customDomain}</span>
+                                  <span style={{ color: '#475569', fontWeight: 600, direction: 'ltr' }}>• 🌐 {t.customDomain}</span>
                                 )}
                               </div>
                             </div>
@@ -454,13 +451,13 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                         </td>
 
                         <td>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{t.adminName || 'المدير العام'}</div>
-                          <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'monospace' }}>{t.adminEmail}</div>
+                          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>{t.adminName || 'المدير العام'}</div>
+                          <div style={{ fontSize: 11.5, color: 'var(--muted)', fontFamily: 'monospace' }}>{t.adminEmail}</div>
                         </td>
 
                         <td>
-                          <div style={{ fontWeight: 700, fontSize: 13 }}>{t.planName || t.plan}</div>
-                          <div style={{ fontSize: 12, color: 'var(--teal)', fontWeight: 700 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink)' }}>{t.planName || t.plan}</div>
+                          <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
                             العملة: {t.currency || 'د.إ'}
                           </div>
                         </td>
@@ -476,18 +473,18 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
 
                         <td>
                           {t.status === 'active' && (
-                            <span style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981', padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
-                              نشط ✅
+                            <span style={{ background: '#F1F5F9', color: '#1E293B', border: '1px solid #E2E8F0', padding: '3px 8px', borderRadius: 6, fontSize: 11.5, fontWeight: 600 }}>
+                              نشط
                             </span>
                           )}
                           {t.status === 'trial' && (
-                            <span style={{ background: 'rgba(245,158,11,0.15)', color: '#D97706', padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
-                              تجريبي ⏳
+                            <span style={{ background: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0', padding: '3px 8px', borderRadius: 6, fontSize: 11.5, fontWeight: 600 }}>
+                              تجريبي
                             </span>
                           )}
                           {t.status === 'suspended' && (
-                            <span style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
-                              معلق ⛔
+                            <span style={{ background: '#F8FAFC', color: '#94A3B8', border: '1px solid #E2E8F0', padding: '3px 8px', borderRadius: 6, fontSize: 11.5, fontWeight: 600 }}>
+                              معلق
                             </span>
                           )}
                         </td>
@@ -496,16 +493,18 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                             <button
                               onClick={() => handleImpersonate(t)}
-                              className="btn btn-primary"
+                              className="btn"
                               style={{
-                                padding: '7px 12px',
+                                padding: '6px 12px',
                                 fontSize: 12,
-                                fontWeight: 700,
+                                fontWeight: 600,
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: 5,
-                                background: 'linear-gradient(135deg, #0F766E, #0D9488)',
-                                borderRadius: 8,
+                                background: '#1877F2',
+                                color: '#FFFFFF',
+                                border: '1px solid #166FE5',
+                                borderRadius: 6,
                               }}
                               title="الدخول لحساب الشركة واستعراض مساحة عملها"
                             >
@@ -516,21 +515,21 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                               onClick={() => copyWhatsApp(t)}
                               className="btn"
                               style={{
-                                padding: '7px 10px',
+                                padding: '6px 10px',
                                 fontSize: 12,
-                                fontWeight: 700,
+                                fontWeight: 600,
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: 5,
-                                background: copiedId === t.id ? '#10B981' : '#25D366',
-                                color: '#fff',
-                                borderRadius: 8,
-                                border: 'none',
+                                background: '#F8FAFC',
+                                color: '#334155',
+                                borderRadius: 6,
+                                border: '1px solid #E2E8F0',
                               }}
                               title="نسخ رسالة التفعيل والبيانات لإرسالها بالواتساب"
                             >
-                              {copiedId === t.id ? <Check size={13} /> : <Copy size={13} />}
-                              <span>{copiedId === t.id ? 'تم النسخ!' : 'واتساب'}</span>
+                              {copiedId === t.id ? <Check size={13} color="#16A34A" /> : <Copy size={13} color="#64748B" />}
+                              <span>{copiedId === t.id ? 'تم النسخ' : 'واتساب'}</span>
                             </button>
 
                             <button
@@ -538,16 +537,15 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                               className="icon-btn"
                               title="تعديل بيانات الشركة والاشتراك"
                             >
-                              <Pencil size={14} />
+                              <Pencil size={13} />
                             </button>
 
                             <button
                               onClick={() => toggleStatus(t)}
                               className="icon-btn"
                               title={isSuspended ? 'تفعيل الحساب' : 'تعليق الحساب'}
-                              style={{ color: isSuspended ? '#10B981' : '#F59E0B' }}
                             >
-                              <Power size={14} />
+                              <Power size={13} />
                             </button>
 
                             {deleteConfirmId === t.id ? (
@@ -571,10 +569,10 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                               <button
                                 onClick={() => setDeleteConfirmId(t.id)}
                                 className="icon-btn"
-                                style={{ color: 'var(--danger)' }}
+                                style={{ color: 'var(--muted)' }}
                                 title="حذف الشركة نهائياً"
                               >
-                                <Trash2 size={14} />
+                                <Trash2 size={13} />
                               </button>
                             )}
                           </div>
@@ -598,14 +596,13 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                     className="panel"
                     style={{
                       padding: 16,
-                      borderRadius: 16,
+                      borderRadius: 12,
                       border: '1px solid var(--border)',
                       background: 'var(--card)',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: 12,
                       opacity: isSuspended ? 0.65 : 1,
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
                     }}
                   >
                     {/* Header */}
@@ -613,25 +610,26 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <div
                           style={{
-                            width: 42,
-                            height: 42,
-                            borderRadius: 12,
-                            background: `linear-gradient(135deg, ${t.primaryColor || '#6366F1'}, ${t.accentColor || '#3B82F6'})`,
-                            color: '#fff',
+                            width: 38,
+                            height: 38,
+                            borderRadius: 8,
+                            background: '#F1F5F9',
+                            border: '1px solid #E2E8F0',
+                            color: '#1E293B',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            fontWeight: 800,
-                            fontSize: 15,
+                            fontWeight: 700,
+                            fontSize: 14,
                             flexShrink: 0,
                           }}
                         >
                           {t.name.slice(0, 2)}
                         </div>
                         <div>
-                          <div style={{ fontWeight: 800, fontSize: 14.5, color: 'var(--ink)' }}>{t.name}</div>
+                          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink)' }}>{t.name}</div>
                           <div style={{ fontSize: 12, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <MapPin size={11} color="var(--amber)" />
+                            <MapPin size={11} color="#64748B" />
                             <span>{t.city} - {t.country}</span>
                           </div>
                         </div>
@@ -639,57 +637,59 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
 
                       <div>
                         {t.status === 'active' && (
-                          <span style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981', padding: '3px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700 }}>
-                            نشط ✅
+                          <span style={{ background: '#F1F5F9', color: '#1E293B', border: '1px solid #E2E8F0', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>
+                            نشط
                           </span>
                         )}
                         {t.status === 'trial' && (
-                          <span style={{ background: 'rgba(245,158,11,0.15)', color: '#D97706', padding: '3px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700 }}>
-                            تجريبي ⏳
+                          <span style={{ background: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>
+                            تجريبي
                           </span>
                         )}
                         {t.status === 'suspended' && (
-                          <span style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', padding: '3px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700 }}>
-                            معلق ⛔
+                          <span style={{ background: '#F8FAFC', color: '#94A3B8', border: '1px solid #E2E8F0', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>
+                            معلق
                           </span>
                         )}
                       </div>
                     </div>
 
                     {/* Details Grid */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, background: 'var(--bg)', padding: '10px 12px', borderRadius: 12, fontSize: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, background: 'var(--bg-color)', padding: '10px 12px', borderRadius: 8, fontSize: 12 }}>
                       <div>
                         <span style={{ color: 'var(--muted)', display: 'block', fontSize: 11 }}>المدير المسؤول:</span>
-                        <span style={{ fontWeight: 700, color: 'var(--ink)' }}>{t.adminName || 'المدير العام'}</span>
+                        <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{t.adminName || 'المدير العام'}</span>
                       </div>
                       <div>
                         <span style={{ color: 'var(--muted)', display: 'block', fontSize: 11 }}>الباقة والعملة:</span>
-                        <span style={{ fontWeight: 700, color: 'var(--teal)' }}>{t.planName || t.plan} ({t.currency || 'د.إ'})</span>
+                        <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{t.planName || t.plan} ({t.currency || 'د.إ'})</span>
                       </div>
                       <div style={{ gridColumn: 'span 2' }}>
                         <span style={{ color: 'var(--muted)', display: 'block', fontSize: 11 }}>البريد الإلكتروني:</span>
-                        <span style={{ fontWeight: 600, color: 'var(--ink)', fontFamily: 'monospace' }}>{t.adminEmail}</span>
+                        <span style={{ fontWeight: 500, color: 'var(--ink)', fontFamily: 'monospace' }}>{t.adminEmail}</span>
                       </div>
                     </div>
 
                     {/* Main Action Button */}
                     <button
                       onClick={() => handleImpersonate(t)}
-                      className="btn btn-primary"
+                      className="btn"
                       style={{
                         width: '100%',
-                        padding: '10px',
+                        padding: '9px',
                         fontSize: 13,
-                        fontWeight: 800,
+                        fontWeight: 600,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         gap: 8,
-                        background: 'linear-gradient(135deg, #0F766E, #0D9488)',
-                        borderRadius: 10,
+                        background: '#0F172A',
+                        color: '#FFFFFF',
+                        border: '1px solid #0F172A',
+                        borderRadius: 8,
                       }}
                     >
-                      <ExternalLink size={15} /> دخول لمساحة عمل الشركة
+                      <ExternalLink size={14} /> دخول لمساحة عمل الشركة
                     </button>
 
                     {/* Secondary Actions Bar */}
@@ -699,44 +699,44 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                         className="btn"
                         style={{
                           flex: 1,
-                          padding: '8px',
+                          padding: '7px',
                           fontSize: 12,
-                          fontWeight: 700,
+                          fontWeight: 600,
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                           gap: 4,
-                          background: copiedId === t.id ? '#10B981' : '#25D366',
-                          color: '#fff',
-                          borderRadius: 8,
-                          border: 'none',
+                          background: '#F8FAFC',
+                          color: '#334155',
+                          borderRadius: 6,
+                          border: '1px solid #E2E8F0',
                         }}
                       >
-                        {copiedId === t.id ? <Check size={14} /> : <Copy size={14} />}
-                        <span>{copiedId === t.id ? 'تم النسخ!' : 'واتساب'}</span>
+                        {copiedId === t.id ? <Check size={13} color="#16A34A" /> : <Copy size={13} color="#64748B" />}
+                        <span>{copiedId === t.id ? 'تم النسخ' : 'واتساب'}</span>
                       </button>
 
                       <button
                         onClick={() => openEditModal(t)}
                         className="btn btn-secondary"
-                        style={{ padding: '8px 12px', fontSize: 12, borderRadius: 8, gap: 4 }}
+                        style={{ padding: '7px 10px', fontSize: 12, borderRadius: 6, gap: 4 }}
                       >
-                        <Pencil size={13} /> تعديل
+                        <Pencil size={12} /> تعديل
                       </button>
 
                       <button
                         onClick={() => toggleStatus(t)}
                         className="btn btn-secondary"
-                        style={{ padding: '8px 12px', fontSize: 12, borderRadius: 8, gap: 4, color: isSuspended ? '#10B981' : '#F59E0B' }}
+                        style={{ padding: '7px 10px', fontSize: 12, borderRadius: 6, gap: 4 }}
                       >
-                        <Power size={13} /> {isSuspended ? 'تفعيل' : 'تعليق'}
+                        <Power size={12} /> {isSuspended ? 'تفعيل' : 'تعليق'}
                       </button>
 
                       {deleteConfirmId === t.id ? (
                         <button
                           onClick={() => handleDelete(t.id)}
                           className="btn btn-danger"
-                          style={{ padding: '8px 12px', fontSize: 12, borderRadius: 8 }}
+                          style={{ padding: '7px 10px', fontSize: 12, borderRadius: 6 }}
                         >
                           تأكيد
                         </button>
@@ -744,9 +744,9 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                         <button
                           onClick={() => setDeleteConfirmId(t.id)}
                           className="btn btn-ghost"
-                          style={{ padding: '8px', color: 'var(--danger)' }}
+                          style={{ padding: '7px', color: 'var(--muted)' }}
                         >
-                          <Trash2 size={15} />
+                          <Trash2 size={13} />
                         </button>
                       )}
                     </div>
@@ -768,8 +768,8 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(236, 72, 153, 0.15)', color: '#EC4899', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Building2 size={20} />
+                <div style={{ width: 38, height: 38, borderRadius: 8, background: '#F1F5F9', border: '1px solid #E2E8F0', color: '#1E293B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Building2 size={18} />
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--ink)' }}>
@@ -899,8 +899,8 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
               </div>
 
               {!editTenant && (
-                <div className="form-field" style={{ gridColumn: '1 / -1', background: 'rgba(99,102,241,0.08)', padding: 12, borderRadius: 10, border: '1px solid rgba(99,102,241,0.2)' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', margin: 0, fontWeight: 700, color: 'var(--ink)' }}>
+                <div className="form-field" style={{ gridColumn: '1 / -1', background: '#F8FAFC', padding: 12, borderRadius: 8, border: '1px solid #E2E8F0' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', margin: 0, fontWeight: 600, color: 'var(--ink)' }}>
                     <input
                       type="checkbox"
                       checked={form.seedDemoProject}
@@ -916,8 +916,8 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                 <button type="button" className="btn btn-ghost" onClick={() => setShowModal(false)}>
                   إلغاء
                 </button>
-                <button type="submit" className="btn btn-primary" style={{ padding: '12px 28px' }}>
-                  {editTenant ? 'حفظ التعديلات' : 'تفعيل وإنشاء الحساب 🚀'}
+                <button type="submit" className="btn btn-primary" style={{ padding: '10px 24px' }}>
+                  {editTenant ? 'حفظ التعديلات' : 'تفعيل وإنشاء الحساب'}
                 </button>
               </div>
             </form>
@@ -931,21 +931,21 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
           <div className="modal-content" style={{ maxWidth: 480 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(236,72,153,0.15)', color: '#EC4899', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Shield size={20} />
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: '#F1F5F9', border: '1px solid #E2E8F0', color: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Shield size={18} />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>بيانات حساب مالك المنصة</h3>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>بيانات حساب مالك المنصة</h3>
                   <div style={{ fontSize: 12, color: 'var(--muted)' }}>تخصيص البريد وكلمة المرور الحصرية لك فقط</div>
                 </div>
               </div>
               <button className="btn btn-ghost" style={{ padding: 6 }} onClick={() => setShowOwnerModal(false)}>
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
             {ownerSuccess && (
-              <div style={{ padding: '10px 14px', background: 'rgba(16,185,129,0.1)', color: '#10B981', borderRadius: 10, fontSize: 13, marginBottom: 16, border: '1px solid rgba(16,185,129,0.3)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ padding: '10px 14px', background: '#F0FDF4', color: '#16A34A', borderRadius: 8, fontSize: 13, marginBottom: 16, border: '1px solid #BBF7D0', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <CheckCircle2 size={16} />
                 <span>تم حفظ وتأمين بياناتك بنجاح!</span>
               </div>
@@ -996,8 +996,8 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                 <button type="button" className="btn btn-ghost" onClick={() => setShowOwnerModal(false)}>
                   إلغاء
                 </button>
-                <button type="submit" className="btn btn-primary" style={{ padding: '10px 24px', background: 'linear-gradient(135deg, #EC4899, #8B5CF6)' }}>
-                  حفظ وتأمين الحساب 🔒
+                <button type="submit" className="btn btn-primary" style={{ padding: '9px 22px' }}>
+                  حفظ وتأمين الحساب
                 </button>
               </div>
             </form>

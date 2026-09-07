@@ -414,16 +414,16 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
         }}
       >
         {/* Header Action Bar (No-Print) */}
-        <div className="no-print" style={{
+        <div className="no-print craftsman-modal-header" style={{
           padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg, #1E1B4B, #4338CA)', color: '#fff',
+          borderBottom: '1px solid var(--border)', background: '#0F172A', color: '#fff',
           position: 'sticky', top: 0, zIndex: 10
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Wrench size={22} color="#FCD34D" />
+            <Wrench size={20} color="#94A3B8" />
             <div>
               <div style={{ fontWeight: 800, fontSize: 16 }}>مشارطة وعقد اتفاق مقاول مصنعية وباطن</div>
-              <div style={{ fontSize: 12, color: '#C7D2FE' }}>صياغة فنية مشددة تضمن استلام الشغل بالقِدة والميزان وخصم العيوب</div>
+              <div style={{ fontSize: 12, color: '#94A3B8' }}>صياغة فنية مشددة تضمن استلام الشغل بالقِدة والميزان وخصم العيوب</div>
             </div>
           </div>
 
@@ -593,7 +593,7 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
             </div>
 
             {/* Payment Tranches */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
+            <div className="craftsman-tranches-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
               <div>
                 <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block' }}>دفعة بدء وتشوين (%)</label>
                 <input type="number" value={formData.advancePayment} onChange={e => handleFieldChange('advancePayment', Number(e.target.value))} style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />

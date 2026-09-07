@@ -1,27 +1,105 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Building2, HardHat, FileText, CheckCircle2, TrendingUp, ShieldCheck,
   Zap, Users, Phone, MessageSquare, ArrowLeft, Star, Clock, Award,
   Sparkles, Check, ChevronDown, ChevronUp, Lock, Laptop, Smartphone,
-  ExternalLink, DollarSign, Calculator, Layers, HelpCircle
+  ExternalLink, DollarSign, Calculator, Layers, HelpCircle, Menu, X
 } from 'lucide-react';
 
+/* ─── Responsive Styles Injected Once ─── */
+const MOBILE_STYLES = `
+  @media (max-width: 768px) {
+    .landing-desktop-nav { display: none !important; }
+    .landing-mobile-menu-btn { display: flex !important; }
+    .landing-header-ctas .hero-cta-text { display: none !important; }
+    .landing-hero-btns { flex-direction: column !important; align-items: stretch !important; }
+    .landing-hero-btns button { width: 100% !important; justify-content: center !important; }
+    .landing-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+    .landing-features-grid { grid-template-columns: 1fr !important; }
+    .landing-pricing-grid { grid-template-columns: 1fr !important; }
+    .landing-footer-links { flex-direction: column !important; gap: 8px !important; align-items: center !important; }
+  }
+  @media (min-width: 769px) {
+    .landing-mobile-menu-btn { display: none !important; }
+    .landing-mobile-nav-overlay { display: none !important; }
+  }
+  .landing-mobile-nav-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 9999;
+    background: rgba(15,23,42,0.92);
+    backdrop-filter: blur(10px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 30px;
+  }
+  .landing-mobile-nav-overlay a,
+  .landing-mobile-nav-overlay .mnav-btn {
+    font-size: 22px;
+    font-weight: 800;
+    color: #fff;
+    text-decoration: none;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-family: 'Cairo', 'Tajawal', sans-serif;
+    transition: color .2s;
+    padding: 0;
+  }
+  .landing-mobile-nav-overlay a:hover,
+  .landing-mobile-nav-overlay .mnav-btn:hover { color: #D97706; }
+  .mnav-close {
+    position: absolute;
+    top: 18px;
+    left: 18px;
+    background: rgba(255,255,255,0.1);
+    border: none;
+    color: #fff;
+    border-radius: 10px;
+    padding: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .2s;
+  }
+  .mnav-close:hover { background: rgba(255,255,255,0.2); }
+`;
+
+function useInjectStyle(css) {
+  useEffect(() => {
+    const id = 'landing-responsive-styles';
+    if (!document.getElementById(id)) {
+      const style = document.createElement('style');
+      style.id = id;
+      style.textContent = css;
+      document.head.appendChild(style);
+    }
+  }, []);
+}
+
 export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
+  useInjectStyle(MOBILE_STYLES);
   const [activeFaq, setActiveFaq] = useState(null);
   const [billingCycle, setBillingCycle] = useState('monthly'); // 'monthly' | 'yearly'
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [showTrialModal, setShowTrialModal] = useState(false);
-  const [trialForm, setTrialForm] = useState({ name: '', company: '', phone: '', city: 'دبي - الإمارات' });
+  const [trialForm, setTrialForm] = useState({ name: '', company: '', phone: '', city: 'القاهرة - مصر' });
 
-  const waNumber = '971501234567';
+  function closeMobileNav() { setMobileNavOpen(false); }
+
+  const waNumber = '201018160582';
 
   function openWhatsApp(msg) {
-    const text = encodeURIComponent(msg || 'مرحباً، أرغب في الاستفسار والاشتراك في منصة إدارة التشطيبات والمقاولات');
+    const text = encodeURIComponent(msg || 'مرحباً، أرغب في الاستفسار والاشتراك في منصة Tashteeb Pro لإدارة التشطيبات والمقاولات');
     window.open(`https://wa.me/${waNumber}?text=${text}`, '_blank');
   }
 
   function handleTrialSubmit(e) {
     e.preventDefault();
-    const msg = `مرحباً، أرغب في طلب تجربة مجانية لمنصة المقاولات:
+    const msg = `مرحباً، أرغب في طلب تجربة مجانية لمنصة Tashteeb Pro:
 • اسم المسؤول: ${trialForm.name}
 • اسم الشركة/المكتب: ${trialForm.company}
 • الهاتف: ${trialForm.phone}
@@ -80,9 +158,9 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
       id: 'starter',
       name: 'باقة المكاتب الناشئة',
       subtitle: 'للمهندسين المستقلين والمكاتب الفردية',
-      priceMonthly: 199,
-      priceYearly: 149,
-      currency: 'د.إ',
+      priceMonthly: 750,
+      priceYearly: 590,
+      currency: 'ج.م',
       badge: 'انطلاقة قوية 🚀',
       features: [
         'إدارة حتى 5 مشاريع تشطيب نشطة',
@@ -98,9 +176,9 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
       id: 'pro',
       name: 'باقة الشركات الاحترافية',
       subtitle: 'لشركات ومؤسسات التشطيبات والمقاولات',
-      priceMonthly: 399,
-      priceYearly: 299,
-      currency: 'د.إ',
+      priceMonthly: 1490,
+      priceYearly: 1190,
+      currency: 'ج.م',
       badge: 'الأكثر طلباً واستخداماً ⭐',
       features: [
         'مشاريع تشطيبات ومقاولات غير محدودة',
@@ -118,9 +196,9 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
       id: 'enterprise',
       name: 'باقة المقاولات الكبرى',
       subtitle: 'للشركات متعددة الفروع والمؤسسات الكبرى',
-      priceMonthly: 799,
-      priceYearly: 599,
-      currency: 'د.إ',
+      priceMonthly: 2900,
+      priceYearly: 2390,
+      currency: 'ج.م',
       badge: 'حلول مخصصة وشاملة 🏢',
       features: [
         'كل مميزات الباقة الاحترافية',
@@ -166,6 +244,23 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
       fontFamily: "'Cairo', 'Tajawal', sans-serif",
       overflowX: 'hidden'
     }}>
+
+      {/* ─── Mobile Nav Overlay ─── */}
+      {mobileNavOpen && (
+        <div className="landing-mobile-nav-overlay">
+          <button className="mnav-close" onClick={closeMobileNav}><X size={24} /></button>
+          <a href="#features" onClick={closeMobileNav}>المميزات</a>
+          <a href="#pricing" onClick={closeMobileNav}>الأسعار والباقات</a>
+          <a href="#faq" onClick={closeMobileNav}>الأسئلة الشائعة</a>
+          <button className="mnav-btn" onClick={() => { closeMobileNav(); onStartLiveDemo(); }} style={{ color: '#D97706' }}>
+            تجربة حية فوراً (Demo)
+          </button>
+          <button className="mnav-btn" onClick={() => { closeMobileNav(); onGoToLogin(); }}>
+            تسجيل الدخول
+          </button>
+        </div>
+      )}
+
       {/* ─── 1. TOP NAVBAR ─── */}
       <header style={{
         position: 'sticky',
@@ -174,7 +269,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
         background: 'rgba(255, 255, 255, 0.92)',
         backdropFilter: 'blur(16px)',
         borderBottom: '1px solid var(--border, #E2E8F0)',
-        padding: '14px 24px',
+        padding: '12px 16px',
       }}>
         <div style={{
           maxWidth: 1240,
@@ -201,23 +296,23 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
             </div>
             <div>
               <div style={{ fontWeight: 900, fontSize: 18, color: 'var(--ink, #0F172A)', lineHeight: 1.2 }}>
-                منصة بنيان للتشطيبات
+                Tashteeb Pro | تشطيب برو
               </div>
               <div style={{ fontSize: 11, color: 'var(--muted, #64748B)', fontWeight: 600 }}>
-                نظام المقاولات وإدارة المشاريع الموحد
+                المنظومة الذكية لإدارة التشطيبات والمقاولات
               </div>
             </div>
           </div>
 
           {/* Desktop Nav Links */}
-          <nav style={{
+          <nav className="landing-desktop-nav" style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 24,
+            gap: 22,
             fontSize: 14,
             fontWeight: 700,
             color: 'var(--muted, #64748B)'
-          }} className="desktop-nav">
+          }}>
             <a href="#features" style={{ color: 'inherit', textDecoration: 'none', transition: 'color .2s' }}>المميزات</a>
             <a href="#contractors" style={{ color: 'inherit', textDecoration: 'none' }}>مقاولو الباطن</a>
             <a href="#pricing" style={{ color: 'inherit', textDecoration: 'none' }}>الأسعار والباقات</a>
@@ -225,7 +320,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
           </nav>
 
           {/* CTAs */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="landing-header-ctas" style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             <button
               onClick={onStartLiveDemo}
               className="btn btn-primary"
@@ -245,7 +340,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
               }}
             >
               <Sparkles size={15} />
-              <span>تجربة حية فوراً (Demo)</span>
+              <span className="hero-cta-text">تجربة حية (Demo)</span>
             </button>
 
             <button
@@ -265,7 +360,23 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
               }}
             >
               <Lock size={14} />
-              <span>تسجيل الدخول</span>
+              <span className="hero-cta-text">تسجيل الدخول</span>
+            </button>
+
+            {/* Hamburger - Mobile only */}
+            <button
+              className="landing-mobile-menu-btn"
+              onClick={() => setMobileNavOpen(true)}
+              style={{
+                display: 'none',
+                alignItems: 'center', justifyContent: 'center',
+                padding: 9, borderRadius: 10,
+                background: 'var(--bg-color, #F8FAFC)',
+                border: '1.5px solid var(--border, #E2E8F0)',
+                cursor: 'pointer', color: 'var(--ink, #0F172A)'
+              }}
+            >
+              <Menu size={22} />
             </button>
           </div>
         </div>
@@ -273,7 +384,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
 
       {/* ─── 2. HERO SECTION ─── */}
       <section style={{
-        padding: '60px 20px 70px',
+        padding: 'clamp(36px, 6vw, 70px) 16px clamp(40px, 6vw, 70px)',
         textAlign: 'center',
         position: 'relative',
         overflow: 'hidden',
@@ -327,13 +438,15 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
           </p>
 
           {/* Hero CTAs */}
-          <div style={{
+          <div className="landing-hero-btns" style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 14,
+            gap: 12,
             flexWrap: 'wrap',
-            marginTop: 10
+            marginTop: 10,
+            width: '100%',
+            maxWidth: 520
           }}>
             <button
               onClick={onStartLiveDemo}
@@ -360,7 +473,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
             </button>
 
             <button
-              onClick={() => openWhatsApp('مرحباً، أرغب في الاستفسار عن باقات منصة إدارة التشطيبات والمقاولات')}
+              onClick={() => openWhatsApp('مرحباً، أرغب في الاستفسار عن باقات منصة Tashteeb Pro')}
               style={{
                 padding: '14px 24px',
                 fontSize: 15,
@@ -382,41 +495,41 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
           </div>
 
           {/* Quick Stats Grid */}
-          <div style={{
+          <div className="landing-stats-grid" style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-            gap: 16,
+            gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: 12,
             width: '100%',
             maxWidth: 780,
-            marginTop: 36,
+            marginTop: 32,
             background: 'var(--card, #fff)',
-            padding: '20px 24px',
+            padding: 'clamp(14px, 2vw, 20px) clamp(12px, 2vw, 24px)',
             borderRadius: 18,
             border: '1px solid var(--border, #E2E8F0)',
             boxShadow: '0 6px 20px rgba(0,0,0,0.03)'
           }}>
-            <div>
-              <div style={{ fontSize: 26, fontWeight: 900, color: '#D97706' }}>+150</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>شركة ومكتب مقاولات</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 'clamp(18px, 4vw, 26px)', fontWeight: 900, color: '#D97706' }}>+150</div>
+              <div style={{ fontSize: 'clamp(10px, 1.5vw, 12px)', color: 'var(--muted)', fontWeight: 600 }}>شركة ومكتب مقاولات</div>
             </div>
-            <div>
-              <div style={{ fontSize: 26, fontWeight: 900, color: '#0D9488' }}>+2,400</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>مشروع تشطيبات منجز</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 'clamp(18px, 4vw, 26px)', fontWeight: 900, color: '#0D9488' }}>+2,400</div>
+              <div style={{ fontSize: 'clamp(10px, 1.5vw, 12px)', color: 'var(--muted)', fontWeight: 600 }}>مشروع تشطيبات منجز</div>
             </div>
-            <div>
-              <div style={{ fontSize: 26, fontWeight: 900, color: '#6366F1' }}>100%</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>دقة في حسابات المستخلصات</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 'clamp(18px, 4vw, 26px)', fontWeight: 900, color: '#6366F1' }}>100%</div>
+              <div style={{ fontSize: 'clamp(10px, 1.5vw, 12px)', color: 'var(--muted)', fontWeight: 600 }}>دقة في حسابات المستخلصات</div>
             </div>
-            <div>
-              <div style={{ fontSize: 26, fontWeight: 900, color: '#10B981' }}>24/7</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>دعم فني هندسي متواصل</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 'clamp(18px, 4vw, 26px)', fontWeight: 900, color: '#10B981' }}>24/7</div>
+              <div style={{ fontSize: 'clamp(10px, 1.5vw, 12px)', color: 'var(--muted)', fontWeight: 600 }}>دعم فني هندسي متواصل</div>
             </div>
           </div>
         </div>
       </section>
 
       {/* ─── 3. FEATURES SHOWCASE ─── */}
-      <section id="features" style={{ padding: '70px 20px', maxWidth: 1200, margin: '0 auto' }}>
+      <section id="features" style={{ padding: 'clamp(48px, 6vw, 70px) 16px', maxWidth: 1200, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 48 }}>
           <span style={{ color: '#D97706', fontWeight: 800, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 }}>
             مميزات المنصة الشاملة
@@ -429,10 +542,10 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
           </p>
         </div>
 
-        <div style={{
+        <div className="landing-features-grid" style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-          gap: 24
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: 20
         }}>
           {features.map((f, i) => {
             const Icon = f.icon;
@@ -441,7 +554,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
                 key={i}
                 style={{
                   background: 'var(--card, #fff)',
-                  padding: 28,
+                  padding: 'clamp(18px, 3vw, 28px)',
                   borderRadius: 18,
                   border: '1px solid var(--border, #E2E8F0)',
                   display: 'flex',
@@ -477,7 +590,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
 
       {/* ─── 4. PRICING PLANS ─── */}
       <section id="pricing" style={{
-        padding: '80px 20px',
+        padding: 'clamp(48px, 6vw, 80px) 16px',
         background: 'linear-gradient(180deg, transparent 0%, rgba(217, 119, 6, 0.04) 100%)',
         borderTop: '1px solid var(--border, #E2E8F0)'
       }}>
@@ -552,10 +665,10 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
           </div>
 
           {/* Pricing Cards */}
-          <div style={{
+          <div className="landing-pricing-grid" style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-            gap: 24,
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: 20,
             alignItems: 'stretch'
           }}>
             {pricingPlans.map((p) => {
@@ -567,7 +680,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
                   style={{
                     background: 'var(--card, #fff)',
                     borderRadius: 22,
-                    padding: 32,
+                    padding: 'clamp(20px, 3vw, 32px)',
                     border: p.popular ? '2px solid #D97706' : '1px solid var(--border, #E2E8F0)',
                     display: 'flex',
                     flexDirection: 'column',
@@ -601,10 +714,10 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
                   </div>
 
                   {/* Features List */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, marginBottom: 28 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 11, flex: 1, marginBottom: 24 }}>
                     {p.features.map((feat, idx) => (
-                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5 }}>
-                        <Check size={16} color="#10B981" style={{ flexShrink: 0 }} />
+                      <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13.5 }}>
+                        <Check size={16} color="#10B981" style={{ flexShrink: 0, marginTop: 2 }} />
                         <span style={{ color: 'var(--ink)' }}>{feat}</span>
                       </div>
                     ))}
@@ -636,7 +749,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
       </section>
 
       {/* ─── 5. FAQ SECTION ─── */}
-      <section id="faq" style={{ padding: '70px 20px', maxWidth: 840, margin: '0 auto' }}>
+      <section id="faq" style={{ padding: 'clamp(48px, 6vw, 70px) 16px', maxWidth: 840, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <h2 style={{ fontSize: 'clamp(24px, 4vw, 32px)', fontWeight: 900, color: 'var(--ink)' }}>
             الأسئلة الشائعة حول المنصة
@@ -703,7 +816,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
       <footer style={{
         background: 'var(--navy, #0F172A)',
         color: '#F8FAFC',
-        padding: '40px 20px 24px',
+        padding: 'clamp(28px, 4vw, 40px) 16px 20px',
         borderTop: '1px solid rgba(255,255,255,0.08)',
         textAlign: 'center'
       }}>
@@ -716,23 +829,23 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
             }}>
               <Building2 size={20} />
             </div>
-            <span style={{ fontWeight: 800, fontSize: 16, color: '#fff' }}>منصة بنيان لإدارة التشطيبات والمقاولات</span>
+            <span style={{ fontWeight: 800, fontSize: 16, color: '#fff' }}>منصة تشطيب برو — Tashteeb Pro</span>
           </div>
 
           <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, maxWidth: 500, margin: 0 }}>
-            النظام السحابي الأحدث للمهندسين ومكاتب المقاولات والديكور في الإمارات ومصر والمملكة العربية السعودية.
+            النظام السحابي الأحدث للمهندسين ومكاتب المقاولات والديكور في مصر ومختلف الدول العربية.
           </p>
 
-          <div style={{ display: 'flex', gap: 16, fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 8 }}>
+          <div className="landing-footer-links" style={{ display: 'flex', gap: 16, fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
             <span style={{ cursor: 'pointer' }} onClick={onStartLiveDemo}>تجربة حية فورية</span>
-            <span>•</span>
-            <span style={{ cursor: 'pointer' }} onClick={() => openWhatsApp('استفسار')}>تواصل واتساب</span>
-            <span>•</span>
+            <span style={{ opacity: 0.4 }}>•</span>
+            <span style={{ cursor: 'pointer' }} onClick={() => openWhatsApp('استفسار عن منصة Tashteeb Pro')}>تواصل واتساب</span>
+            <span style={{ opacity: 0.4 }}>•</span>
             <span style={{ cursor: 'pointer' }} onClick={onGoToLogin}>بوابة الدخول</span>
           </div>
 
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 16 }}>
-            جميع الحقوق محفوظة © {new Date().getFullYear()} منصة بنيان • اتصال مشفر وآمن 256-bit
+            جميع الحقوق محفوظة © {new Date().getFullYear()} Tashteeb Pro • اتصال مشفر وآمن 256-bit
           </div>
         </div>
       </footer>

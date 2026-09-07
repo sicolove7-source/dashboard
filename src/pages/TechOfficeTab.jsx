@@ -15,9 +15,9 @@ export default function TechOfficeTab({ projects, onSelect }) {
         <h3 style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ 
             display: "flex", alignItems: "center", justifyContent: "center", 
-            width: 32, height: 32, borderRadius: 8, background: "rgba(16, 185, 129, 0.1)" 
+            width: 32, height: 32, borderRadius: 8, background: "#F1F5F9" 
           }}>
-            <FileText size={16} color="#10B981" />
+            <FileText size={16} color="#0F172A" />
           </span>
           متابعة الاعتمادات والمخططات
         </h3>

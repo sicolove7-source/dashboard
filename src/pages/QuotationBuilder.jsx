@@ -218,21 +218,21 @@ export default function QuotationBuilder({ onConvertToProject }) {
   return (
     <div className="grid tab-fade" style={{ gap: 24, paddingBottom: 40 }}>
       {/* Top Banner */}
-      <div className="panel print-hide" style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)', color: '#fff', border: 'none', padding: 24 }}>
+      <div className="panel print-hide" style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <div style={{ width: 52, height: 52, borderRadius: 14, background: 'rgba(245, 158, 11, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Calculator size={28} color="#F59E0B" />
+            <div style={{ width: 48, height: 48, borderRadius: 12, background: '#F1F5F9', color: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Calculator size={24} />
             </div>
             <div>
-              <h2 style={{ margin: 0, fontFamily: 'Tajawal', fontSize: 24, color: '#F8FAFC' }}>حاسبة المقايسات وعروض الأسعار</h2>
-              <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 14, marginTop: 4 }}>حساب تكاليف التشطيب تقديرياً، توليد عرض سعر رسمي للعميل، وتحويله لموقع عمل</div>
+              <h2 style={{ margin: 0, fontFamily: 'Tajawal', fontSize: 22, color: 'var(--ink)' }}>حاسبة المقايسات وعروض الأسعار</h2>
+              <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4 }}>حساب تكاليف التشطيب تقديرياً، توليد عرض سعر رسمي للعميل، وتحويله لموقع عمل</div>
             </div>
           </div>
 
           <div style={{ display: 'flex', gap: 10 }}>
             {activeView !== 'list' && (
-              <button className="btn btn-ghost" onClick={() => setActiveView('list')} style={{ background: 'rgba(255,255,255,0.1)', color: '#fff' }}>
+              <button className="btn" onClick={() => setActiveView('list')}>
                 <ArrowRight size={16} /> العودة للمقايسات
               </button>
             )}
@@ -248,18 +248,18 @@ export default function QuotationBuilder({ onConvertToProject }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           {/* KPI Cards */}
           <div className="grid kpi-grid">
-            <div className="kpi-card" style={{ borderTop: '4px solid var(--teal)' }}>
-              <div className="icon-wrap" style={{ background: 'rgba(16,185,129,.1)' }}><FileSpreadsheet size={20} color="#10B981" /></div>
+            <div className="kpi-card">
+              <div className="icon-wrap" style={{ background: '#F1F5F9', color: '#475569' }}><FileSpreadsheet size={18} /></div>
               <div className="label">إجمالي المقايسات المحفوظة</div>
               <div className="value">{quotations.length}</div>
             </div>
-            <div className="kpi-card" style={{ borderTop: '4px solid #3B82F6' }}>
-              <div className="icon-wrap" style={{ background: 'rgba(59,130,246,.1)' }}><Calculator size={20} color="#3B82F6" /></div>
+            <div className="kpi-card">
+              <div className="icon-wrap" style={{ background: '#F1F5F9', color: '#475569' }}><Calculator size={18} /></div>
               <div className="label">إجمالي قيم العروض التقديرية</div>
               <div className="value">{quotations.reduce((s, q) => s + Number(q.grandTotal || 0), 0).toLocaleString()} {curr}</div>
             </div>
-            <div className="kpi-card" style={{ borderTop: '4px solid var(--amber)' }}>
-              <div className="icon-wrap" style={{ background: 'rgba(245,158,11,.1)' }}><Building2 size={20} color="#F59E0B" /></div>
+            <div className="kpi-card">
+              <div className="icon-wrap" style={{ background: '#F1F5F9', color: '#475569' }}><Building2 size={18} /></div>
               <div className="label">متوسط سعر المتر التشطيب</div>
               <div className="value">
                 {quotations.length ? Math.round(quotations.reduce((s, q) => s + Number(q.costPerSqm || 0), 0) / quotations.length).toLocaleString() : 0} {curr}/م²

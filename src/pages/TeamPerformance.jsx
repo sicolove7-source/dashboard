@@ -198,15 +198,15 @@ export default function TeamPerformance({ projects, team, onAddMember, onUpdateM
   return (
     <div className="grid tab-fade" style={{ gap: 24, paddingBottom: 40 }}>
       {/* Banner & KPI Top Section */}
-      <div className="panel" style={{ background: 'linear-gradient(135deg, var(--navy), #1E293B)', color: '#fff', border: 'none', padding: 24 }}>
+      <div className="panel" style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <div style={{ width: 52, height: 52, borderRadius: 14, background: 'rgba(59, 130, 246, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Users size={28} color="#3B82F6" />
+            <div style={{ width: 44, height: 44, borderRadius: 10, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0F172A' }}>
+              <Users size={22} />
             </div>
             <div>
-              <h2 style={{ margin: 0, fontFamily: 'Tajawal', fontSize: 24, color: '#F8FAFC' }}>إدارة المهندسين وفريق العمل</h2>
-              <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 14, marginTop: 4 }}>إضافة وتعديل بيانات المهندسين ومتابعة توزيعهم على المواقع والأداء</div>
+              <h2 style={{ margin: 0, fontFamily: 'Tajawal', fontSize: 20, color: 'var(--ink)' }}>إدارة المهندسين وفريق العمل</h2>
+              <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4 }}>إضافة وتعديل بيانات المهندسين ومتابعة توزيعهم على المواقع والأداء</div>
             </div>
           </div>
 
@@ -245,18 +245,18 @@ export default function TeamPerformance({ projects, team, onAddMember, onUpdateM
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           {/* KPI Cards */}
           <div className="grid kpi-grid">
-            <div className="kpi-card" style={{ borderTop: '4px solid #3B82F6' }}>
-              <div className="icon-wrap" style={{ background: 'rgba(59, 130, 246, 0.1)' }}><Users size={20} color="#3B82F6" /></div>
+            <div className="kpi-card">
+              <div className="icon-wrap" style={{ background: '#F1F5F9', color: '#475569' }}><Users size={18} /></div>
               <div className="label">إجمالي المهندسين</div>
               <div className="value">{totalEngineers}</div>
             </div>
-            <div className="kpi-card" style={{ borderTop: '4px solid #10B981' }}>
-              <div className="icon-wrap" style={{ background: 'rgba(16, 185, 129, 0.1)' }}><UserCheck size={20} color="#10B981" /></div>
+            <div className="kpi-card">
+              <div className="icon-wrap" style={{ background: '#F1F5F9', color: '#475569' }}><UserCheck size={18} /></div>
               <div className="label">الأعضاء النشطون</div>
               <div className="value">{activeCount}</div>
             </div>
-            <div className="kpi-card" style={{ borderTop: '4px solid #F59E0B' }}>
-              <div className="icon-wrap" style={{ background: 'rgba(245, 158, 11, 0.1)' }}><Building2 size={20} color="#F59E0B" /></div>
+            <div className="kpi-card">
+              <div className="icon-wrap" style={{ background: '#F1F5F9', color: '#475569' }}><Building2 size={18} /></div>
               <div className="label">إجمالي المواقع المسندة</div>
               <div className="value">{(projects || []).length}</div>
             </div>
@@ -420,9 +420,9 @@ export default function TeamPerformance({ projects, team, onAddMember, onUpdateM
           </div>
 
           <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 24 }}>
-            <div className="panel" style={{ borderTop: "4px solid var(--teal)" }}>
+            <div className="panel">
               <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <TrendingUp size={20} color="var(--teal)" /> أفضل المهندسين أداءً (حسب الإغلاق)
+                <TrendingUp size={18} color="#0F172A" /> أفضل المهندسين أداءً (حسب الإغلاق)
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
                 {topEngineers.map((eng, idx) => (
@@ -444,9 +444,9 @@ export default function TeamPerformance({ projects, team, onAddMember, onUpdateM
               </div>
             </div>
 
-            <div className="panel" style={{ borderTop: "4px solid var(--amber)" }}>
+            <div className="panel">
               <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <AlertTriangle size={20} color="var(--amber)" /> تنبيهات: أكثر الملاحظات المفتوحة
+                <AlertTriangle size={18} color="#0F172A" /> تنبيهات: أكثر الملاحظات المفتوحة
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
                 {engineerStats.slice(0, 3).map((eng) => (

@@ -102,16 +102,16 @@ export default function ProjectFinance({ project, onUpdate }) {
 
   function getMilestoneStatus(m) {
     if (m.status === 'collected')
-      return { label: 'محصّلة ✅', color: '#10B981', bg: 'rgba(16,185,129,0.08)' };
+      return { label: 'محصّلة', color: '#16A34A', bg: '#F0FDF4' };
     if (!m.dueDate)
-      return { label: 'معلّقة', color: '#6B7280', bg: 'rgba(107,114,128,0.08)' };
+      return { label: 'معلّقة', color: '#64748B', bg: '#F8FAFC' };
     const d = new Date(m.dueDate); d.setHours(0, 0, 0, 0);
     const diff = Math.round((d - today) / 86400000);
     if (diff < 0)
-      return { label: `متأخرة ${Math.abs(diff)} يوم ⚠️`, color: '#EF4444', bg: 'rgba(239,68,68,0.08)' };
+      return { label: `متأخرة ${Math.abs(diff)} يوم`, color: '#DC2626', bg: '#FEF2F2' };
     if (diff <= DAYS_WARNING)
-      return { label: `مستحقة خلال ${diff} يوم 🔔`, color: '#F59E0B', bg: 'rgba(245,158,11,0.08)' };
-    return { label: `مستحقة ${fmtDate(m.dueDate)}`, color: '#6366F1', bg: 'rgba(99,102,241,0.06)' };
+      return { label: `مستحقة خلال ${diff} يوم`, color: '#D97706', bg: '#FFFBEB' };
+    return { label: `مستحقة ${fmtDate(m.dueDate)}`, color: '#334155', bg: '#F1F5F9' };
   }
 
   const setMF = (k, v) => setMilestoneForm(f => ({ ...f, [k]: v }));
@@ -122,35 +122,35 @@ export default function ProjectFinance({ project, onUpdate }) {
 
       {/* ── KPI Cards ── */}
       <div className="grid kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14 }}>
-        <div className="kpi-card" style={{ borderTop: '4px solid var(--teal)' }}>
-          <div className="icon-wrap" style={{ background: 'rgba(16,185,129,0.1)' }}>
-            <ArrowDownRight size={20} color="#10B981" />
+        <div className="kpi-card">
+          <div className="icon-wrap" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            <ArrowDownRight size={18} color="#64748B" />
           </div>
           <div className="label">إجمالي المقبوضات</div>
-          <div className="value" style={{ color: 'var(--teal)' }}>{money(totalPaid)}</div>
+          <div className="value">{money(totalPaid)}</div>
         </div>
-        <div className="kpi-card" style={{ borderTop: '4px solid var(--danger)' }}>
-          <div className="icon-wrap" style={{ background: 'rgba(239,68,68,0.1)' }}>
-            <ArrowUpRight size={20} color="#EF4444" />
+        <div className="kpi-card">
+          <div className="icon-wrap" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            <ArrowUpRight size={18} color="#64748B" />
           </div>
           <div className="label">إجمالي المصروفات</div>
-          <div className="value" style={{ color: 'var(--danger)' }}>{money(totalSpent)}</div>
+          <div className="value">{money(totalSpent)}</div>
         </div>
-        <div className="kpi-card" style={{ borderTop: '4px solid var(--amber)' }}>
-          <div className="icon-wrap" style={{ background: 'rgba(245,158,11,0.1)' }}>
-            <Wallet size={20} color="#F59E0B" />
+        <div className="kpi-card">
+          <div className="icon-wrap" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            <Wallet size={18} color="#64748B" />
           </div>
           <div className="label">الرصيد المتبقي (السيولة)</div>
           <div className="value" style={{ color: balance < 0 ? 'var(--danger)' : 'var(--ink)' }}>
             {money(balance)}
           </div>
         </div>
-        <div className="kpi-card" style={{ borderTop: '4px solid #6366F1' }}>
-          <div className="icon-wrap" style={{ background: 'rgba(99,102,241,0.1)' }}>
-            <Clock size={20} color="#6366F1" />
+        <div className="kpi-card">
+          <div className="icon-wrap" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            <Clock size={18} color="#64748B" />
           </div>
           <div className="label">مستحقات لم تُحصَّل</div>
-          <div className="value" style={{ color: '#6366F1' }}>{money(milestonePending)}</div>
+          <div className="value">{money(milestonePending)}</div>
         </div>
       </div>
 
@@ -322,7 +322,7 @@ export default function ProjectFinance({ project, onUpdate }) {
                   <div style={{ height: 6, background: 'var(--bg)', borderRadius: 3, border: '1px solid var(--border)', overflow: 'hidden' }}>
                     <div style={{
                       height: '100%', borderRadius: 3,
-                      background: 'linear-gradient(90deg, #10B981, #6366F1)',
+                      background: '#2563EB',
                       width: `${(milestoneCollected + milestonePending) > 0
                         ? (milestoneCollected / (milestoneCollected + milestonePending)) * 100
                         : 0}%`,

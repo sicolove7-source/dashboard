@@ -15,31 +15,30 @@ function DaysChip({ dueDate }) {
   if (d === null) return null;
   const overdue = d < 0;
   const urgent = d >= 0 && d <= 7;
-  const color = overdue ? 'var(--danger)' : urgent ? 'var(--amber)' : 'var(--teal)';
-  const bg = overdue ? 'rgba(239,68,68,0.1)' : urgent ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)';
-  const icon = overdue ? '🔴' : urgent ? '⚠️' : '✅';
+  const color = overdue ? '#991B1B' : urgent ? '#9A3412' : '#475569';
+  const bg = overdue ? '#FEE2E2' : urgent ? '#FFEDD5' : '#F1F5F9';
   const label = overdue
     ? `متأخر ${Math.abs(d)} يوم`
     : d === 0
-    ? 'اليوم آخر موعد!'
+    ? 'اليوم آخر موعد'
     : `${d} يوم متبقي`;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color, background: bg, padding: '4px 10px', borderRadius: 99, border: `1px solid ${color}33` }}>
-      {icon} {label}
+    <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11, fontWeight: 600, color, background: bg, padding: '3px 8px', borderRadius: 6 }}>
+      {label}
     </span>
   );
 }
 
 function ProgressBar({ value, status }) {
-  const color = status === 'on_track' ? 'var(--teal)' : status === 'at_risk' ? 'var(--amber)' : 'var(--danger)';
+  const color = status === 'on_track' ? '#16A34A' : status === 'at_risk' ? '#D97706' : '#DC2626';
   return (
-    <div style={{ marginTop: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-        <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>الإنجاز الكلي</span>
-        <span style={{ fontSize: 13, fontWeight: 800, color }}>{value}%</span>
+    <div style={{ marginTop: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+        <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500 }}>نسبة الإنجاز</span>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)' }}>{value}%</span>
       </div>
-      <div style={{ height: 8, background: 'rgba(0,0,0,0.07)', borderRadius: 99, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: value + '%', background: color, borderRadius: 99, transition: 'width 0.6s cubic-bezier(0.4,0,0.2,1)', boxShadow: `0 0 6px ${color}66` }} />
+      <div style={{ height: 6, background: '#E2E8F0', borderRadius: 99, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: value + '%', background: color, borderRadius: 99, transition: 'width 0.4s ease' }} />
       </div>
     </div>
   );
@@ -74,19 +73,19 @@ export default function ProjectsTab({ projects, onOpenDetail, onOpenEdit, onDele
   return (
     <div className="tab-fade" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      {/* ── Summary Strip ─────────────────────────────────────────── */}
+      {/* ── Summary Strip (Clean & Neutral) ───────────────────────── */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         {[
-          { label: 'إجمالي المواقع', value: stats.total, color: 'var(--teal)', bg: 'rgba(16,185,129,0.08)', icon: <Home size={16} /> },
-          { label: 'متأخرة', value: stats.delayed, color: 'var(--danger)', bg: 'rgba(239,68,68,0.08)', icon: <AlertTriangle size={16} /> },
-          { label: 'تحتاج متابعة', value: stats.atRisk, color: 'var(--amber)', bg: 'rgba(245,158,11,0.08)', icon: <Clock size={16} /> },
-          { label: 'تُسلَّم هذا الأسبوع', value: stats.dueThisWeek, color: '#3B82F6', bg: 'rgba(59,130,246,0.08)', icon: <Calendar size={16} /> },
+          { label: 'إجمالي المواقع', value: stats.total, icon: <Home size={15} /> },
+          { label: 'متأخرة', value: stats.delayed, icon: <AlertTriangle size={15} />, highlight: stats.delayed > 0 ? '#DC2626' : null },
+          { label: 'تحتاج متابعة', value: stats.atRisk, icon: <Clock size={15} />, highlight: stats.atRisk > 0 ? '#D97706' : null },
+          { label: 'تُسلَّم هذا الأسبوع', value: stats.dueThisWeek, icon: <Calendar size={15} /> },
         ].map(s => (
-          <div key={s.label} style={{ flex: '1 1 140px', padding: '14px 18px', borderRadius: 14, background: s.bg, border: `1px solid ${s.color}33`, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ color: s.color }}>{s.icon}</div>
+          <div key={s.label} style={{ flex: '1 1 140px', padding: '12px 16px', borderRadius: 10, background: 'var(--card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ color: s.highlight || 'var(--muted)', background: '#F1F5F9', width: 34, height: 34, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{s.icon}</div>
             <div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, fontWeight: 600 }}>{s.label}</div>
+              <div style={{ fontSize: 19, fontWeight: 800, color: s.highlight || 'var(--ink)', lineHeight: 1 }}>{s.value}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, fontWeight: 500 }}>{s.label}</div>
             </div>
           </div>
         ))}
@@ -122,12 +121,9 @@ export default function ProjectsTab({ projects, onOpenDetail, onOpenEdit, onDele
         </select>
       </div>
 
-      {/* ── Cards Grid ───────────────────────────────────────────── */}
+      {/* ── Cards Grid (Calm & Clean) ────────────────────────────── */}
       <div className="grid project-grid">
         {filtered.map(p => {
-          const d = daysLeft(p.dueDate);
-          const isOverdue = d !== null && d < 0;
-          const isUrgent = d !== null && d >= 0 && d <= 7;
           const roomsCount = (p.rooms || []).length;
           const roomsDone = (p.rooms || []).filter(r => {
             let t = 0, done = 0;
@@ -135,11 +131,8 @@ export default function ProjectsTab({ projects, onOpenDetail, onOpenEdit, onDele
             return t > 0 && done === t;
           }).length;
 
-          const borderColor = isOverdue ? 'var(--danger)' : isUrgent ? 'var(--amber)' : 'var(--glass-border)';
-          const topAccent = isOverdue ? 'var(--danger)' : isUrgent ? 'var(--amber)' : p.status === 'on_track' ? 'var(--teal)' : 'var(--amber)';
-
           return (
-            <div key={p.id} className="project-card" style={{ borderColor, borderTop: `3px solid ${topAccent}`, display: 'flex', flexDirection: 'column', gap: 0 }}
+            <div key={p.id} className="project-card" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}
               onClick={() => onOpenDetail(p.id)}>
 
               {/* Actions */}
@@ -150,26 +143,25 @@ export default function ProjectsTab({ projects, onOpenDetail, onOpenEdit, onDele
                 </div>
               )}
 
-              {/* Top: name + ring */}
-              <div className="top" style={{ marginBottom: 8 }}>
+              {/* Top: Name & Client */}
+              <div className="top" style={{ marginBottom: 6 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="name" style={{ fontSize: 16 }}>{p.name}</div>
-                  <div className="client" style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div className="name" style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</div>
+                  <div className="client" style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <User size={12} /> {p.client}
                   </div>
                   {p.area && (
-                    <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
                       <MapPin size={11} /> {p.area} {p.type && `• ${p.type}`}
                     </div>
                   )}
                 </div>
-                <StampRing value={p.progress} size={54} />
               </div>
 
-              {/* Progress Bar */}
+              {/* Clean Progress Bar */}
               <ProgressBar value={p.progress} status={p.status} />
 
-              {/* Days chip + Status */}
+              {/* Status Badge + Days chip */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
                 <StatusBadge status={p.status} />
                 <DaysChip dueDate={p.dueDate} />
@@ -186,11 +178,11 @@ export default function ProjectsTab({ projects, onOpenDetail, onOpenEdit, onDele
                   <span>{(p.snags || []).filter(s => s.status !== 'done').length} ملاحظة مفتوحة</span>
                 </div>
                 {roomsCount > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: roomsDone === roomsCount ? 'var(--teal)' : 'var(--muted)', fontSize: 12, gridColumn: '1/-1' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 12, gridColumn: '1/-1' }}>
                     <Home size={12} />
                     <span style={{ fontWeight: 600 }}>{roomsDone}/{roomsCount} أحياز مكتملة</span>
-                    <div style={{ flex: 1, height: 4, background: 'rgba(0,0,0,0.07)', borderRadius: 99, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: (roomsCount > 0 ? (roomsDone / roomsCount) * 100 : 0) + '%', background: 'var(--teal)', borderRadius: 99 }} />
+                    <div style={{ flex: 1, height: 4, background: '#E2E8F0', borderRadius: 99, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: (roomsCount > 0 ? (roomsDone / roomsCount) * 100 : 0) + '%', background: '#1877F2', borderRadius: 99 }} />
                     </div>
                   </div>
                 )}

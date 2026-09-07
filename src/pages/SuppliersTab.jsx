@@ -2,10 +2,11 @@ import React, { useState, useMemo } from 'react';
 import {
   Truck, Package, Wrench, Plus, Search, X, Phone, MapPin,
   Star, Trash2, Pencil, CheckCircle2, AlertTriangle,
-  Clock, Users, ChevronDown, ChevronUp, TrendingUp, FileText
+  Clock, Users, ChevronDown, ChevronUp, TrendingUp, FileText, HardHat
 } from 'lucide-react';
 import { getGlobalCurrency } from '../utils/helpers';
 import CraftsmanContractModal from '../components/CraftsmanContractModal';
+import SubcontractorsTab from './SubcontractorsTab';
 
 const STORE_SUPPLIERS = 'db-suppliers-v1';
 const STORE_WORKERS   = 'db-workers-v1';
@@ -117,17 +118,17 @@ function SuppliersSection() {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
       {/* KPIs */}
-      <div className="grid kpi-grid">
-        <div className="kpi-card" style={{ borderTop:'4px solid var(--teal)' }}>
-          <div className="icon-wrap" style={{ background:'rgba(16,185,129,.1)' }}><Truck size={20} color="#10B981"/></div>
+      <div className="grid kpi-grid suppliers-kpi-grid">
+        <div className="kpi-card">
+          <div className="icon-wrap" style={{ background: '#F1F5F9', color: '#475569' }}><Truck size={18}/></div>
           <div className="label">إجمالي الموردين</div><div className="value">{items.length}</div>
         </div>
-        <div className="kpi-card" style={{ borderTop:'4px solid var(--amber)' }}>
-          <div className="icon-wrap" style={{ background:'rgba(245,158,11,.1)' }}><CheckCircle2 size={20} color="#F59E0B"/></div>
+        <div className="kpi-card">
+          <div className="icon-wrap" style={{ background: '#F1F5F9', color: '#475569' }}><CheckCircle2 size={18}/></div>
           <div className="label">موردون موثوقون</div><div className="value">{trusted}</div>
         </div>
-        <div className="kpi-card" style={{ borderTop:'4px solid #3B82F6' }}>
-          <div className="icon-wrap" style={{ background:'rgba(59,130,246,.1)' }}><Star size={20} color="#3B82F6"/></div>
+        <div className="kpi-card">
+          <div className="icon-wrap" style={{ background: '#F1F5F9', color: '#475569' }}><Star size={18}/></div>
           <div className="label">متوسط التقييم</div><div className="value">{avgRating} ★</div>
         </div>
       </div>
@@ -427,20 +428,20 @@ function WorkersSection() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* KPIs */}
       <div className="grid kpi-grid">
-        <div className="kpi-card" style={{ borderTop: '4px solid var(--teal)' }}>
-          <div className="icon-wrap" style={{ background: 'rgba(16,185,129,.1)' }}><Users size={20} color="#10B981"/></div>
+        <div className="kpi-card">
+          <div className="icon-wrap" style={{ background: '#F1F5F9', color: '#475569' }}><Users size={18}/></div>
           <div className="label">إجمالي الصنايعية</div><div className="value">{items.length}</div>
         </div>
-        <div className="kpi-card" style={{ borderTop: '4px solid #3B82F6' }}>
-          <div className="icon-wrap" style={{ background: 'rgba(59,130,246,.1)' }}><CheckCircle2 size={20} color="#3B82F6"/></div>
+        <div className="kpi-card">
+          <div className="icon-wrap" style={{ background: '#F1F5F9', color: '#475569' }}><CheckCircle2 size={18}/></div>
           <div className="label">متاحون الآن</div><div className="value">{available}</div>
         </div>
-        <div className="kpi-card" style={{ borderTop: '4px solid var(--amber)' }}>
-          <div className="icon-wrap" style={{ background: 'rgba(245,158,11,.1)' }}><TrendingUp size={20} color="#F59E0B"/></div>
+        <div className="kpi-card">
+          <div className="icon-wrap" style={{ background: '#F1F5F9', color: '#475569' }}><TrendingUp size={18}/></div>
           <div className="label">متوسط اليومية</div><div className="value">{avgRate.toLocaleString()} ج</div>
         </div>
-        <div className="kpi-card" style={{ borderTop: '4px solid #8B5CF6' }}>
-          <div className="icon-wrap" style={{ background: 'rgba(139,92,246,.1)' }}><Star size={20} color="#8B5CF6"/></div>
+        <div className="kpi-card">
+          <div className="icon-wrap" style={{ background: '#F1F5F9', color: '#475569' }}><Star size={18}/></div>
           <div className="label">تقييم 4 نجوم+</div><div className="value">{topRated}</div>
         </div>
       </div>
@@ -463,9 +464,9 @@ function WorkersSection() {
         <button 
           className="btn" 
           onClick={() => setContractWorker({})} 
-          style={{ background: 'linear-gradient(135deg, #1E1B4B, #4338CA)', color: '#fff', border: 'none', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}
+          style={{ background: '#0F172A', color: '#fff', border: '1px solid #1E293B', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
         >
-          <FileText size={15}/> صياغة عقد صنايعي 📜
+          <FileText size={15}/> صياغة عقد صنايعي
         </button>
         <button className="btn btn-primary" onClick={openAdd}><Plus size={16}/> إضافة صنايعي</button>
       </div>
@@ -712,40 +713,51 @@ function WorkersSection() {
 }
 
 /* ── Main Page ─────────────────────────────────────── */
-export default function SuppliersTab() {
+export default function SuppliersTab({ projects = [], companySettings, userRole }) {
   const [activeTab, setActiveTab] = useState('suppliers');
   const tabs = [
-    { key:'suppliers', label:'الموردون والمواد',   icon:Truck },
-    { key:'workers',   label:'الصنايعية والعمالة', icon:Wrench },
+    { key:'suppliers',      label:'الموردون والمواد',          shortLabel:'الموردون',        icon:Truck },
+    { key:'workers',        label:'الصنايعية والعمالة',         shortLabel:'الصنايعية',       icon:Wrench },
+    { key:'subcontractors', label:'مقاولو الباطن والمستخلصات', shortLabel:'مقاولو الباطن',   icon:HardHat },
   ];
   return (
-    <div className="grid tab-fade" style={{ gap:24, paddingBottom:40 }}>
+    <div className="tab-fade suppliers-page-container" style={{ display: 'flex', flexDirection: 'column', gap:20, paddingBottom:60, width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
       {/* Banner */}
-      <div className="panel" style={{ background:'linear-gradient(135deg, var(--navy), #0F3460)', color:'#fff', border:'none', padding:28 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-          <div style={{ width:52, height:52, borderRadius:14, background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-            <Package size={28} color="#F59E0B"/>
+      <div className="panel suppliers-banner" style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: 24, width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+          <div className="banner-icon-wrap" style={{ width: 44, height: 44, borderRadius: 10, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Package size={22} color="#0F172A"/>
           </div>
-          <div>
-            <h2 style={{ margin:0, fontFamily:'Tajawal', fontSize:24, color:'#F8FAFC' }}>إدارة الموردين والصنايعية</h2>
-            <div style={{ color:'rgba(255,255,255,.65)', fontSize:14, marginTop:4 }}>سجل موردي الخامات والمواد وعمالة التشطيبات في مكان واحد</div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <h2 className="banner-title" style={{ margin: 0, fontFamily: 'Tajawal', fontSize: 20, color: 'var(--ink)', lineHeight: 1.3 }}>إدارة الموردين والصنايعية ومقاولي الباطن</h2>
+            <div className="banner-sub" style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4, lineHeight: 1.4 }}>سجل موردي الخامات والمواد وعمالة التشطيبات ومقاولي الباطن والمستخلصات</div>
           </div>
         </div>
       </div>
 
-      {/* Sub-tabs */}
-      <div className="subtabs" style={{ marginBottom:0 }}>
+      {/* Sub-tabs: 3 equal columns on mobile */}
+      <div className="subtabs suppliers-main-subtabs" style={{ marginBottom:0, width: '100%', boxSizing: 'border-box' }}>
         {tabs.map(t => (
           <div key={t.key} className={`subtab ${activeTab===t.key ? 'active' : ''}`} onClick={() => setActiveTab(t.key)}>
-            <t.icon size={16}/> {t.label}
+            <t.icon size={16}/>
+            <span className="desktop-tab-label">{t.label}</span>
+            <span className="mobile-tab-label">{t.shortLabel}</span>
           </div>
         ))}
       </div>
 
-      <div className="tab-fade">
-        {activeTab==='suppliers' && <SuppliersSection/>}
-        {activeTab==='workers'   && <WorkersSection/>}
+      <div className="tab-fade" style={{ width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
+        {activeTab==='suppliers'      && <SuppliersSection/>}
+        {activeTab==='workers'        && <WorkersSection/>}
+        {activeTab==='subcontractors' && (
+          <SubcontractorsTab
+            projects={projects}
+            userRole={userRole}
+            companySettings={companySettings}
+          />
+        )}
       </div>
     </div>
   );
 }
+

@@ -28,21 +28,20 @@ const EXPENSE_CATS = ['رواتب', 'مواد خام', 'عمالة', 'معدات
 function KPICard({ label, value, sub, icon: Icon, color, trend, trendLabel }) {
   return (
     <div style={{
-      background: 'var(--card)', borderRadius: 16, padding: '14px 16px',
-      border: '1px solid var(--border)', borderTop: `4px solid ${color}`,
-      display: 'flex', flexDirection: 'column', gap: 6, position: 'relative', overflow: 'hidden'
+      background: 'var(--card)', borderRadius: 12, padding: '16px',
+      border: '1px solid var(--border)',
+      display: 'flex', flexDirection: 'column', gap: 6, position: 'relative', overflow: 'hidden',
+      boxShadow: 'var(--shadow-sm)'
     }}>
-      <div style={{ position: 'absolute', left: 10, top: 10, opacity: 0.05, transform: 'scale(1.8)', transformOrigin: 'top left' }}>
-        <Icon size={32} color={color} />
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{
-          width: 28, height: 28, borderRadius: 8,
-          background: color + '20', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+          width: 32, height: 32, borderRadius: 8,
+          background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          color: '#475569'
         }}>
-          <Icon size={14} color={color} />
+          <Icon size={16} />
         </div>
-        <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+        <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
       </div>
       <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--ink)', lineHeight: 1.2, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {value}
@@ -319,10 +318,10 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                 padding: '8px 6px', borderRadius: 10, border: 'none', cursor: 'pointer',
                 fontFamily: 'Cairo', fontWeight: 700, whiteSpace: 'nowrap', transition: 'all 0.2s',
-                background: isActive ? 'var(--amber)' : 'transparent',
+                background: isActive ? '#0F172A' : 'transparent',
                 color: isActive ? '#fff' : 'var(--muted)',
-                boxShadow: isActive ? '0 2px 8px rgba(217,119,6,0.3)' : 'none',
-                fontSize: 11.5,
+                boxShadow: 'none',
+                fontSize: 12,
               }}>
               <Icon size={13} />
               <span className="finance-tab-label-full">{t.label}</span>
@@ -373,12 +372,12 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
 
           {/* Profit Gauge */}
           <div style={{
-            background: 'var(--card)', borderRadius: 16, padding: '18px 20px',
-            border: '1px solid var(--border)', borderTop: '4px solid #10B981'
+            background: 'var(--card)', borderRadius: 12, padding: '18px 20px',
+            border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
               <h3 style={{ margin: 0, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14.5 }}>
-                <TrendingUp size={17} color="#10B981" /> مؤشر الصحة المالية للشركة
+                <TrendingUp size={17} color="#1877F2" /> مؤشر الصحة المالية للشركة
               </h3>
               <span style={{
                 fontSize: 17, fontWeight: 800, fontFamily: 'monospace',
@@ -414,9 +413,9 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
           {/* 2-col: Overdue + Pie */}
           <div className="finance-charts-grid">
             {/* Overdue projects */}
-            <div style={{ background: 'var(--card)', borderRadius: 16, padding: '18px 20px', border: '1px solid var(--border)', borderTop: '4px solid #EF4444' }}>
+            <div style={{ background: 'var(--card)', borderRadius: 12, padding: '18px 20px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
               <h3 style={{ margin: '0 0 14px', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
-                <AlertCircle size={17} color="#EF4444" /> مشاريع بها مستحقات متأخرة
+                <AlertCircle size={17} color="#DC2626" /> مشاريع بها مستحقات متأخرة
               </h3>
               {kpis.overdueProjects.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--muted)' }}>
@@ -676,15 +675,14 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
           <div className="quarterly-cards-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
             {quarterlyData.map((q, i) => (
               <div key={i} style={{
-                background: 'var(--card)', borderRadius: 16, padding: '14px 16px',
-                border: `1px solid var(--border)`,
-                borderTop: `4px solid ${i === currentQuarter ? '#6366F1' : 'var(--border)'}`,
-                position: 'relative'
+                background: 'var(--card)', borderRadius: 12, padding: '14px 16px',
+                border: `1px solid ${i === currentQuarter ? '#0F172A' : 'var(--border)'}`,
+                position: 'relative', boxShadow: 'var(--shadow-sm)'
               }}>
                 {i === currentQuarter && (
                   <span style={{
-                    position: 'absolute', top: 10, left: 10, fontSize: 9.5, fontWeight: 800,
-                    background: '#6366F1', color: 'white', padding: '2px 6px', borderRadius: 20
+                    position: 'absolute', top: 10, left: 10, fontSize: 9.5, fontWeight: 700,
+                    background: '#0F172A', color: 'white', padding: '2px 8px', borderRadius: 20
                   }}>الحالي</span>
                 )}
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>{q.name}</div>
@@ -725,11 +723,11 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
           </div>
 
           {/* Print-friendly quarterly report */}
-          <div style={{ background: 'var(--card)', borderRadius: 16, padding: '18px 20px', border: '1px solid var(--border)', borderTop: '4px solid #6366F1' }}>
+          <div style={{ background: 'var(--card)', borderRadius: 12, padding: '18px 20px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
-              <h3 style={{ margin: 0, color: 'var(--ink)', fontSize: 13.5 }}>📋 التقرير المالي الربع سنوي — {filterYear}</h3>
-              <button className="btn" onClick={() => window.print()}
-                style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#6366F1', color: 'white', border: 'none', fontSize: 11, padding: '5px 10px' }}>
+              <h3 style={{ margin: 0, color: 'var(--ink)', fontSize: 13.5 }}>التقرير المالي الربع سنوي — {filterYear}</h3>
+              <button className="btn btn-primary" onClick={() => window.print()}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '5px 12px' }}>
                 <Printer size={13} /> طباعة
               </button>
             </div>
