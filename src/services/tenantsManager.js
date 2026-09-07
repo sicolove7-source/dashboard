@@ -7,6 +7,20 @@
 
 import { setGlobalCurrency } from '../utils/helpers';
 import { DEMO_ACCOUNTS } from '../utils/permissions';
+import {
+  fetchCompanyDataFromCloud,
+  syncCompanyDataToCloud,
+  syncSettingsToCloud,
+  syncTeamToCloud,
+  syncLeadsToCloud,
+  syncProjectsToCloud,
+  syncCompanyUsersToCloud,
+  deleteCompanyFromCloud,
+  fetchTenantsListFromCloud,
+  syncTenantsListToCloud,
+  fetchSuperAdminFromCloud,
+  syncSuperAdminToCloud,
+} from './cloudSync';
 
 export const PLATFORM_TENANTS_KEY = 'platform-tenants-master-v1';
 export const ACTIVE_TENANT_ID_KEY = 'platform-active-tenant-id';
@@ -80,6 +94,7 @@ export function saveSuperAdminAccount(creds) {
       password: creds.password,
     };
     localStorage.setItem(SUPER_ADMIN_STORAGE_KEY, JSON.stringify(data));
+    try { syncSuperAdminToCloud(data); } catch (e) {}
     return true;
   } catch (e) {
     console.error("Error saving superadmin credentials:", e);
@@ -170,9 +185,27 @@ export function loadAllTenants() {
   return [...DEFAULT_TENANTS];
 }
 
+export async function loadAllTenantsAsync() {
+  try {
+    const cloudTenants = await fetchTenantsListFromCloud();
+    if (Array.isArray(cloudTenants) && cloudTenants.length > 0) {
+      try { localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(cloudTenants)); } catch (e) {}
+      return cloudTenants;
+    }
+  } catch (e) {
+    console.warn("Could not load tenants from cloud, falling back to local:", e);
+  }
+  const local = loadAllTenants();
+  try { syncTenantsListToCloud(local); } catch (e) {}
+  return local;
+}
+
 export function saveAllTenants(tenants) {
   try {
     localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(tenants));
+  } catch (e) {}
+  try {
+    syncTenantsListToCloud(tenants);
   } catch (e) {}
 }
 
@@ -269,11 +302,26 @@ export function createTenant(data) {
   localStorage.setItem(`tenant_${id}_leads`, JSON.stringify(companyLeads));
 
   // المشاريع
+  let initialProjects = [];
   if (data.seedDemoProject) {
     const demoProject = createSeedVillaProject(id, newTenant);
-    localStorage.setItem(`tenant_${id}_projects`, JSON.stringify([demoProject]));
+    initialProjects = [demoProject];
+    localStorage.setItem(`tenant_${id}_projects`, JSON.stringify(initialProjects));
   } else {
     localStorage.setItem(`tenant_${id}_projects`, JSON.stringify([]));
+  }
+
+  // رفع وتثبيت فضاء عمل الشركة بالكامل في السحابة لحظياً
+  try {
+    syncCompanyDataToCloud(id, {
+      settings: companySettings,
+      users: companyUsers,
+      team: companyTeam,
+      leads: companyLeads,
+      projects: initialProjects,
+    });
+  } catch (e) {
+    console.warn("Cloud sync for new tenant failed:", e);
   }
 
   return newTenant;
@@ -285,6 +333,20 @@ export function updateTenant(id, updates) {
   if (idx !== -1) {
     tenants[idx] = { ...tenants[idx], ...updates };
     saveAllTenants(tenants);
+    try {
+      syncCompanyDataToCloud(id, {
+        settings: {
+          companyName: tenants[idx].name,
+          companySubtitle: tenants[idx].subtitle,
+          city: tenants[idx].city,
+          country: tenants[idx].country,
+          currency: tenants[idx].currency,
+          phone: tenants[idx].phone,
+          primaryColor: tenants[idx].primaryColor,
+          accentColor: tenants[idx].accentColor,
+        }
+      });
+    } catch (e) {}
     return tenants[idx];
   }
   return null;
@@ -299,6 +361,9 @@ export function deleteTenant(id) {
     localStorage.removeItem(`tenant_${id}_users`);
     localStorage.removeItem(`tenant_${id}_team`);
     localStorage.removeItem(`tenant_${id}_leads`);
+  } catch (e) {}
+  try {
+    deleteCompanyFromCloud(id);
   } catch (e) {}
   return tenants;
 }
@@ -446,6 +511,69 @@ export function getTenantData(companyId) {
   return { tenant, settings, users, team, leads, projects };
 }
 
+/**
+ * جلب بيانات الشركة سحابياً مع حفظ الكاش المحلي للسرعة والعمل بدون إنترنت
+ */
+export async function getTenantDataAsync(companyId) {
+  try {
+    const cloud = await fetchCompanyDataFromCloud(companyId);
+    if (cloud) {
+      const tenants = await loadAllTenantsAsync();
+      const tenant = tenants.find(t => t.id === companyId) || tenants[0] || DEFAULT_TENANTS[0];
+
+      const settings = cloud.settings || {
+        companyName: tenant.name,
+        companySubtitle: tenant.subtitle,
+        city: tenant.city,
+        country: tenant.country,
+        currency: tenant.currency || 'ج.م',
+        phone: tenant.phone,
+        primaryColor: tenant.primaryColor,
+        accentColor: tenant.accentColor,
+        companyLogo: null,
+      };
+      const users = Array.isArray(cloud.users) && cloud.users.length > 0 ? cloud.users : null;
+      const team = cloud.team || null;
+      const leads = Array.isArray(cloud.leads) ? cloud.leads : null;
+      const projects = Array.isArray(cloud.projects) ? cloud.projects : null;
+
+      // تحديث الـ LocalStorage Cache
+      if (settings) try { localStorage.setItem(`tenant_${companyId}_settings`, JSON.stringify(settings)); } catch (e) {}
+      if (users) try { localStorage.setItem(`tenant_${companyId}_users`, JSON.stringify(users)); } catch (e) {}
+      if (team) try { localStorage.setItem(`tenant_${companyId}_team`, JSON.stringify(team)); } catch (e) {}
+      if (leads) try { localStorage.setItem(`tenant_${companyId}_leads`, JSON.stringify(leads)); } catch (e) {}
+      if (projects) try { localStorage.setItem(`tenant_${companyId}_projects`, JSON.stringify(projects)); } catch (e) {}
+
+      if (settings.currency) setGlobalCurrency(settings.currency);
+
+      const localFallback = getTenantData(companyId);
+      return {
+        tenant,
+        settings,
+        users: users || localFallback.users,
+        team: team || localFallback.team,
+        leads: leads || localFallback.leads,
+        projects: projects || localFallback.projects,
+      };
+    }
+  } catch (e) {
+    console.warn("getTenantDataAsync error, using local:", e);
+  }
+
+  // في حال تعذر السحابة، نعتمد على الكاش المحلي ونرفعه للسحابة لتهيئتها
+  const localData = getTenantData(companyId);
+  try {
+    syncCompanyDataToCloud(companyId, {
+      settings: localData.settings,
+      users: localData.users,
+      team: localData.team,
+      leads: localData.leads,
+      projects: localData.projects,
+    });
+  } catch (e) {}
+  return localData;
+}
+
 export function authenticateTenantUser(email, password) {
   const cleanEmail = email.toLowerCase().trim();
   const superAdmin = getSuperAdminAccount();
@@ -532,6 +660,130 @@ export function authenticateTenantUser(email, password) {
         companyId: defaultTenant.id,
         companyName: defaultTenant.name,
         currency: defaultTenant.currency || 'د.إ',
+      },
+      tenant: defaultTenant,
+      isSuperAdmin: false,
+    };
+  }
+
+  return { success: false, error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' };
+}
+
+/**
+ * المصادقة السحابية الفورية — تفحص السحابة أولاً لتمكين الدخول من أي هاتف أو جهاز فوراً
+ */
+export async function authenticateTenantUserAsync(email, password) {
+  const cleanEmail = (email || '').toLowerCase().trim();
+
+  // 1. مزامنة حساب الـ Super Admin من السحابة أولاً
+  try {
+    const cloudSuperAdmin = await fetchSuperAdminFromCloud();
+    if (cloudSuperAdmin && cloudSuperAdmin.email && cloudSuperAdmin.password) {
+      saveSuperAdminAccount(cloudSuperAdmin);
+    }
+  } catch (e) {}
+
+  const superAdmin = getSuperAdminAccount();
+  if (cleanEmail === superAdmin.email.toLowerCase().trim() && password === superAdmin.password) {
+    return {
+      success: true,
+      user: superAdmin,
+      tenant: null,
+      isSuperAdmin: true,
+    };
+  }
+
+  // 2. التحقق من صلاحية دخول الحسابات الفرعية
+  if (!isSubAccountsLoginAllowed()) {
+    return {
+      success: false,
+      error: '🔒 تم قفل دخول الحسابات الفرعية من قِبل إدارة المنصة. الدخول مخصص فقط لمالك المنصة الرئيسي.',
+    };
+  }
+
+  // 3. جلب أحدث قائمة شركات من السحابة
+  let tenants = [];
+  try {
+    tenants = await loadAllTenantsAsync();
+  } catch (e) {
+    tenants = loadAllTenants();
+  }
+
+  for (const t of tenants) {
+    // فحص مالك الشركة (Owner Admin)
+    if (t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail && t.adminPassword === password) {
+      if (t.status === 'suspended') {
+        return { success: false, error: 'تم تعليق حساب هذه الشركة. يرجى التواصل مع إدارة المنصة.' };
+      }
+      return {
+        success: true,
+        user: {
+          id: `u_${t.id}_admin`,
+          email: t.adminEmail,
+          name: t.adminName,
+          role: 'owner',
+          companyId: t.id,
+          companyName: t.name,
+          currency: t.currency || 'ج.م',
+        },
+        tenant: t,
+        isSuperAdmin: false,
+      };
+    }
+
+    // فحص مستخدمي الشركة (محلياً وسحابياً)
+    let users = null;
+    try {
+      const rawUsers = localStorage.getItem(`tenant_${t.id}_users`);
+      if (rawUsers) users = JSON.parse(rawUsers);
+    } catch (e) {}
+
+    if (!users) {
+      try {
+        const cloudData = await fetchCompanyDataFromCloud(t.id);
+        if (cloudData && Array.isArray(cloudData.users)) {
+          users = cloudData.users;
+          try { localStorage.setItem(`tenant_${t.id}_users`, JSON.stringify(users)); } catch (e) {}
+        }
+      } catch (e) {}
+    }
+
+    if (Array.isArray(users)) {
+      const match = users.find(u => u.email && u.email.toLowerCase().trim() === cleanEmail && u.password === password);
+      if (match) {
+        if (t.status === 'suspended') {
+          return { success: false, error: 'تم تعليق حساب هذه الشركة. يرجى التواصل مع إدارة المنصة.' };
+        }
+        return {
+          success: true,
+          user: {
+            ...match,
+            companyId: t.id,
+            companyName: t.name,
+            currency: t.currency || 'ج.م',
+          },
+          tenant: t,
+          isSuperAdmin: false,
+        };
+      }
+    }
+  }
+
+  // 4. فحص الحسابات التجريبية (Demo Accounts)
+  const demoMatch = (DEMO_ACCOUNTS || []).find(a => a.email.toLowerCase() === cleanEmail && a.password === password);
+  if (demoMatch) {
+    const defaultTenant = tenants[0] || DEFAULT_TENANTS[0];
+    return {
+      success: true,
+      user: {
+        id: `demo_${demoMatch.role}_${Date.now()}`,
+        email: demoMatch.email,
+        name: demoMatch.name,
+        role: demoMatch.role,
+        engineerName: demoMatch.engineerName,
+        companyId: defaultTenant.id,
+        companyName: defaultTenant.name,
+        currency: defaultTenant.currency || 'ج.م',
       },
       tenant: defaultTenant,
       isSuperAdmin: false,

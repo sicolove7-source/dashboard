@@ -29,8 +29,8 @@ import ClientPortal from './pages/ClientPortal';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import OnboardingTourModal from './components/OnboardingTourModal';
 import WhatsAppSupportWidget from './components/WhatsAppSupportWidget';
-import { getActiveTenantId, setActiveTenantId, getTenantData, loadAllTenants, isSubAccountsLoginAllowed } from './services/tenantsManager';
-import { syncProjectsToCloud, syncTeamToCloud, syncLeadsToCloud, subscribeToCloudProjects } from './services/cloudSync';
+import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, loadAllTenants, loadAllTenantsAsync, isSubAccountsLoginAllowed } from './services/tenantsManager';
+import { syncProjectsToCloud, syncTeamToCloud, syncLeadsToCloud, subscribeToCloudProjects, cleanUpInvalidDocs } from './services/cloudSync';
 
 // Utils
 import { NAV, ENGINEERS, ACCOUNTANTS, TECH_OFFICE, TYPES, AREAS, SUBMITTAL_ITEMS, SUB_STATUS, DIARY_WORK_SAMPLES, DIARY_ISSUE_SAMPLES, LABOR_TRADES, MATERIALS_LIST, MATERIAL_STATUS, EQUIPMENT_LIST, STAGES, SEED_LEADS } from './utils/constants';
@@ -272,22 +272,42 @@ export default function App() {
   }, [isDarkMode]);
 
 
+  // تنظيف أي وثائق عشوائية قديمة سحابياً عند بدء التشغيل
+  useEffect(() => {
+    cleanUpInvalidDocs();
+  }, []);
+
   // Company Tenant Scoped ID
   const activeCompanyId = currentUser?.companyId || getActiveTenantId() || 'comp_alain';
 
-  // Load and sync tenant data whenever active company changes
-  const loadTenantWorkspace = (companyId) => {
-    const data = getTenantData(companyId);
-    setProjects(data.projects);
-    setTeam(data.team);
-    setLeads(data.leads);
-    setCompanySettings(data.settings);
-    applyCompanyBranding(data.settings);
-    if (data.settings?.currency) {
-      setGlobalCurrency(data.settings.currency);
+  // Load and sync tenant data whenever active company changes (Cloud-First with instant local cache)
+  const loadTenantWorkspace = async (companyId) => {
+    // 1. عرض فوري للكاش المحلي (0ms latency)
+    const localData = getTenantData(companyId);
+    setProjects(localData.projects);
+    setTeam(localData.team);
+    setLeads(localData.leads);
+    setCompanySettings(localData.settings);
+    applyCompanyBranding(localData.settings);
+    if (localData.settings?.currency) {
+      setGlobalCurrency(localData.settings.currency);
     }
-    if (data.projects && data.projects.length > 0) {
-      syncProjectsToCloud(companyId, data.projects);
+
+    // 2. فحص وجلب أحدث البيانات سحابياً من Firestore
+    try {
+      const cloudData = await getTenantDataAsync(companyId);
+      if (cloudData) {
+        if (Array.isArray(cloudData.projects)) setProjects(cloudData.projects);
+        if (cloudData.team) setTeam(cloudData.team);
+        if (Array.isArray(cloudData.leads)) setLeads(cloudData.leads);
+        if (cloudData.settings) {
+          setCompanySettings(cloudData.settings);
+          applyCompanyBranding(cloudData.settings);
+          if (cloudData.settings.currency) setGlobalCurrency(cloudData.settings.currency);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not sync tenant workspace from cloud:", e);
     }
   };
 

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Building2, Lock, Mail, AlertTriangle, ShieldCheck } from "lucide-react";
-import { authenticateTenantUser } from "../services/tenantsManager";
+import { authenticateTenantUserAsync, authenticateTenantUser } from "../services/tenantsManager";
 
 export default function Login({ onLogin, companySettings, onBackToLanding, onStartLiveDemo }) {
   const companyName = 'Tashteeb Pro | تشطيب برو';
@@ -13,21 +13,29 @@ export default function Login({ onLogin, companySettings, onBackToLanding, onSta
   const [error, setError]       = useState(null);
   const [loading, setLoading]   = useState(false);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
-    setTimeout(() => {
-      const authResult = authenticateTenantUser(email, password);
-      
+    try {
+      const authResult = await authenticateTenantUserAsync(email, password);
       if (authResult.success) {
         onLogin(authResult.user, authResult.tenant, authResult.isSuperAdmin);
       } else {
         setError(authResult.error || "البريد الإلكتروني أو كلمة المرور غير صحيحة.");
       }
+    } catch (err) {
+      // Fallback to sync local authentication
+      const localResult = authenticateTenantUser(email, password);
+      if (localResult.success) {
+        onLogin(localResult.user, localResult.tenant, localResult.isSuperAdmin);
+      } else {
+        setError(localResult.error || "البريد الإلكتروني أو كلمة المرور غير صحيحة.");
+      }
+    } finally {
       setLoading(false);
-    }, 400);
+    }
   };
 
   return (

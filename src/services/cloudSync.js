@@ -2,55 +2,119 @@
  * ===================================================================
  * خدمة المزامنة السحابية الفورية — Cloud Sync Service (Firebase)
  * ===================================================================
- * مزامنة حية ولحظية للمشاريع، اليوميات، الصور، وإعدادات الشركات عبر Firestore.
+ * مزامنة حية ولحظية للمشاريع، الشركات، الإعدادات، والمستخدمين عبر Firestore.
  */
 
 import { db, storage } from '../firebase';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 
-function cleanCompanyId(companyId) {
+export function cleanCompanyId(companyId) {
   if (!companyId) return null;
   if (typeof companyId === 'object') {
     return companyId.id || companyId.companyId || 'comp_alain';
   }
-  return String(companyId).trim();
-}
-
-/**
- * حفظ ومزامنة المشاريع في السحابة
- */
-export async function syncProjectsToCloud(companyId, projects) {
-  const cId = cleanCompanyId(companyId);
-  if (!cId || !projects) return;
-  try {
-    const docRef = doc(db, 'companies', cId);
-    await setDoc(docRef, {
-      projects: projects,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
-    return true;
-  } catch (error) {
-    console.warn("Cloud sync (projects) skipped or offline:", error.message);
-    return false;
+  const str = String(companyId).trim();
+  if (str === '[object Object]' || str === 'undefined' || str === 'null') {
+    return 'comp_alain';
   }
+  return str;
 }
 
 /**
- * جلب المشاريع من السحابة
+ * جلب جميع بيانات الشركة من السحابة (المشاريع، الفريق، العملاء، الإعدادات، المستخدمين)
  */
-export async function fetchProjectsFromCloud(companyId) {
+export async function fetchCompanyDataFromCloud(companyId) {
   const cId = cleanCompanyId(companyId);
   if (!cId) return null;
   try {
     const docRef = doc(db, 'companies', cId);
     const snap = await getDoc(docRef);
     if (snap.exists()) {
-      return snap.data()?.projects || null;
+      return snap.data();
     }
   } catch (error) {
-    console.warn("Cloud fetch (projects) offline or error:", error.message);
+    console.warn("Cloud fetch (company data) offline or error:", error.message);
   }
   return null;
+}
+
+/**
+ * حفظ ومزامنة بيانات الشركة الشاملة في السحابة
+ */
+export async function syncCompanyDataToCloud(companyId, partialData) {
+  const cId = cleanCompanyId(companyId);
+  if (!cId || !partialData) return false;
+  try {
+    const docRef = doc(db, 'companies', cId);
+    await setDoc(docRef, {
+      ...partialData,
+      companyId: cId,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+    return true;
+  } catch (error) {
+    console.warn("Cloud sync (company data) offline or error:", error.message);
+    return false;
+  }
+}
+
+/**
+ * حفظ ومزامنة المشاريع في السحابة
+ */
+export async function syncProjectsToCloud(companyId, projects) {
+  return syncCompanyDataToCloud(companyId, { projects });
+}
+
+/**
+ * جلب المشاريع من السحابة
+ */
+export async function fetchProjectsFromCloud(companyId) {
+  const data = await fetchCompanyDataFromCloud(companyId);
+  return data?.projects || null;
+}
+
+/**
+ * حفظ ومزامنة إعدادات الشركة
+ */
+export async function syncSettingsToCloud(companyId, settings) {
+  return syncCompanyDataToCloud(companyId, { settings });
+}
+
+/**
+ * حفظ فريق العمل في السحابة
+ */
+export async function syncTeamToCloud(companyId, team) {
+  return syncCompanyDataToCloud(companyId, { team });
+}
+
+/**
+ * حفظ عملاء الـ CRM في السحابة
+ */
+export async function syncLeadsToCloud(companyId, leads) {
+  return syncCompanyDataToCloud(companyId, { leads });
+}
+
+/**
+ * حفظ مستخدمي الشركة في السحابة
+ */
+export async function syncCompanyUsersToCloud(companyId, users) {
+  return syncCompanyDataToCloud(companyId, { users });
+}
+
+/**
+ * حذف شركة بالكامل من السحابة
+ */
+export async function deleteCompanyFromCloud(companyId) {
+  const cId = cleanCompanyId(companyId);
+  if (!cId) return false;
+  try {
+    const docRef = doc(db, 'companies', cId);
+    await deleteDoc(docRef);
+    return true;
+  } catch (error) {
+    console.warn("Cloud delete (company) offline or error:", error.message);
+    return false;
+  }
 }
 
 /**
@@ -79,35 +143,92 @@ export function subscribeToCloudProjects(companyId, onUpdate) {
 }
 
 /**
- * حفظ فريق العمل في السحابة
+ * ===================================================================
+ * إدارة الشركات والمنصة المركزية (Platform Multi-Tenancy Hub)
+ * ===================================================================
  */
-export async function syncTeamToCloud(companyId, team) {
-  const cId = cleanCompanyId(companyId);
-  if (!cId || !team) return;
+
+const TENANTS_META_DOC = 'platform_metadata';
+const TENANTS_META_KEY = 'tenants';
+const SUPERADMIN_META_KEY = 'superadmin';
+
+/**
+ * جلب قائمة الشركات المركزية من السحابة
+ */
+export async function fetchTenantsListFromCloud() {
   try {
-    const docRef = doc(db, 'companies', cId);
+    const docRef = doc(db, TENANTS_META_DOC, TENANTS_META_KEY);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const list = snap.data()?.tenants;
+      if (Array.isArray(list) && list.length > 0) {
+        return list;
+      }
+    }
+  } catch (error) {
+    console.warn("Cloud fetch (tenants list) error:", error.message);
+  }
+  return null;
+}
+
+/**
+ * حفظ وتحديث قائمة الشركات المركزية في السحابة
+ */
+export async function syncTenantsListToCloud(tenants) {
+  if (!Array.isArray(tenants)) return false;
+  try {
+    const docRef = doc(db, TENANTS_META_DOC, TENANTS_META_KEY);
     await setDoc(docRef, {
-      team,
+      tenants: tenants,
       updatedAt: new Date().toISOString(),
     }, { merge: true });
-  } catch (e) {
-    console.warn("Cloud sync (team) error:", e.message);
+    return true;
+  } catch (error) {
+    console.warn("Cloud sync (tenants list) error:", error.message);
+    return false;
   }
 }
 
 /**
- * حفظ عملاء الـ CRM في السحابة
+ * جلب بيانات المشرف العام (Super Admin) من السحابة
  */
-export async function syncLeadsToCloud(companyId, leads) {
-  const cId = cleanCompanyId(companyId);
-  if (!cId || !leads) return;
+export async function fetchSuperAdminFromCloud() {
   try {
-    const docRef = doc(db, 'companies', cId);
+    const docRef = doc(db, TENANTS_META_DOC, SUPERADMIN_META_KEY);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return snap.data()?.creds || null;
+    }
+  } catch (e) {
+    console.warn("Cloud fetch superadmin error:", e.message);
+  }
+  return null;
+}
+
+/**
+ * حفظ بيانات المشرف العام سحابياً
+ */
+export async function syncSuperAdminToCloud(creds) {
+  if (!creds) return false;
+  try {
+    const docRef = doc(db, TENANTS_META_DOC, SUPERADMIN_META_KEY);
     await setDoc(docRef, {
-      leads,
+      creds,
       updatedAt: new Date().toISOString(),
     }, { merge: true });
+    return true;
   } catch (e) {
-    console.warn("Cloud sync (leads) error:", e.message);
+    console.warn("Cloud sync superadmin error:", e.message);
+    return false;
   }
+}
+
+/**
+ * تنظيف الوثائق العشوائية القديمة مثل [object Object] إن وجدت
+ */
+export async function cleanUpInvalidDocs() {
+  try {
+    const bogusRef = doc(db, 'companies', '[object Object]');
+    await deleteDoc(bogusRef);
+  } catch (e) {}
 }
