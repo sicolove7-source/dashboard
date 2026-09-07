@@ -64,10 +64,36 @@ export default function EngineerView({ project, currentUser, onUpdate, onBack })
         </div>
       </div>
 
-      {/* tabs */}
-      <div className="subtabs" style={{ marginBottom: 20 }}>
+      {/* tabs - touch scrollable for mobile */}
+      <div className="subtabs" style={{
+        marginBottom: 20,
+        display: 'flex',
+        gap: 8,
+        overflowX: 'auto',
+        whiteSpace: 'nowrap',
+        WebkitOverflowScrolling: 'touch',
+        paddingBottom: 6,
+        msOverflowStyle: 'none',
+        scrollbarWidth: 'none'
+      }}>
         {SUBTABS.map(t => (
-          <div key={t.key} className={'subtab' + (sub === t.key ? ' active' : '')} onClick={() => setSub(t.key)}>
+          <div
+            key={t.key}
+            className={'subtab' + (sub === t.key ? ' active' : '')}
+            onClick={() => setSub(t.key)}
+            style={{
+              flexShrink: 0,
+              padding: '10px 16px',
+              minHeight: 44,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              cursor: 'pointer',
+              borderRadius: 10,
+              fontSize: 13,
+              fontWeight: 700
+            }}
+          >
             <t.icon size={16} /> {t.label}
           </div>
         ))}
@@ -111,6 +137,7 @@ function TodayPanel({ project, currentUser, onUpdate }) {
 
   function handlePhoto(e) {
     const file = e.target.files[0];
+    if (!file) return;
     readImg(file, src => setForm(f => ({ ...f, photos: [...f.photos, { src, caption: '', date: today }] })));
   }
   function removePhoto(i) {
@@ -138,16 +165,16 @@ function TodayPanel({ project, currentUser, onUpdate }) {
           {/* الاعمال */}
           <div>
             <label style={{ display: 'block', marginBottom: 8, fontWeight: 700, fontSize: 14 }}>
-              الاعمال المنفذة اليوم <span style={{ color: 'var(--danger)' }}>*</span>
+              الاعمال المنفذة اليوم بالموقع <span style={{ color: 'var(--danger)' }}>*</span>
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <textarea
                 required value={form.work}
                 onChange={e => setForm(f => ({ ...f, work: e.target.value }))}
-                placeholder="مثال: محارة حوائط الصالة، توريد بلاط المطبخ..."
+                placeholder="مثال: استلام بنود المحارة، تركيب زوايا السيراميك، صب عتبات الأبواب..."
                 style={{
-                  flex: 1, minHeight: 100, padding: '10px 14px',
-                  border: '1.5px solid var(--border)', borderRadius: 10,
+                  flex: 1, minHeight: 110, padding: '12px 14px',
+                  border: '1.5px solid var(--border)', borderRadius: 12,
                   background: 'transparent', color: 'var(--ink)',
                   fontFamily: "'Cairo'", fontSize: 14, resize: 'vertical'
                 }}
@@ -157,59 +184,75 @@ function TodayPanel({ project, currentUser, onUpdate }) {
           </div>
 
           {/* العمالة والعوائق */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
             <div>
               <label style={{ display: 'block', marginBottom: 8, fontWeight: 700, fontSize: 14 }}>عدد العمالة بالموقع</label>
               <input type="number" min="0" value={form.workers}
                 onChange={e => setForm(f => ({ ...f, workers: e.target.value }))}
-                style={{ width: '100%', padding: '10px 14px', border: '1.5px solid var(--border)', borderRadius: 10, background: 'transparent', color: 'var(--ink)', fontFamily: "'Cairo'", fontSize: 14 }}
+                style={{ width: '100%', minHeight: 44, padding: '10px 14px', border: '1.5px solid var(--border)', borderRadius: 10, background: 'transparent', color: 'var(--ink)', fontFamily: "'Cairo'", fontSize: 14 }}
               />
             </div>
             <div>
-              <label style={{ display: 'block', marginBottom: 8, fontWeight: 700, fontSize: 14 }}>عوائق او مشاكل</label>
+              <label style={{ display: 'block', marginBottom: 8, fontWeight: 700, fontSize: 14 }}>عوائق او ملاحظات الموقع</label>
               <input value={form.issues}
                 onChange={e => setForm(f => ({ ...f, issues: e.target.value }))}
-                placeholder="تاخر توريد، غياب عمالة..."
-                style={{ width: '100%', padding: '10px 14px', border: '1.5px solid var(--border)', borderRadius: 10, background: 'transparent', color: 'var(--ink)', fontFamily: "'Cairo'", fontSize: 14 }}
+                placeholder="تاخر توريد رمل، عطل كهرباء..."
+                style={{ width: '100%', minHeight: 44, padding: '10px 14px', border: '1.5px solid var(--border)', borderRadius: 10, background: 'transparent', color: 'var(--ink)', fontFamily: "'Cairo'", fontSize: 14 }}
               />
             </div>
           </div>
 
           {/* الصور */}
           <div>
-            <label style={{ display: 'block', marginBottom: 8, fontWeight: 700, fontSize: 14 }}>صور من الموقع</label>
+            <label style={{ display: 'block', marginBottom: 8, fontWeight: 700, fontSize: 14 }}>صور من الموقع (استلام أعمال / توريدات / فواتير)</label>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               {form.photos.map((p, i) => (
-                <div key={i} style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', border: '2px solid var(--border)' }}>
-                  <img src={p.src} alt="موقع" style={{ width: 80, height: 80, objectFit: 'cover', display: 'block' }} />
+                <div key={i} style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: '2px solid var(--border)' }}>
+                  <img src={p.src} alt="موقع" style={{ width: 85, height: 85, objectFit: 'cover', display: 'block' }} />
                   <button type="button" onClick={() => removePhoto(i)} style={{
-                    position: 'absolute', top: 2, left: 2, width: 20, height: 20,
+                    position: 'absolute', top: 2, left: 2, width: 22, height: 22,
                     background: 'rgba(239,68,68,0.9)', border: 'none', borderRadius: '50%',
                     color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
                   }}><X size={12} /></button>
                 </div>
               ))}
+
+              {/* زر الكاميرا المباشرة */}
               <label style={{
-                width: 80, height: 80, borderRadius: 8, border: '2px dashed var(--border)',
+                minWidth: 105, height: 85, borderRadius: 10, border: '2px dashed #1877F2',
+                background: 'rgba(24,119,242,0.06)',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: 'var(--muted)', fontSize: 11, gap: 4
+                cursor: 'pointer', color: '#1877F2', fontSize: 12, fontWeight: 700, gap: 6, padding: '8px 12px'
               }}>
-                <Camera size={20} />
-                <span>اضف صورة</span>
+                <Camera size={22} />
+                <span>التقاط بالكاميرا</span>
                 <input type="file" accept="image/*" capture="environment" onChange={handlePhoto} style={{ display: 'none' }} />
+              </label>
+
+              {/* زر رفع من المعرض */}
+              <label style={{
+                minWidth: 95, height: 85, borderRadius: 10, border: '2px dashed var(--border)',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'var(--muted)', fontSize: 12, gap: 6, padding: '8px 12px'
+              }}>
+                <Image size={20} />
+                <span>من الألبوم</span>
+                <input type="file" accept="image/*" onChange={handlePhoto} style={{ display: 'none' }} />
               </label>
             </div>
           </div>
 
           <button type="submit" disabled={saving} style={{
-            alignSelf: 'flex-end', padding: '12px 28px',
+            minHeight: 48, padding: '12px 28px',
             background: saved ? '#16A34A' : '#1877F2',
-            color: '#fff', border: 'none', borderRadius: 10,
-            fontFamily: "'Cairo'", fontSize: 14, fontWeight: 700, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s'
+            color: '#fff', border: 'none', borderRadius: 12,
+            fontFamily: "'Cairo'", fontSize: 15, fontWeight: 800, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            boxShadow: '0 4px 14px rgba(24,119,242,0.25)',
+            transition: 'all 0.2s', alignSelf: 'flex-start'
           }}>
-            <Save size={16} />
-            {saving ? 'جاري الحفظ...' : saved ? 'تم الحفظ!' : 'حفظ التقرير'}
+            <Save size={18} />
+            {saving ? 'جاري الحفظ في السحابة...' : saved ? '✅ تم الحفظ سحابياً بنجاح!' : '💾 حفظ التقرير اليومي'}
           </button>
         </form>
       </div>

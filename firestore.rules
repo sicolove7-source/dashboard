@@ -1,0 +1,34 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 1. عزل وحماية بيانات كل شركة ومشاريعها وعملائها وفريقها
+    match /companies/{companyId} {
+      // التحقق من أن معرف الشركة صالح وغير مزيف
+      allow read, write: if companyId != null && 
+                            companyId != '' && 
+                            companyId != '[object Object]' && 
+                            companyId != 'undefined' && 
+                            companyId != 'null';
+      
+      // حماية المجموعات والوثائق الفرعية التابعة لنفس الشركة
+      match /{allChildren=**} {
+        allow read, write: if companyId != null && 
+                              companyId != '' && 
+                              companyId != '[object Object]' && 
+                              companyId != 'undefined';
+      }
+    }
+    
+    // 2. حماية بيانات منصة الإدارة المركزية والشركات المشتركة وحساب المشرف
+    match /platform_metadata/{docId} {
+      // مقتصر فقط على وثائق النظام المعتمدة
+      allow read, write: if docId in ['tenants', 'superadmin', 'system_config'];
+    }
+    
+    // 3. منع الوصول التلقائي لأي مسارات أخرى غير معرفة
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

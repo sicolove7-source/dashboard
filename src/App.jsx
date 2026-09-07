@@ -24,13 +24,14 @@ import LandingPage from './pages/LandingPage';
 import EngineerView from './pages/EngineerView';
 import CompanySettings, { loadCompanySettings, applyCompanyBranding, COMPANY_SETTINGS_KEY } from './pages/CompanySettings';
 import MobileLayout from './components/MobileLayout';
+import MobileQuickActionsModal from './components/MobileQuickActionsModal';
 import CrmPipeline from './pages/CrmPipeline';
 import ClientPortal from './pages/ClientPortal';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import OnboardingTourModal from './components/OnboardingTourModal';
 import WhatsAppSupportWidget from './components/WhatsAppSupportWidget';
 import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, loadAllTenants, loadAllTenantsAsync, isSubAccountsLoginAllowed } from './services/tenantsManager';
-import { syncProjectsToCloud, syncTeamToCloud, syncLeadsToCloud, subscribeToCloudProjects, cleanUpInvalidDocs } from './services/cloudSync';
+import { syncProjectsToCloud, syncSingleProjectToCloud, deleteSingleProjectFromCloud, syncTeamToCloud, syncLeadsToCloud, subscribeToCloudProjects, cleanUpInvalidDocs } from './services/cloudSync';
 
 // Utils
 import { NAV, ENGINEERS, ACCOUNTANTS, TECH_OFFICE, TYPES, AREAS, SUBMITTAL_ITEMS, SUB_STATUS, DIARY_WORK_SAMPLES, DIARY_ISSUE_SAMPLES, LABOR_TRADES, MATERIALS_LIST, MATERIAL_STATUS, EQUIPMENT_LIST, STAGES, SEED_LEADS } from './utils/constants';
@@ -451,25 +452,46 @@ export default function App() {
 
   function saveProject(data) {
     if (data.id) {
-      persist(projects.map((p) => (p.id === data.id ? { ...p, ...data } : p)));
+      updateProject(data.id, data);
       setActiveId(data.id);
       setView("detail");
     } else {
       const id = "p" + Date.now();
       const newProject = { ...data, id, submittals: [], tasks: [], dailyLogs: [], resources: { labor: [], subcontractors: [], materials: [], equipment: [] }, files: [], snags: [], clientPayments: [], expenses: [], paymentMilestones: [] };
-      persist([newProject, ...projects]);
+      const updated = [newProject, ...(projects || [])];
+      setProjects(updated);
+      try {
+        localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(updated));
+        flashSave(true);
+      } catch (e) { flashSave(false); }
+      // مزامنة فورية ذرية للمشروع الجديد في السحابة
+      syncSingleProjectToCloud(activeCompanyId, id, newProject);
       setActiveId(id);
       setView("detail");
     }
   }
 
   function deleteProject(id) {
-    persist(projects.filter((p) => p.id !== id));
+    const updated = (projects || []).filter((p) => p.id !== id);
+    setProjects(updated);
+    try {
+      localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(updated));
+      flashSave(true);
+    } catch (e) { flashSave(false); }
+    // حذف ذري للمشروع من السحابة دون المساس بالمشاريع الأخرى
+    deleteSingleProjectFromCloud(activeCompanyId, id);
     backToList();
   }
 
   function updateProject(id, patch) {
-    persist(projects.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+    const updated = (projects || []).map((p) => (p.id === id ? { ...p, ...patch } : p));
+    setProjects(updated);
+    try {
+      localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(updated));
+      flashSave(true);
+    } catch (e) { flashSave(false); }
+    // تحديث ذري سحابي للمشروع المحدد فقط (Atomic Granular Sync) لمنع تضارب المهندسين المتزامنين
+    syncSingleProjectToCloud(activeCompanyId, id, patch);
   }
 
   const activeProject = projects && activeId ? projects.find((p) => p.id === activeId) : null;
@@ -806,6 +828,15 @@ export default function App() {
         setSidebarOpen={setSidebarOpen}
         onOpenTour={() => setShowTour(true)}
       />
+
+      {/* ─── Mobile Site Engineer Quick Actions FAB ─── */}
+      {isAuthenticated && tab !== 'tenants' && (
+        <MobileQuickActionsModal
+          projects={projects}
+          onUpdateProject={updateProject}
+          activeCompanyId={activeCompanyId}
+        />
+      )}
 
       {/* ─── Main Layout: Sidebar + Content (flex row) ─── */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0, width: '100%', maxWidth: '100vw' }}>

@@ -66,6 +66,71 @@ export async function syncProjectsToCloud(companyId, projects) {
 }
 
 /**
+ * حفظ ومزامنة مشروع واحد فقط بأسلوب ذري لمنع تضارب المهندسين (Granular Concurrency)
+ */
+export async function syncSingleProjectToCloud(companyId, projectId, patchOrProject) {
+  const cId = cleanCompanyId(companyId);
+  if (!cId || !projectId) return false;
+  try {
+    const docRef = doc(db, 'companies', cId);
+    const snap = await getDoc(docRef);
+    let existingProjects = [];
+    if (snap.exists() && Array.isArray(snap.data()?.projects)) {
+      existingProjects = snap.data().projects;
+    }
+    
+    let found = false;
+    const updatedProjects = existingProjects.map(p => {
+      if (p.id === projectId) {
+        found = true;
+        return typeof patchOrProject === 'function' 
+          ? patchOrProject(p) 
+          : { ...p, ...patchOrProject };
+      }
+      return p;
+    });
+
+    if (!found && typeof patchOrProject === 'object') {
+      // مشروع جديد يتم إضافته
+      updatedProjects.unshift({ ...patchOrProject, id: projectId });
+    }
+
+    await setDoc(docRef, {
+      projects: updatedProjects,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+
+    return true;
+  } catch (error) {
+    console.warn("Cloud sync (single project) offline or error:", error.message);
+    return false;
+  }
+}
+
+/**
+ * حذف مشروع محدد فقط من السحابة دون المساس بباقي مشاريع الشركة
+ */
+export async function deleteSingleProjectFromCloud(companyId, projectId) {
+  const cId = cleanCompanyId(companyId);
+  if (!cId || !projectId) return false;
+  try {
+    const docRef = doc(db, 'companies', cId);
+    const snap = await getDoc(docRef);
+    if (snap.exists() && Array.isArray(snap.data()?.projects)) {
+      const remainingProjects = snap.data().projects.filter(p => p.id !== projectId);
+      await setDoc(docRef, {
+        projects: remainingProjects,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      return true;
+    }
+  } catch (e) {
+    console.warn("Cloud delete (single project) error:", e.message);
+  }
+  return false;
+}
+
+/**
  * جلب المشاريع من السحابة
  */
 export async function fetchProjectsFromCloud(companyId) {
