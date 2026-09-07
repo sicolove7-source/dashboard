@@ -255,7 +255,10 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
           <button className="mnav-btn" onClick={() => { closeMobileNav(); onStartLiveDemo(); }} style={{ color: '#D97706' }}>
             تجربة حية فوراً (Demo)
           </button>
-          <button className="mnav-btn" onClick={() => { closeMobileNav(); onGoToLogin(); }}>
+          <button className="mnav-btn" onClick={() => { closeMobileNav(); onGoToLogin('register'); }} style={{ color: '#10B981' }}>
+            ✨ إنشاء حساب شركة جديد
+          </button>
+          <button className="mnav-btn" onClick={() => { closeMobileNav(); onGoToLogin('login'); }}>
             تسجيل الدخول
           </button>
         </div>
@@ -344,7 +347,28 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
             </button>
 
             <button
-              onClick={onGoToLogin}
+              onClick={() => onGoToLogin('register')}
+              style={{
+                padding: '9px 16px',
+                fontSize: 13,
+                fontWeight: 800,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                borderRadius: 10,
+                background: '#10B981',
+                color: '#fff',
+                border: 'none',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
+              }}
+            >
+              <Sparkles size={14} />
+              <span className="hero-cta-text">حساب شركة جديد (مجاناً)</span>
+            </button>
+
+            <button
+              onClick={() => onGoToLogin('login')}
               style={{
                 padding: '9px 16px',
                 fontSize: 13,
@@ -448,6 +472,30 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
             width: '100%',
             maxWidth: 520
           }}>
+            <button
+              onClick={() => onGoToLogin('register')}
+              style={{
+                padding: '14px 28px',
+                fontSize: 16,
+                fontWeight: 800,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                borderRadius: 14,
+                background: 'linear-gradient(135deg, #10B981, #059669)',
+                color: '#fff',
+                border: 'none',
+                cursor: 'pointer',
+                boxShadow: '0 8px 24px rgba(16,185,129,0.35)',
+                transition: 'transform .2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+            >
+              <Sparkles size={18} />
+              <span>إنشاء حساب شركتك مجاناً (14 يوماً) 🚀</span>
+            </button>
+
             <button
               onClick={onStartLiveDemo}
               style={{

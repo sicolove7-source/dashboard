@@ -304,8 +304,8 @@ export function createTenant(data) {
   // المشاريع
   let initialProjects = [];
   if (data.seedDemoProject) {
-    const demoProject = createSeedVillaProject(id, newTenant);
-    initialProjects = [demoProject];
+    const seedList = generateCompanySeedProjects(id, newTenant);
+    initialProjects = seedList && seedList.length > 0 ? [seedList[0]] : [];
     localStorage.setItem(`tenant_${id}_projects`, JSON.stringify(initialProjects));
   } else {
     localStorage.setItem(`tenant_${id}_projects`, JSON.stringify([]));
@@ -325,6 +325,70 @@ export function createTenant(data) {
   }
 
   return newTenant;
+}
+
+/**
+ * تسجيل شركة جديدة ذاتياً مع إنشاء الحساب والمزامنة السحابية الفورية
+ */
+export async function registerNewTenant(formData) {
+  const cleanEmail = (formData.email || '').toLowerCase().trim();
+  const password = formData.password || '123456';
+  const companyName = (formData.companyName || '').trim();
+  const adminName = (formData.adminName || '').trim() || 'مدير الشركة';
+  const phone = (formData.phone || '').trim();
+  const city = (formData.city || 'القاهرة').trim();
+
+  if (!cleanEmail || !companyName) {
+    return { success: false, error: 'يرجى إدخال اسم الشركة والبريد الإلكتروني.' };
+  }
+
+  // التأكد من عدم تكرار البريد الإلكتروني
+  const allTenants = await loadAllTenantsAsync();
+  const superAdmin = getSuperAdminAccount();
+  if (cleanEmail === superAdmin.email.toLowerCase().trim()) {
+    return { success: false, error: 'هذا البريد الإلكتروني محجوز لإدارة المنصة.' };
+  }
+  const exists = allTenants.some(t => t.adminEmail?.toLowerCase().trim() === cleanEmail);
+  if (exists) {
+    return { success: false, error: 'هذا البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول بدلاً من ذلك.' };
+  }
+
+  // توليد معرف للشركة
+  const slug = 'c_' + Date.now().toString(36);
+  const newTenant = createTenant({
+    slug,
+    name: companyName,
+    subtitle: 'نظام إدارة المقاولات والتشطيبات والمشاريع',
+    city,
+    country: 'مصر',
+    currency: 'ج.م',
+    phone,
+    adminEmail: cleanEmail,
+    adminPassword: password,
+    adminName,
+    plan: 'trial',
+    seedDemoProject: true, // لتوفير مشروع عينة واقعي يبدأ به
+  });
+
+  const user = {
+    id: `u_${newTenant.id}_admin`,
+    email: newTenant.adminEmail,
+    name: newTenant.adminName,
+    role: 'owner',
+    companyId: newTenant.id,
+    companyName: newTenant.name,
+    currency: newTenant.currency || 'ج.م',
+  };
+
+  // تعيين الشركة كشركة نشطة
+  setActiveTenantId(newTenant.id);
+
+  return {
+    success: true,
+    user,
+    tenant: newTenant,
+    isSuperAdmin: false,
+  };
 }
 
 export function updateTenant(id, updates) {

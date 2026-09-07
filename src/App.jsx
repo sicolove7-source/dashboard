@@ -200,7 +200,11 @@ export default function App() {
   // Landing Page vs Login state
   const [isLoginMode, setIsLoginMode] = useState(() => {
     const p = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
-    return p === 'login' || p === 'contractors' || p === 'projects' || p === 'finance';
+    return p === 'login' || p === 'register' || p === 'signup' || p === 'contractors' || p === 'projects' || p === 'finance';
+  });
+  const [loginInitialMode, setLoginInitialMode] = useState(() => {
+    const p = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+    return p === 'register' || p === 'signup' ? 'register' : 'login';
   });
   const [isDemoUser, setIsDemoUser] = useState(false);
 
@@ -595,13 +599,13 @@ export default function App() {
       name: 'مهندس زائر (Demo Mode)',
       role: 'owner',
       isDemo: true,
-      companyId: 'comp_alain',
+      companyId: 'comp_cairo',
     };
     setCurrentUser(demoUser);
     setIsAuthenticated(true);
     setIsDemoUser(true);
-    setActiveTenantId('comp_alain');
-    loadTenantWorkspace('comp_alain');
+    setActiveTenantId('comp_cairo');
+    loadTenantWorkspace('comp_cairo');
     setTab('overview');
     setView('list');
     setActiveId(null);
@@ -637,9 +641,10 @@ export default function App() {
     if (!isLoginMode) {
       return (
         <LandingPage
-          onGoToLogin={() => {
+          onGoToLogin={(targetMode = 'login') => {
+            setLoginInitialMode(targetMode);
             setIsLoginMode(true);
-            window.history.replaceState(null, '', '/login');
+            window.history.replaceState(null, '', targetMode === 'register' ? '/register' : '/login');
           }}
           onStartLiveDemo={handleStartLiveDemo}
         />
@@ -649,6 +654,7 @@ export default function App() {
       <Login
         onLogin={handleLogin}
         companySettings={companySettings}
+        initialMode={loginInitialMode}
         onBackToLanding={() => {
           setIsLoginMode(false);
           window.history.replaceState(null, '', '/landing');
