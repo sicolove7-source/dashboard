@@ -7,6 +7,7 @@ import {
 import { fmtDate, todayISO, getGlobalCurrency } from '../utils/helpers';
 import { evaluateAutomations } from '../utils/automationsEngine';
 import { openWhatsApp } from '../utils/whatsappTemplates';
+import { getNotificationPermission, requestNotificationPermission, isNotificationSupported } from '../utils/notifications';
 
 export default function NotificationCenter({
   projects = [],
@@ -19,6 +20,7 @@ export default function NotificationCenter({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [filter, setFilter] = useState('all'); // all | critical | warning | info
+  const [pushStatus, setPushStatus] = useState(() => getNotificationPermission());
   const [readIds, setReadIds] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('read-notifications-v1') || '[]');
@@ -293,6 +295,51 @@ export default function NotificationCenter({
               </button>
             </div>
           </div>
+
+          {/* Web Push / Mobile Native Notifications Banner */}
+          {isNotificationSupported() && pushStatus !== 'granted' && (
+            <div
+              style={{
+                margin: '10px 14px',
+                padding: '10px 14px',
+                background: 'linear-gradient(135deg, rgba(24, 119, 242, 0.09) 0%, rgba(24, 119, 242, 0.03) 100%)',
+                border: '1px solid rgba(24, 119, 242, 0.22)',
+                borderRadius: 12,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Zap size={16} color="#1877F2" />
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)' }}>
+                  تفعيل إشعارات الهاتف والنظام الفورية
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  const res = await requestNotificationPermission();
+                  if (res && res.status) setPushStatus(res.status);
+                }}
+                style={{
+                  background: '#1877F2',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '5px 12px',
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 2px 5px rgba(24, 119, 242, 0.2)',
+                }}
+              >
+                تفعيل الآن 🔔
+              </button>
+            </div>
+          )}
 
           {/* Filter Bar */}
           <div className="notif-filters">

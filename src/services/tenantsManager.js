@@ -7,6 +7,7 @@
 
 import { setGlobalCurrency } from '../utils/helpers';
 import { DEMO_ACCOUNTS } from '../utils/permissions';
+import { hashPassword, verifyPassword } from '../utils/security';
 import {
   fetchCompanyDataFromCloud,
   syncCompanyDataToCloud,
@@ -355,6 +356,9 @@ export async function registerNewTenant(formData) {
 
   // توليد معرف للشركة
   const slug = 'c_' + Date.now().toString(36);
+  const rawPassword = formData.password || '123456';
+  const hashedPassword = await hashPassword(rawPassword);
+
   const newTenant = createTenant({
     slug,
     name: companyName,
@@ -364,7 +368,7 @@ export async function registerNewTenant(formData) {
     currency: 'ج.م',
     phone,
     adminEmail: cleanEmail,
-    adminPassword: password,
+    adminPassword: hashedPassword,
     adminName,
     plan: 'trial',
     seedDemoProject: true, // لتوفير مشروع عينة واقعي يبدأ به
@@ -748,13 +752,20 @@ export async function authenticateTenantUserAsync(email, password) {
   } catch (e) {}
 
   const superAdmin = getSuperAdminAccount();
-  if (cleanEmail === superAdmin.email.toLowerCase().trim() && password === superAdmin.password) {
-    return {
-      success: true,
-      user: superAdmin,
-      tenant: null,
-      isSuperAdmin: true,
-    };
+  if (cleanEmail === superAdmin.email.toLowerCase().trim()) {
+    const check = await verifyPassword(password, superAdmin.password);
+    if (check.match) {
+      if (check.needsUpgrade) {
+        const hashed = await hashPassword(password);
+        saveSuperAdminAccount({ ...superAdmin, password: hashed });
+      }
+      return {
+        success: true,
+        user: superAdmin,
+        tenant: null,
+        isSuperAdmin: true,
+      };
+    }
   }
 
   // 2. التحقق من صلاحية دخول الحسابات الفرعية
@@ -775,24 +786,32 @@ export async function authenticateTenantUserAsync(email, password) {
 
   for (const t of tenants) {
     // فحص مالك الشركة (Owner Admin)
-    if (t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail && t.adminPassword === password) {
-      if (t.status === 'suspended') {
-        return { success: false, error: 'تم تعليق حساب هذه الشركة. يرجى التواصل مع إدارة المنصة.' };
+    if (t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail) {
+      const check = await verifyPassword(password, t.adminPassword);
+      if (check.match) {
+        if (t.status === 'suspended') {
+          return { success: false, error: 'تم تعليق حساب هذه الشركة. يرجى التواصل مع إدارة المنصة.' };
+        }
+        if (check.needsUpgrade) {
+          const hashed = await hashPassword(password);
+          t.adminPassword = hashed;
+          updateTenant(t.id, { adminPassword: hashed });
+        }
+        return {
+          success: true,
+          user: {
+            id: `u_${t.id}_admin`,
+            email: t.adminEmail,
+            name: t.adminName,
+            role: 'owner',
+            companyId: t.id,
+            companyName: t.name,
+            currency: t.currency || 'ج.م',
+          },
+          tenant: t,
+          isSuperAdmin: false,
+        };
       }
-      return {
-        success: true,
-        user: {
-          id: `u_${t.id}_admin`,
-          email: t.adminEmail,
-          name: t.adminName,
-          role: 'owner',
-          companyId: t.id,
-          companyName: t.name,
-          currency: t.currency || 'ج.م',
-        },
-        tenant: t,
-        isSuperAdmin: false,
-      };
     }
 
     // فحص مستخدمي الشركة (محلياً وسحابياً)
@@ -813,22 +832,34 @@ export async function authenticateTenantUserAsync(email, password) {
     }
 
     if (Array.isArray(users)) {
-      const match = users.find(u => u.email && u.email.toLowerCase().trim() === cleanEmail && u.password === password);
-      if (match) {
-        if (t.status === 'suspended') {
-          return { success: false, error: 'تم تعليق حساب هذه الشركة. يرجى التواصل مع إدارة المنصة.' };
+      for (const u of users) {
+        if (u.email && u.email.toLowerCase().trim() === cleanEmail) {
+          const check = await verifyPassword(password, u.password);
+          if (check.match) {
+            if (t.status === 'suspended') {
+              return { success: false, error: 'تم تعليق حساب هذه الشركة. يرجى التواصل مع إدارة المنصة.' };
+            }
+            if (check.needsUpgrade) {
+              const hashed = await hashPassword(password);
+              u.password = hashed;
+              try {
+                localStorage.setItem(`tenant_${t.id}_users`, JSON.stringify(users));
+                syncCompanyUsersToCloud(t.id, users);
+              } catch (e) {}
+            }
+            return {
+              success: true,
+              user: {
+                ...u,
+                companyId: t.id,
+                companyName: t.name,
+                currency: t.currency || 'ج.م',
+              },
+              tenant: t,
+              isSuperAdmin: false,
+            };
+          }
         }
-        return {
-          success: true,
-          user: {
-            ...match,
-            companyId: t.id,
-            companyName: t.name,
-            currency: t.currency || 'ج.م',
-          },
-          tenant: t,
-          isSuperAdmin: false,
-        };
       }
     }
   }

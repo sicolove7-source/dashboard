@@ -6,32 +6,50 @@ import {
   UserPlus, CalendarRange, Info, Sun, Moon, Compass
 } from "lucide-react";
 
-// Components
+// Core Components
 import Sidebar from './components/Sidebar';
-import Overview from './pages/Overview';
-import ProjectsTab from './pages/ProjectsTab';
-import ProjectDetail from './pages/ProjectDetail';
-import ProjectForm from './pages/ProjectForm';
-import TeamPerformance from './pages/TeamPerformance';
-import SpecsAssistant from './pages/SpecsAssistant';
-import SuppliersTab from './pages/SuppliersTab';
-import SubcontractorsTab from './pages/SubcontractorsTab';
-import QuotationBuilder from './pages/QuotationBuilder';
-import CompanyFinance from './pages/CompanyFinance';
 import NotificationCenter from './components/NotificationCenter';
-import Login from './pages/Login';
-import LandingPage from './pages/LandingPage';
-import EngineerView from './pages/EngineerView';
-import CompanySettings, { loadCompanySettings, applyCompanyBranding, COMPANY_SETTINGS_KEY } from './pages/CompanySettings';
 import MobileLayout from './components/MobileLayout';
 import MobileQuickActionsModal from './components/MobileQuickActionsModal';
-import CrmPipeline from './pages/CrmPipeline';
-import ClientPortal from './pages/ClientPortal';
-import SuperAdminDashboard from './pages/SuperAdminDashboard';
-import OnboardingTourModal from './components/OnboardingTourModal';
 import WhatsAppSupportWidget from './components/WhatsAppSupportWidget';
+
+// Lazy-Loaded Page Modules for high-speed bundle splitting
+const Overview = React.lazy(() => import('./pages/Overview'));
+const ProjectsTab = React.lazy(() => import('./pages/ProjectsTab'));
+const ProjectDetail = React.lazy(() => import('./pages/ProjectDetail'));
+const ProjectForm = React.lazy(() => import('./pages/ProjectForm'));
+const TeamPerformance = React.lazy(() => import('./pages/TeamPerformance'));
+const SuppliersTab = React.lazy(() => import('./pages/SuppliersTab'));
+const QuotationBuilder = React.lazy(() => import('./pages/QuotationBuilder'));
+const CompanyFinance = React.lazy(() => import('./pages/CompanyFinance'));
+const Login = React.lazy(() => import('./pages/Login'));
+const LandingPage = React.lazy(() => import('./pages/LandingPage'));
+const CompanySettings = React.lazy(() => import('./pages/CompanySettings'));
+const CrmPipeline = React.lazy(() => import('./pages/CrmPipeline'));
+const ClientPortal = React.lazy(() => import('./pages/ClientPortal'));
+const SuperAdminDashboard = React.lazy(() => import('./pages/SuperAdminDashboard'));
+const OnboardingTourModal = React.lazy(() => import('./components/OnboardingTourModal'));
+
+import { loadCompanySettings, applyCompanyBranding, COMPANY_SETTINGS_KEY } from './utils/branding';
 import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, loadAllTenants, loadAllTenantsAsync, isSubAccountsLoginAllowed } from './services/tenantsManager';
 import { syncProjectsToCloud, syncSingleProjectToCloud, deleteSingleProjectFromCloud, syncTeamToCloud, syncLeadsToCloud, subscribeToCloudProjects, cleanUpInvalidDocs } from './services/cloudSync';
+
+function PageLoadingFallback() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '50vh', gap: 14, padding: 40 }}>
+      <div style={{
+        width: 36,
+        height: 36,
+        borderRadius: '50%',
+        border: '3px solid #E2E8F0',
+        borderTopColor: '#1877F2',
+        animation: 'spin 0.8s linear infinite'
+      }} />
+      <span style={{ color: '#64748B', fontSize: 13.5, fontWeight: 600, fontFamily: 'Cairo, sans-serif' }}>جاري التحميل...</span>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
 
 // Utils
 import { NAV, ENGINEERS, ACCOUNTANTS, TECH_OFFICE, TYPES, AREAS, SUBMITTAL_ITEMS, SUB_STATUS, DIARY_WORK_SAMPLES, DIARY_ISSUE_SAMPLES, LABOR_TRADES, MATERIALS_LIST, MATERIAL_STATUS, EQUIPMENT_LIST, STAGES, SEED_LEADS } from './utils/constants';
@@ -640,27 +658,31 @@ export default function App() {
   if (!isAuthenticated) {
     if (!isLoginMode) {
       return (
-        <LandingPage
-          onGoToLogin={(targetMode = 'login') => {
-            setLoginInitialMode(targetMode);
-            setIsLoginMode(true);
-            window.history.replaceState(null, '', targetMode === 'register' ? '/register' : '/login');
-          }}
-          onStartLiveDemo={handleStartLiveDemo}
-        />
+        <React.Suspense fallback={<PageLoadingFallback />}>
+          <LandingPage
+            onGoToLogin={(targetMode = 'login') => {
+              setLoginInitialMode(targetMode);
+              setIsLoginMode(true);
+              window.history.replaceState(null, '', targetMode === 'register' ? '/register' : '/login');
+            }}
+            onStartLiveDemo={handleStartLiveDemo}
+          />
+        </React.Suspense>
       );
     }
     return (
-      <Login
-        onLogin={handleLogin}
-        companySettings={companySettings}
-        initialMode={loginInitialMode}
-        onBackToLanding={() => {
-          setIsLoginMode(false);
-          window.history.replaceState(null, '', '/landing');
-        }}
-        onStartLiveDemo={handleStartLiveDemo}
-      />
+      <React.Suspense fallback={<PageLoadingFallback />}>
+        <Login
+          onLogin={handleLogin}
+          companySettings={companySettings}
+          initialMode={loginInitialMode}
+          onBackToLanding={() => {
+            setIsLoginMode(false);
+            window.history.replaceState(null, '', '/landing');
+          }}
+          onStartLiveDemo={handleStartLiveDemo}
+        />
+      </React.Suspense>
     );
   }
 
@@ -668,14 +690,16 @@ export default function App() {
   if (activeClientPortalProjectId && projects) {
     const portalProject = projects.find(p => p.id === activeClientPortalProjectId) || projects[0];
     return (
-      <ClientPortal
-        project={portalProject}
-        companySettings={companySettings}
-        onBack={() => setActiveClientPortalProjectId(null)}
-        onUpdateProject={(id, patch) => updateProject(id, patch)}
-        userRole={userRole}
-        currentUser={currentUser}
-      />
+      <React.Suspense fallback={<PageLoadingFallback />}>
+        <ClientPortal
+          project={portalProject}
+          companySettings={companySettings}
+          onBack={() => setActiveClientPortalProjectId(null)}
+          onUpdateProject={(id, patch) => updateProject(id, patch)}
+          userRole={userRole}
+          currentUser={currentUser}
+        />
+      </React.Suspense>
     );
   }
 
@@ -920,132 +944,138 @@ export default function App() {
         </div>
 
         <div className="content tab-fade">
-          {tab === "tenants" && currentUser?.role === 'super_admin' && (
-            <SuperAdminDashboard onSwitchToCompany={handleSwitchToCompany} currentUser={currentUser} />
-          )}
+          <React.Suspense fallback={<PageLoadingFallback />}>
+            {tab === "tenants" && currentUser?.role === 'super_admin' && (
+              <SuperAdminDashboard onSwitchToCompany={handleSwitchToCompany} currentUser={currentUser} />
+            )}
 
 
-          {tab === "overview" && <Overview projects={displayedProjects} />}
+            {tab === "overview" && <Overview projects={displayedProjects} />}
 
-          {tab === "crm" && (
+            {tab === "crm" && (
 
-            <CrmPipeline
-              leads={leads || []}
-              onAddLead={addLead}
-              onUpdateLead={updateLead}
-              onDeleteLead={deleteLead}
-              onConvertToProject={(projDraft) => {
-                setFormInitial(projDraft);
-                setTab("projects");
-                setView("form");
-              }}
-              companySettings={companySettings}
-              userRole={userRole}
-            />
-          )}
-
-          {tab === "finance" && can(currentUser || userRole, 'finance_view') && (
-            <CompanyFinance projects={projects} />
-          )}
-
-          {tab === "team" && can(currentUser || userRole, 'team_view') && (
-            <TeamPerformance
-              projects={projects}
-              team={team}
-              onAddMember={addMember}
-              onUpdateMember={updateMember}
-              onRemoveMember={removeMember}
-            />
-          )}
-
-          {tab === "suppliers" && (
-            <SuppliersTab
-              projects={projects}
-              companySettings={companySettings}
-              userRole={userRole}
-            />
-          )}
-
-          {tab === "quotations" && (
-            <QuotationBuilder
-              onConvertToProject={(projDraft) => {
-                setFormInitial(projDraft);
-                setTab("projects");
-                setView("form");
-              }}
-            />
-          )}
-
-          {(tab === "settings" || tab === "automations") && can(currentUser || userRole, 'company_settings_view') && (
-            <CompanySettings
-              companySettings={companySettings}
-              onCompanySettingsChange={(updated) => {
-                setCompanySettings(updated);
-                applyCompanyBranding(updated);
-                if (updated?.currency) {
-                  setGlobalCurrency(updated.currency);
-                }
-              }}
-              team={team}
-              onTeamChange={(nextTeam) => {
-                persistTeam(nextTeam);
-                const updated = loadCompanySettings(activeCompanyId);
-                setCompanySettings(updated);
-                applyCompanyBranding(updated);
-              }}
-              currentUser={currentUser}
-              activeCompanyId={activeCompanyId}
-              projects={projects || []}
-              leads={leads || []}
-              userRole={userRole}
-              onNavigateToProject={(projId, subTab) => openDetail(projId, subTab)}
-              onNavigateToTab={handleNavigateToTab}
-              activeSubTab={tab === 'automations' ? 'automations' : settingsSubTab}
-              onSubTabChange={(sub) => {
-                setSettingsSubTab(sub);
-                if (tab !== 'settings') setTab('settings');
-              }}
-            />
-          )}
-
-          {tab === "projects" && view === "list" && (
-            <ProjectsTab projects={displayedProjects} onOpenDetail={openDetail} onOpenEdit={openEdit} onDelete={deleteProject} userRole={userRole} />
-          )}
-          {tab === "projects" && view === "detail" && (
-            activeProject ? (
-              <ProjectDetail
-                project={activeProject}
-                team={team}
+              <CrmPipeline
+                leads={leads || []}
+                onAddLead={addLead}
+                onUpdateLead={updateLead}
+                onDeleteLead={deleteLead}
+                onConvertToProject={(projDraft) => {
+                  setFormInitial(projDraft);
+                  setTab("projects");
+                  setView("form");
+                }}
+                companySettings={companySettings}
                 userRole={userRole}
-                onBack={backToList}
-                onEdit={() => openEdit(activeProject)}
-                onDelete={() => deleteProject(activeProject.id)}
-                onUpdate={(patch) => updateProject(activeProject.id, patch)}
-                initialSub={initialProjectSub}
-                currentUser={currentUser}
-                onOpenClientPortal={(projId) => setActiveClientPortalProjectId(projId)}
               />
-            ) : (
-              <div className="panel" style={{ textAlign: "center", padding: 40 }}>
-                <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>لم يتم العثور على الموقع المطلوب</div>
-                <button className="btn btn-primary" onClick={backToList}>العودة إلى قائمة المواقع</button>
-              </div>
-            )
-          )}
-          {tab === "projects" && view === "form" && (
-            <ProjectForm initial={formInitial} team={team} areas={allAreas} onSave={saveProject} onCancel={() => setView(formInitial ? "detail" : "list")} />
-          )}
+            )}
+
+            {tab === "finance" && can(currentUser || userRole, 'finance_view') && (
+              <CompanyFinance projects={projects} />
+            )}
+
+            {tab === "team" && can(currentUser || userRole, 'team_view') && (
+              <TeamPerformance
+                projects={projects}
+                team={team}
+                onAddMember={addMember}
+                onUpdateMember={updateMember}
+                onRemoveMember={removeMember}
+              />
+            )}
+
+            {tab === "suppliers" && (
+              <SuppliersTab
+                projects={projects}
+                companySettings={companySettings}
+                userRole={userRole}
+              />
+            )}
+
+            {tab === "quotations" && (
+              <QuotationBuilder
+                onConvertToProject={(projDraft) => {
+                  setFormInitial(projDraft);
+                  setTab("projects");
+                  setView("form");
+                }}
+              />
+            )}
+
+            {(tab === "settings" || tab === "automations") && can(currentUser || userRole, 'company_settings_view') && (
+              <CompanySettings
+                companySettings={companySettings}
+                onCompanySettingsChange={(updated) => {
+                  setCompanySettings(updated);
+                  applyCompanyBranding(updated);
+                  if (updated?.currency) {
+                    setGlobalCurrency(updated.currency);
+                  }
+                }}
+                team={team}
+                onTeamChange={(nextTeam) => {
+                  persistTeam(nextTeam);
+                  const updated = loadCompanySettings(activeCompanyId);
+                  setCompanySettings(updated);
+                  applyCompanyBranding(updated);
+                }}
+                currentUser={currentUser}
+                activeCompanyId={activeCompanyId}
+                projects={projects || []}
+                leads={leads || []}
+                userRole={userRole}
+                onNavigateToProject={(projId, subTab) => openDetail(projId, subTab)}
+                onNavigateToTab={handleNavigateToTab}
+                activeSubTab={tab === 'automations' ? 'automations' : settingsSubTab}
+                onSubTabChange={(sub) => {
+                  setSettingsSubTab(sub);
+                  if (tab !== 'settings') setTab('settings');
+                }}
+              />
+            )}
+
+            {tab === "projects" && view === "list" && (
+              <ProjectsTab projects={displayedProjects} onOpenDetail={openDetail} onOpenEdit={openEdit} onDelete={deleteProject} userRole={userRole} />
+            )}
+            {tab === "projects" && view === "detail" && (
+              activeProject ? (
+                <ProjectDetail
+                  project={activeProject}
+                  team={team}
+                  userRole={userRole}
+                  onBack={backToList}
+                  onEdit={() => openEdit(activeProject)}
+                  onDelete={() => deleteProject(activeProject.id)}
+                  onUpdate={(patch) => updateProject(activeProject.id, patch)}
+                  initialSub={initialProjectSub}
+                  currentUser={currentUser}
+                  onOpenClientPortal={(projId) => setActiveClientPortalProjectId(projId)}
+                />
+              ) : (
+                <div className="panel" style={{ textAlign: "center", padding: 40 }}>
+                  <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>لم يتم العثور على الموقع المطلوب</div>
+                  <button className="btn btn-primary" onClick={backToList}>العودة إلى قائمة المواقع</button>
+                </div>
+              )
+            )}
+            {tab === "projects" && view === "form" && (
+              <ProjectForm initial={formInitial} team={team} areas={allAreas} onSave={saveProject} onCancel={() => setView(formInitial ? "detail" : "list")} />
+            )}
+          </React.Suspense>
         </div>
       </div>
 
       </div>{/* ─── End flex-row (Sidebar + Main) ─── */}
 
       {/* ─── Onboarding Tour Modal ─── */}
-      <OnboardingTourModal
-        isOpen={showTour}
-        onClose={() => setShowTour(false)}
-        onNavigateToTab={handleNavigateToTab}
-      />
+      <React.Suspense fallback={null}>
+        {showTour && (
+          <OnboardingTourModal
+            isOpen={showTour}
+            onClose={() => setShowTour(false)}
+            onNavigateToTab={handleNavigateToTab}
+          />
+        )}
+      </React.Suspense>
 
       {/* ─── Floating WhatsApp Support & Sales Widget ─── */}
       <WhatsAppSupportWidget companySettings={companySettings} />

@@ -9,3 +9,14 @@ createRoot(document.getElementById('root')).render(
     <App />
   </StrictMode>,
 )
+
+// تسجيل Service Worker لتحويل الموقع لتطبيق هاتف مثبت (PWA) والعمل دون اتصال
+if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then((registration) => {
+      console.log('Tashteeb Pro PWA SW registered successfully:', registration.scope);
+    }).catch((err) => {
+      console.log('PWA SW registration failed:', err);
+    });
+  });
+}

@@ -1,5 +1,6 @@
 import { fmtDate, todayISO, getGlobalCurrency } from './helpers';
 import { WHATSAPP_TEMPLATES } from './whatsappTemplates';
+import { notifyOnce } from './notifications';
 
 export const AUTOMATIONS_SETTINGS_KEY = 'dashboard_automations_settings_v1';
 export const AUTOMATIONS_LOG_KEY = 'dashboard_automations_log_v1';
@@ -368,6 +369,26 @@ export function evaluateAutomations({ projects = [], leads = [], team = null, co
         });
       }
     });
+  }
+
+  // إرسال إشعارات النظام المباشرة (Native Web Push) للإنذارات الحرجة والملاحظات العاجلة
+  try {
+    results.forEach((alert) => {
+      if (alert.type === 'critical' || alert.ruleId === 'budget_overrun_alert' || alert.ruleId === 'missing_daily_log') {
+        notifyOnce(
+          alert.id,
+          alert.title,
+          {
+            body: alert.desc,
+            tag: alert.id,
+            data: { url: `/#${alert.targetTab || 'overview'}` }
+          },
+          8 // منع التكرار لنفس الإشعار لمدة 8 ساعات
+        );
+      }
+    });
+  } catch (e) {
+    console.warn('Native notification dispatch error:', e);
   }
 
   return results;
