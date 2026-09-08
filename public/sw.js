@@ -65,28 +65,16 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
       if (cachedResponse) {
-        // نرجع النسخة المخبأة ونحدث الكاش في الخلفية
-        fetch(request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-            const copy = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-          }
-        }).catch(() => {});
         return cachedResponse;
       }
-
       return fetch(request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
-          return networkResponse;
+        if (networkResponse && networkResponse.status === 200) {
+          const copy = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, copy);
+          }).catch(() => {});
         }
-        const copy = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(request, copy);
-        });
         return networkResponse;
-      }).catch(() => {
-        // في حال عدم توفر اتصال بالإنترنت
-        return null;
       });
     })
   );

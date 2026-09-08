@@ -13,11 +13,13 @@ import MobileLayout from './components/MobileLayout';
 import MobileQuickActionsModal from './components/MobileQuickActionsModal';
 import WhatsAppSupportWidget from './components/WhatsAppSupportWidget';
 
-// Lazy-Loaded Page Modules for high-speed bundle splitting
-const Overview = React.lazy(() => import('./pages/Overview'));
-const ProjectsTab = React.lazy(() => import('./pages/ProjectsTab'));
+// Core Primary Pages (Loaded instantly with 0ms latency)
+import Overview from './pages/Overview';
+import ProjectsTab from './pages/ProjectsTab';
+import ProjectForm from './pages/ProjectForm';
+
+// Lazy-Loaded Secondary Modules (Preloaded quietly in background)
 const ProjectDetail = React.lazy(() => import('./pages/ProjectDetail'));
-const ProjectForm = React.lazy(() => import('./pages/ProjectForm'));
 const TeamPerformance = React.lazy(() => import('./pages/TeamPerformance'));
 const SuppliersTab = React.lazy(() => import('./pages/SuppliersTab'));
 const QuotationBuilder = React.lazy(() => import('./pages/QuotationBuilder'));
@@ -36,16 +38,15 @@ import { syncProjectsToCloud, syncSingleProjectToCloud, deleteSingleProjectFromC
 
 function PageLoadingFallback() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '50vh', gap: 14, padding: 40 }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '30px 20px' }}>
       <div style={{
-        width: 36,
-        height: 36,
+        width: 24,
+        height: 24,
         borderRadius: '50%',
-        border: '3px solid #E2E8F0',
+        border: '2.5px solid rgba(24, 119, 242, 0.15)',
         borderTopColor: '#1877F2',
-        animation: 'spin 0.8s linear infinite'
+        animation: 'spin 0.6s linear infinite'
       }} />
-      <span style={{ color: '#64748B', fontSize: 13.5, fontWeight: 600, fontFamily: 'Cairo, sans-serif' }}>جاري التحميل...</span>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
@@ -298,6 +299,26 @@ export default function App() {
   // تنظيف أي وثائق عشوائية قديمة سحابياً عند بدء التشغيل
   useEffect(() => {
     cleanUpInvalidDocs();
+  }, []);
+
+  // Preload secondary modules quietly during idle time so tab clicks are instant (0 ms)
+  useEffect(() => {
+    const preload = () => {
+      import('./pages/ProjectDetail');
+      import('./pages/CrmPipeline');
+      import('./pages/CompanyFinance');
+      import('./pages/TeamPerformance');
+      import('./pages/QuotationBuilder');
+      import('./pages/SuppliersTab');
+      import('./pages/CompanySettings');
+    };
+    if (typeof window !== 'undefined') {
+      if ('requestIdleCallback' in window) {
+        window.requestIdleCallback(preload, { timeout: 1500 });
+      } else {
+        setTimeout(preload, 250);
+      }
+    }
   }, []);
 
   // Company Tenant Scoped ID
