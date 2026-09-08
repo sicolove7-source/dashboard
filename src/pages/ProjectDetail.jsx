@@ -6,6 +6,9 @@ import StampRing from '../components/StampRing';
 import { STAGES, ENGINEERS, TECH_OFFICE } from '../utils/constants';
 import { fmtDate, todayISO, compressImageFile } from '../utils/helpers';
 import { uploadMediaToFirebaseStorage } from '../services/cloudSync';
+import { saveMediaBlob, createMicroThumbnail } from '../utils/mediaStorage';
+import MediaThumbnail from '../components/MediaThumbnail';
+import MediaLightbox from '../components/MediaLightbox';
 import { openWhatsApp, WHATSAPP_TEMPLATES } from '../utils/whatsappTemplates';
 import ImageAnnotator from '../components/ImageAnnotator';
 import FloorPlanAnnotator from '../components/FloorPlanAnnotator';
@@ -232,6 +235,7 @@ function SnagsPanel({ project, onUpdate }) {
   const floorPlan = project.floorPlan || null;
   const [form, setForm] = useState({ desc: "", location: "", assignee: project.engineer, status: "pending", photo: null, pin: null });
   const [confirmId, setConfirmId] = useState(null);
+  const [previewModal, setPreviewModal] = useState(null);
   
   const [isUploading, setIsUploading] = useState(false);
   const [isUploadingFP, setIsUploadingFP] = useState(false);
@@ -242,22 +246,21 @@ function SnagsPanel({ project, onUpdate }) {
   const doneCount = snags.filter((s) => s.status === "done").length;
   const totalCount = snags.length;
 
-  const handlePhotoUpload = (e) => {
+  const handlePhotoUpload = async (e) => {
     const selected = e.target.files[0];
     if (!selected) return;
     
-    if (selected.size > 2 * 1024 * 1024) {
-      alert("حجم الصورة كبير جداً (أقصى حجم 2 ميجا).");
-      return;
-    }
-
     setIsUploading(true);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setAnnotatingImage(ev.target.result);
+    try {
+      const compressed = await compressImageFile(selected, 1200, 0.75);
+      setAnnotatingImage(compressed);
+    } catch (err) {
+      const reader = new FileReader();
+      reader.onload = (ev) => setAnnotatingImage(ev.target.result);
+      reader.readAsDataURL(selected);
+    } finally {
       setIsUploading(false);
-    };
-    reader.readAsDataURL(selected);
+    }
   };
 
   const handleFloorPlanUpload = (e) => {
@@ -272,16 +275,22 @@ function SnagsPanel({ project, onUpdate }) {
     reader.readAsDataURL(selected);
   };
   
-  const handleAfterPhotoUpload = (id, e) => {
+  const handleAfterPhotoUpload = async (id, e) => {
     const selected = e.target.files[0];
     if (!selected) return;
     setUploadingAfterPhotoFor(id);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      onUpdate({ snags: snags.map(s => s.id === id ? { ...s, afterPhoto: ev.target.result } : s) });
+    try {
+      const compressed = await compressImageFile(selected, 1200, 0.75);
+      onUpdate({ snags: snags.map(s => s.id === id ? { ...s, afterPhoto: compressed } : s) });
+    } catch (err) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        onUpdate({ snags: snags.map(s => s.id === id ? { ...s, afterPhoto: ev.target.result } : s) });
+      };
+      reader.readAsDataURL(selected);
+    } finally {
       setUploadingAfterPhotoFor(null);
-    };
-    reader.readAsDataURL(selected);
+    }
   };
 
   function addSnag(e) {
@@ -347,6 +356,10 @@ function SnagsPanel({ project, onUpdate }) {
 
   return (
     <>
+      {previewModal && (
+        <MediaLightbox item={previewModal} onClose={() => setPreviewModal(null)} />
+      )}
+
       {annotatingImage && (
         <ImageAnnotator
           imageSrc={annotatingImage}
@@ -569,18 +582,31 @@ function SnagsPanel({ project, onUpdate }) {
                       {s.photo && (
                         <div className="snag-photo-box">
                           <div className="snag-photo-label before">توثيق الفحص:</div>
-                          {s.mediaType === 'video' || (typeof s.photo === 'string' && s.photo.startsWith('data:video')) ? (
-                            <video src={s.photo} controls style={{ width: '100%', maxHeight: 150, borderRadius: 8 }} />
-                          ) : (
-                            <img src={s.photo} alt="Before Snag" />
-                          )}
+                          <MediaThumbnail
+                            item={{
+                              id: s.mediaId,
+                              src: s.photo,
+                              type: s.mediaType || (typeof s.photo === 'string' && s.photo.startsWith('data:video') ? 'video' : 'image'),
+                              caption: `فحص: ${s.desc}`
+                            }}
+                            onClick={setPreviewModal}
+                            style={{ width: '100%', height: 120, borderRadius: 8 }}
+                          />
                         </div>
                       )}
                       
                       {s.afterPhoto ? (
                         <div className="snag-photo-box">
                           <div className="snag-photo-label after">بعد الإصلاح:</div>
-                          <img src={s.afterPhoto} alt="After Snag" />
+                          <MediaThumbnail
+                            item={{
+                              src: s.afterPhoto,
+                              type: 'image',
+                              caption: `إصلاح: ${s.desc}`
+                            }}
+                            onClick={setPreviewModal}
+                            style={{ width: '100%', height: 120, borderRadius: 8 }}
+                          />
                         </div>
                       ) : s.status === 'done' ? (
                         <div className="snag-photo-add-box no-print">
@@ -634,37 +660,49 @@ function DiaryPanel({ project, team, onUpdate }) {
     if (!files.length) return;
     for (const file of files) {
       const isVideo = file.type.startsWith('video');
-      const maxSize = isVideo ? 30 * 1024 * 1024 : 15 * 1024 * 1024;
+      const maxSize = isVideo ? 50 * 1024 * 1024 : 25 * 1024 * 1024;
       if (file.size > maxSize) {
-        alert(`حجم الملف كبير (أقصى حد ${isVideo ? '30' : '15'} ميجابايت)`);
+        alert(`حجم الملف كبير (أقصى حد ${isVideo ? '50' : '25'} ميجابايت)`);
         continue;
       }
       try {
-        let src = '';
-        if (!isVideo) {
-          src = await compressImageFile(file, 1200, 0.75);
-        } else {
-          src = await new Promise((res) => {
-            const reader = new FileReader();
-            reader.onload = ev => res(ev.target.result);
-            reader.readAsDataURL(file);
-          });
-        }
-        // رفع سحابي مباشر لـ Firebase Storage
-        const cloudUrl = await uploadMediaToFirebaseStorage(
-          src,
+        const mediaId = (isVideo ? 'vid_' : 'ph_') + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+        
+        // 1. رابط معاينة فوري وعرضه على الشاشة
+        const instantUrl = URL.createObjectURL(file);
+        
+        // 2. توليد مصغرة صغيرة جداً (~15KB) آمنة لسحابة فايربيس والذاكرة
+        const thumb = await createMicroThumbnail(file, isVideo);
+        
+        // 3. حفظ الملف الثنائي الكامل فوراً في IndexedDB المحلي غير المحدود
+        await saveMediaBlob(mediaId, file, { type: file.type, name: file.name });
+
+        const mediaItem = {
+          id: mediaId,
+          src: instantUrl,
+          rawSrc: `idb://${mediaId}`,
+          thumbnail: thumb,
+          type: isVideo ? 'video' : 'image',
+          name: file.name,
+          isUploading: true
+        };
+
+        setMediaList(prev => [...prev, mediaItem]);
+
+        // 4. رفع في الخلفية لسحابة Firebase Storage
+        uploadMediaToFirebaseStorage(
+          file,
           `companies/${project.companyId || 'company'}/projects/${project.id}`,
           file.name
-        );
-
-        setMediaList(prev => [
-          ...prev,
-          {
-            src: cloudUrl || src,
-            type: isVideo ? 'video' : 'image',
-            name: file.name
+        ).then(cloudUrl => {
+          if (cloudUrl) {
+            setMediaList(prev => prev.map(m => m.id === mediaId ? { ...m, src: cloudUrl, rawSrc: cloudUrl, isUploading: false } : m));
+          } else {
+            setMediaList(prev => prev.map(m => m.id === mediaId ? { ...m, isUploading: false } : m));
           }
-        ]);
+        }).catch(() => {
+          setMediaList(prev => prev.map(m => m.id === mediaId ? { ...m, isUploading: false } : m));
+        });
       } catch (err) {
         console.error("Error reading file:", err);
       }
@@ -675,23 +713,38 @@ function DiaryPanel({ project, team, onUpdate }) {
   function addLog(e) {
     e.preventDefault();
     if (!form.work.trim()) return;
+
+    const safeMediaToSave = mediaList.map(m => ({
+      id: m.id,
+      src: m.rawSrc || (m.src?.startsWith('blob:') ? `idb://${m.id}` : m.src),
+      thumbnail: m.thumbnail || '',
+      type: m.type,
+      name: m.name,
+      caption: `يومية ${form.date}: ${form.work.slice(0, 35)}`
+    }));
+
+    const safePhotos = safeMediaToSave
+      .filter(m => m.type === 'image')
+      .map(m => m.thumbnail || m.src);
+
     const newLog = {
       ...form,
       id: "d" + Date.now(),
       workers: Number(form.workers),
-      photos: mediaList.filter(m => m.type === 'image').map(m => m.src),
-      media: mediaList,
+      photos: safePhotos,
+      media: safeMediaToSave,
       timestamp: new Date().toISOString()
     };
 
     const patch = { dailyLogs: [newLog, ...logs] };
-    if (mediaList.length > 0) {
+    if (safeMediaToSave.length > 0) {
       const existingFiles = project.files || [];
-      const newFiles = mediaList.map((m, idx) => ({
-        id: (m.type === 'video' ? 'vid_' : 'ph_') + Date.now() + '_' + idx,
+      const newFiles = safeMediaToSave.map((m, idx) => ({
+        id: m.id || ((m.type === 'video' ? 'vid_' : 'ph_') + Date.now() + '_' + idx),
         src: m.src,
+        thumbnail: m.thumbnail,
         type: m.type,
-        caption: `يومية ${form.date}: ${form.work.slice(0, 35)}`,
+        caption: m.caption,
         date: form.date,
         timestamp: new Date().toISOString()
       }));
@@ -742,32 +795,7 @@ function DiaryPanel({ project, team, onUpdate }) {
     <div className="diary-container">
       {/* Lightbox / Video Modal */}
       {previewModal && (
-        <div
-          onClick={() => setPreviewModal(null)}
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
-            zIndex: 10005, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 16
-          }}
-        >
-          <div style={{ position: 'relative', maxWidth: '90vw', maxHeight: '85vh', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-            <button
-              onClick={() => setPreviewModal(null)}
-              style={{
-                position: 'absolute', top: -40, right: 0, background: 'transparent',
-                border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, fontWeight: 700,
-                display: 'flex', alignItems: 'center', gap: 6
-              }}
-            >
-              <X size={24} /> إغلاق
-            </button>
-            {previewModal.type === 'image' ? (
-              <img src={previewModal.src} alt="معاينة" style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: 12, border: '2px solid #fff' }} />
-            ) : (
-              <video src={previewModal.src} controls autoPlay style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: 12, border: '2px solid #6366F1' }} />
-            )}
-          </div>
-        </div>
+        <MediaLightbox item={previewModal} onClose={() => setPreviewModal(null)} />
       )}
 
       {!hasTodayLog && (
@@ -958,25 +986,19 @@ function DiaryPanel({ project, team, onUpdate }) {
                       </div>
                       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                         {logMedia.map((item, mIdx) => (
-                          <div
+                          <MediaThumbnail
                             key={mIdx}
+                            item={item}
+                            onClick={setPreviewModal}
                             style={{
-                              position: 'relative', width: 90, height: 90, borderRadius: 10,
-                              overflow: 'hidden', border: '1.5px solid var(--border)', cursor: 'pointer', background: '#0F172A',
+                              width: 90,
+                              height: 90,
+                              flexShrink: 0,
+                              border: '1.5px solid var(--border)',
+                              borderRadius: 10,
                               boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
                             }}
-                            onClick={() => setPreviewModal(item)}
-                            title="اضغط للتكبير أو التشغيل"
-                          >
-                            {item.type === 'image' ? (
-                              <img src={item.src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            ) : (
-                              <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#fff', background: 'linear-gradient(135deg, #1E1B4B, #312E81)' }}>
-                                <Play size={24} fill="#fff" />
-                                <span style={{ fontSize: 10, fontWeight: 800 }}>فيديو</span>
-                              </div>
-                            )}
-                          </div>
+                          />
                         ))}
                       </div>
                     </div>

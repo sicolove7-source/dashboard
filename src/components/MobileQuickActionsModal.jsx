@@ -7,6 +7,9 @@ import {
 import VoiceInput from './VoiceInput';
 import { todayISO, fmtDate, compressImageFile } from '../utils/helpers';
 import { uploadMediaToFirebaseStorage } from '../services/cloudSync';
+import { saveMediaBlob, createMicroThumbnail } from '../utils/mediaStorage';
+import MediaThumbnail from './MediaThumbnail';
+import MediaLightbox from './MediaLightbox';
 
 export default function MobileQuickActionsModal({ projects, onUpdateProject, activeCompanyId }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -42,40 +45,37 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
     setTimeout(() => setToast(''), 3200);
   }
 
-  // Handle Photo or Video Capture with auto compression
+  // Handle Photo or Video Capture with auto compression and IndexedDB safe storage
   async function handleCaptureMedia(e, target = 'log') {
     const file = e.target.files?.[0];
     if (!file) return;
     const isVideo = file.type.startsWith('video');
-    const maxSize = isVideo ? 30 * 1024 * 1024 : 15 * 1024 * 1024;
+    const maxSize = isVideo ? 50 * 1024 * 1024 : 25 * 1024 * 1024;
     if (file.size > maxSize) {
-      alert(`حجم الملف كبير (أقصى حد ${isVideo ? '30' : '15'} ميجابايت)`);
+      alert(`حجم الملف كبير (أقصى حد ${isVideo ? '50' : '25'} ميجابايت)`);
       return;
     }
 
-    try {
-      let src = '';
-      if (!isVideo) {
-        src = await compressImageFile(file, 1200, 0.75);
-      } else {
-        src = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = ev => resolve(ev.target.result);
-          reader.readAsDataURL(file);
-        });
-      }
+    const mediaId = (isVideo ? 'vid_' : 'ph_') + Date.now();
 
-      // رفع فوري إلى Firebase Storage والحصول على رابط HTTPS دائم
-      const cloudUrl = await uploadMediaToFirebaseStorage(
-        src,
-        `companies/${activeCompanyId || 'general'}/projects/${activeProject?.id || 'common'}`,
-        file.name
-      );
+    try {
+      // 1. توليد رابط معاينة فوري وعرضه على الشاشة بدون أي تأخير
+      const instantPreviewUrl = URL.createObjectURL(file);
+      
+      // 2. توليد مصغرة صغيرة جداً (15KB) للحفظ الآمن في السحابة وLocalStorage
+      const thumb = await createMicroThumbnail(file, isVideo);
+
+      // 3. حفظ الملف الثنائي الكامل فوراً في IndexedDB المحلي غير المحدود
+      await saveMediaBlob(mediaId, file, { type: file.type, name: file.name });
 
       const mediaObj = {
-        src: cloudUrl || src,
+        id: mediaId,
+        src: instantPreviewUrl,
+        rawSrc: `idb://${mediaId}`,
+        thumbnail: thumb,
         type: isVideo ? 'video' : 'image',
-        name: file.name
+        name: file.name,
+        isUploading: true
       };
 
       if (target === 'log') {
@@ -83,8 +83,42 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
       } else {
         setSnagMedia(mediaObj);
       }
+
+      // 4. محاولة الرفع السحابي في الخلفية (Background Cloud Upload)
+      uploadMediaToFirebaseStorage(
+        file,
+        `companies/${activeCompanyId || 'general'}/projects/${activeProject?.id || 'common'}`,
+        file.name
+      ).then((cloudUrl) => {
+        if (cloudUrl) {
+          const cloudMedia = {
+            ...mediaObj,
+            src: cloudUrl,
+            rawSrc: cloudUrl,
+            isUploading: false
+          };
+          if (target === 'log') setLogMedia(cloudMedia);
+          else setSnagMedia(cloudMedia);
+        } else {
+          const localMedia = {
+            ...mediaObj,
+            isUploading: false
+          };
+          if (target === 'log') setLogMedia(localMedia);
+          else setSnagMedia(localMedia);
+        }
+      }).catch(() => {
+        const localMedia = {
+          ...mediaObj,
+          isUploading: false
+        };
+        if (target === 'log') setLogMedia(localMedia);
+        else setSnagMedia(localMedia);
+      });
+
     } catch (err) {
       console.error("Error processing media:", err);
+      alert("حدث خطأ أثناء قراءة الملف، يرجى المحاولة مرة أخرى.");
     }
     e.target.value = '';
   }
@@ -124,6 +158,15 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
     setSaving(true);
     const today = todayISO();
 
+    const mediaToSave = logMedia ? {
+      id: logMedia.id,
+      src: logMedia.rawSrc || (logMedia.src?.startsWith('blob:') ? `idb://${logMedia.id}` : logMedia.src),
+      thumbnail: logMedia.thumbnail || '',
+      type: logMedia.type,
+      name: logMedia.name,
+      caption: logMediaCaption.trim() || (logMedia.type === 'video' ? 'فيديو توثيق الموقع' : 'صورة توثيق الموقع')
+    } : null;
+
     const newLog = {
       id: 'd_' + Date.now(),
       date: today,
@@ -131,8 +174,8 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
       work: logWork.trim(),
       issues: logIssues.trim(),
       workers: Number(logWorkers) || 1,
-      photos: logMedia?.type === 'image' ? [logMedia.src] : [],
-      media: logMedia ? [logMedia] : [],
+      photos: mediaToSave && mediaToSave.type === 'image' ? [mediaToSave.thumbnail || mediaToSave.src] : [],
+      media: mediaToSave ? [mediaToSave] : [],
       timestamp: new Date().toISOString()
     };
 
@@ -140,12 +183,13 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
     const patch = { dailyLogs: [newLog, ...existingLogs] };
 
     // Also archive media in project files so it appears in project files & drawings
-    if (logMedia) {
+    if (mediaToSave) {
       const newFile = {
-        id: (logMedia.type === 'video' ? 'vid_' : 'ph_') + Date.now(),
-        src: logMedia.src,
-        type: logMedia.type,
-        caption: logMediaCaption.trim() || (logMedia.type === 'video' ? 'فيديو توثيق الموقع' : 'صورة توثيق الموقع'),
+        id: mediaToSave.id,
+        src: mediaToSave.src,
+        thumbnail: mediaToSave.thumbnail,
+        type: mediaToSave.type,
+        caption: mediaToSave.caption,
         date: today,
         timestamp: new Date().toISOString()
       };
@@ -161,15 +205,23 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
     setLogMediaCaption('');
     // Switch to list tab so user immediately sees their log with the photo/video!
     setLogTab('list');
-    showToast('✅ تم حفظ اليومية وعرض الصورة/الفيديو في السجل بنجاح!');
+    showToast('تم تسجيل اليومية الميدانية وحفظ التوثيق بنجاح! 📋');
   }
 
-  // ─── Save Inspection / Snag (حفظ استلام أو فحص) ───
+  // ─── Save New Snag (حفظ بند استلام / فحص) ───
   function handleSaveSnag(e) {
     e.preventDefault();
     if (!activeProject || !snagDesc.trim()) return;
     setSaving(true);
     const today = todayISO();
+
+    const mediaToSave = snagMedia ? {
+      id: snagMedia.id,
+      src: snagMedia.rawSrc || (snagMedia.src?.startsWith('blob:') ? `idb://${snagMedia.id}` : snagMedia.src),
+      thumbnail: snagMedia.thumbnail || '',
+      type: snagMedia.type,
+      name: snagMedia.name
+    } : null;
 
     const newSnag = {
       id: 'snag_' + Date.now(),
@@ -178,19 +230,21 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
       assignee: snagAssignee.trim() || 'المقاول المختص',
       status: snagStatus,
       date: today,
-      photo: snagMedia?.src || null,
-      mediaType: snagMedia?.type || null,
+      photo: mediaToSave ? (mediaToSave.thumbnail || mediaToSave.src) : null,
+      mediaType: mediaToSave?.type || null,
+      mediaId: mediaToSave?.id || null,
       timestamp: new Date().toISOString()
     };
 
     const existingSnags = activeProject.snags || [];
     const patch = { snags: [newSnag, ...existingSnags] };
 
-    if (snagMedia) {
+    if (mediaToSave) {
       const newFile = {
-        id: (snagMedia.type === 'video' ? 'snag_vid_' : 'snag_ph_') + Date.now(),
-        src: snagMedia.src,
-        type: snagMedia.type,
+        id: mediaToSave.id,
+        src: mediaToSave.src,
+        thumbnail: mediaToSave.thumbnail,
+        type: mediaToSave.type,
         caption: `استلام وفحص: ${snagDesc.trim()} (${snagLocation.trim() || 'الموقع'})`,
         date: today,
         timestamp: new Date().toISOString()
@@ -224,33 +278,12 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
   return (
     <>
       {/* ─── Media Lightbox Modal ─── */}
+      {/* ─── Media Lightbox Modal ─── */}
       {previewMediaModal && (
-        <div
-          onClick={() => setPreviewMediaModal(null)}
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)',
-            zIndex: 10006, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 16
-          }}
-        >
-          <div style={{ position: 'relative', maxWidth: '94vw', maxHeight: '85vh', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-            <button
-              onClick={() => setPreviewMediaModal(null)}
-              style={{
-                position: 'absolute', top: -42, right: 0, background: 'transparent',
-                border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, fontWeight: 800,
-                display: 'flex', alignItems: 'center', gap: 6
-              }}
-            >
-              <X size={24} /> إغلاق
-            </button>
-            {previewMediaModal.type === 'image' ? (
-              <img src={previewMediaModal.src} alt="معاينة" style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: 12, border: '2px solid #fff' }} />
-            ) : (
-              <video src={previewMediaModal.src} controls autoPlay style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: 12, border: '2px solid #6366F1' }} />
-            )}
-          </div>
-        </div>
+        <MediaLightbox
+          item={previewMediaModal}
+          onClose={() => setPreviewMediaModal(null)}
+        />
       )}
 
       {/* ─── Toast Message ─── */}
@@ -753,24 +786,17 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                                 </div>
                                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                   {mediaItems.map((item, mIdx) => (
-                                    <div
+                                    <MediaThumbnail
                                       key={mIdx}
-                                      onClick={() => setPreviewMediaModal(item)}
+                                      item={item}
+                                      onClick={setPreviewMediaModal}
                                       style={{
-                                        position: 'relative', width: 75, height: 75, borderRadius: 8,
-                                        overflow: 'hidden', border: '1.5px solid var(--border)', cursor: 'pointer',
-                                        background: '#0F172A', flexShrink: 0
+                                        width: 75,
+                                        height: 75,
+                                        flexShrink: 0,
+                                        border: '1.5px solid var(--border)',
                                       }}
-                                    >
-                                      {item.type === 'image' ? (
-                                        <img src={item.src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                      ) : (
-                                        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, color: '#fff', background: 'linear-gradient(135deg, #1E1B4B, #312E81)' }}>
-                                          <Play size={18} fill="#fff" />
-                                          <span style={{ fontSize: 8.5, fontWeight: 800 }}>فيديو</span>
-                                        </div>
-                                      )}
-                                    </div>
+                                    />
                                   ))}
                                 </div>
                               </div>
@@ -1095,23 +1121,15 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                             {/* صورة أو فيديو الفحص إن وجد */}
                             {snag.photo && (
                               <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <div
-                                  onClick={() => setPreviewMediaModal({
+                                <MediaThumbnail
+                                  item={{
+                                    id: snag.mediaId,
                                     src: snag.photo,
-                                    type: snag.mediaType || (snag.photo.startsWith('data:video') ? 'video' : 'image')
-                                  })}
-                                  style={{
-                                    width: 50, height: 50, borderRadius: 6, overflow: 'hidden',
-                                    border: '1px solid var(--border)', cursor: 'pointer', background: '#0F172A',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                                    type: snag.mediaType || (snag.photo.startsWith('data:video') ? 'video' : 'image'),
                                   }}
-                                >
-                                  {snag.mediaType === 'video' || snag.photo.startsWith('data:video') ? (
-                                    <Play size={16} color="#fff" />
-                                  ) : (
-                                    <img src={snag.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                  )}
-                                </div>
+                                  onClick={setPreviewMediaModal}
+                                  style={{ width: 50, height: 50, borderRadius: 6, flexShrink: 0 }}
+                                />
                                 <span style={{ fontSize: 11, color: 'var(--muted)' }}>اضغط لمعاينة التوثيق المرفق</span>
                               </div>
                             )}

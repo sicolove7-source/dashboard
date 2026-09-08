@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, signInAnonymously } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -19,4 +19,12 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+// تفعيل المصادقة الفورية غير المعطلة لتخويل رفع الوسائط إلى Firebase Storage
+if (typeof window !== 'undefined' && auth) {
+  signInAnonymously(auth).catch((e) => {
+    // Non-blocking if anonymous auth is not enabled in console
+  });
+}
+
 export default app;

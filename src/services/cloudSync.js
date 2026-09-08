@@ -5,33 +5,45 @@
  * مزامنة حية ولحظية للمشاريع، الشركات، الإعدادات، والمستخدمين عبر Firestore.
  */
 
-import { db, storage } from '../firebase';
+import app, { db, storage } from '../firebase';
 import { doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, uploadString } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, uploadString, getStorage } from 'firebase/storage';
 
 /**
  * رفع الوسائط (صور / فيديوهات) سحابياً إلى Firebase Storage والحصول على رابط HTTPS دائم
- * مع آلية Fallback ذكية تضمن عدم توقف التطبيق
+ * مع دعم الحاويات البديلة وإرجاع null عند الفشل للاعتماد الآمن على IndexedDB
  */
 export async function uploadMediaToFirebaseStorage(fileOrDataUrl, folder = 'site_media', fileName = '') {
-  if (!storage || !fileOrDataUrl) return fileOrDataUrl;
-  try {
-    const cleanName = fileName ? `${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '')}` : `media_${Date.now()}`;
-    const storageRef = ref(storage, `${folder}/${cleanName}`);
+  if (!fileOrDataUrl) return null;
+  const cleanName = fileName ? `${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '')}` : `media_${Date.now()}`;
 
-    if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
-      const uploadResult = await uploadString(storageRef, fileOrDataUrl, 'data_url');
-      const downloadURL = await getDownloadURL(uploadResult.ref);
-      return downloadURL;
-    } else if (fileOrDataUrl instanceof Blob || fileOrDataUrl instanceof File) {
-      const uploadResult = await uploadBytes(storageRef, fileOrDataUrl);
-      const downloadURL = await getDownloadURL(uploadResult.ref);
-      return downloadURL;
+  const storageInstances = [storage];
+  try {
+    if (app) {
+      storageInstances.push(getStorage(app, "gs://tashteeb-67d13.firebasestorage.app"));
+      storageInstances.push(getStorage(app, "gs://tashteeb-67d13.appspot.com"));
     }
-  } catch (error) {
-    console.warn("Firebase Storage upload fallback (using local/dataUrl):", error.message);
+  } catch (e) {}
+
+  for (const st of storageInstances) {
+    if (!st) continue;
+    try {
+      const storageRef = ref(st, `${folder}/${cleanName}`);
+      let uploadResult = null;
+      if (fileOrDataUrl instanceof Blob || fileOrDataUrl instanceof File) {
+        uploadResult = await uploadBytes(storageRef, fileOrDataUrl);
+      } else if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
+        uploadResult = await uploadString(storageRef, fileOrDataUrl, 'data_url');
+      }
+      if (uploadResult && uploadResult.ref) {
+        const downloadURL = await getDownloadURL(uploadResult.ref);
+        if (downloadURL) return downloadURL;
+      }
+    } catch (error) {
+      // تجربة الحاوية التالية
+    }
   }
-  return fileOrDataUrl;
+  return null;
 }
 
 
@@ -86,10 +98,79 @@ export async function syncCompanyDataToCloud(companyId, partialData) {
 }
 
 /**
+ * تطهير بيانات المشروع قبل الرفع السحابي لحمايته من تجاوز حد 1MB المسموح في Firestore
+ * واستبدال أي سلاسل Base64 ضخمة بروابط IndexedDB أو مصغرات خفيفة
+ */
+export function sanitizeProjectForCloud(project) {
+  if (!project || typeof project !== 'object') return project;
+  const p = { ...project };
+
+  if (Array.isArray(p.dailyLogs)) {
+    p.dailyLogs = p.dailyLogs.map(log => {
+      if (!log || typeof log !== 'object') return log;
+      const l = { ...log };
+      if (Array.isArray(l.media)) {
+        l.media = l.media.map(m => {
+          if (!m || typeof m !== 'object') return m;
+          const src = m.src || '';
+          if (typeof src === 'string' && src.startsWith('data:') && src.length > 80000) {
+            return {
+              ...m,
+              src: m.rawSrc?.startsWith('idb://') ? m.rawSrc : (m.thumbnail || `idb://${m.id || Date.now()}`)
+            };
+          }
+          return m;
+        });
+      }
+      if (Array.isArray(l.photos)) {
+        l.photos = l.photos.map(photo => {
+          if (typeof photo === 'string' && photo.startsWith('data:') && photo.length > 80000) {
+            return '';
+          }
+          return photo;
+        }).filter(Boolean);
+      }
+      return l;
+    });
+  }
+
+  if (Array.isArray(p.snags)) {
+    p.snags = p.snags.map(snag => {
+      if (!snag || typeof snag !== 'object') return snag;
+      const s = { ...snag };
+      if (typeof s.photo === 'string' && s.photo.startsWith('data:') && s.photo.length > 80000) {
+        s.photo = s.thumbnail || (s.mediaId ? `idb://${s.mediaId}` : '');
+      }
+      if (typeof s.afterPhoto === 'string' && s.afterPhoto.startsWith('data:') && s.afterPhoto.length > 80000) {
+        s.afterPhoto = '';
+      }
+      return s;
+    });
+  }
+
+  if (Array.isArray(p.files)) {
+    p.files = p.files.map(f => {
+      if (!f || typeof f !== 'object') return f;
+      const src = f.src || '';
+      if (typeof src === 'string' && src.startsWith('data:') && src.length > 80000) {
+        return {
+          ...f,
+          src: f.thumbnail || `idb://${f.id || Date.now()}`
+        };
+      }
+      return f;
+    });
+  }
+
+  return p;
+}
+
+/**
  * حفظ ومزامنة المشاريع في السحابة
  */
 export async function syncProjectsToCloud(companyId, projects) {
-  return syncCompanyDataToCloud(companyId, { projects });
+  const safeProjects = Array.isArray(projects) ? projects.map(sanitizeProjectForCloud) : projects;
+  return syncCompanyDataToCloud(companyId, { projects: safeProjects });
 }
 
 /**
@@ -110,16 +191,17 @@ export async function syncSingleProjectToCloud(companyId, projectId, patchOrProj
     const updatedProjects = existingProjects.map(p => {
       if (p.id === projectId) {
         found = true;
-        return typeof patchOrProject === 'function' 
+        const merged = typeof patchOrProject === 'function' 
           ? patchOrProject(p) 
           : { ...p, ...patchOrProject };
+        return sanitizeProjectForCloud(merged);
       }
       return p;
     });
 
     if (!found && typeof patchOrProject === 'object') {
       // مشروع جديد يتم إضافته
-      updatedProjects.unshift({ ...patchOrProject, id: projectId });
+      updatedProjects.unshift(sanitizeProjectForCloud({ ...patchOrProject, id: projectId }));
     }
 
     await setDoc(docRef, {

@@ -4,7 +4,7 @@ import {
   FileText, ArrowRight, BarChart3, X, Save, Target, ClipboardList, Package
 } from 'lucide-react';
 import { STAGES } from '../utils/constants';
-import { fmtDate, todayISO } from '../utils/helpers';
+import { fmtDate, todayISO, compressImageFile } from '../utils/helpers';
 import VoiceInput from '../components/VoiceInput';
 import InteractiveGantt from '../components/InteractiveGantt';
 import ProjectSupply from '../components/ProjectSupply';
@@ -24,12 +24,16 @@ const STATUS_META = {
   at_risk:  { label: 'يحتاج متابعة', color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
   delayed:  { label: 'متأخر',         color: '#EF4444', bg: 'rgba(239,68,68,0.12)' },
 };
-function readImg(file, cb) {
+async function readImg(file, cb) {
   if (!file) return;
-  if (file.size > 3 * 1024 * 1024) { alert('الصورة اكبر من 3 ميجا'); return; }
-  const r = new FileReader();
-  r.onload = e => cb(e.target.result);
-  r.readAsDataURL(file);
+  try {
+    const compressed = await compressImageFile(file, 1000, 0.7);
+    cb(compressed);
+  } catch (e) {
+    const r = new FileReader();
+    r.onload = ev => cb(ev.target.result);
+    r.readAsDataURL(file);
+  }
 }
 
 /* ═══════════ MAIN ═══════════ */
