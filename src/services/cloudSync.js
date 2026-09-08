@@ -7,6 +7,33 @@
 
 import { db, storage } from '../firebase';
 import { doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, uploadString } from 'firebase/storage';
+
+/**
+ * رفع الوسائط (صور / فيديوهات) سحابياً إلى Firebase Storage والحصول على رابط HTTPS دائم
+ * مع آلية Fallback ذكية تضمن عدم توقف التطبيق
+ */
+export async function uploadMediaToFirebaseStorage(fileOrDataUrl, folder = 'site_media', fileName = '') {
+  if (!storage || !fileOrDataUrl) return fileOrDataUrl;
+  try {
+    const cleanName = fileName ? `${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '')}` : `media_${Date.now()}`;
+    const storageRef = ref(storage, `${folder}/${cleanName}`);
+
+    if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
+      const uploadResult = await uploadString(storageRef, fileOrDataUrl, 'data_url');
+      const downloadURL = await getDownloadURL(uploadResult.ref);
+      return downloadURL;
+    } else if (fileOrDataUrl instanceof Blob || fileOrDataUrl instanceof File) {
+      const uploadResult = await uploadBytes(storageRef, fileOrDataUrl);
+      const downloadURL = await getDownloadURL(uploadResult.ref);
+      return downloadURL;
+    }
+  } catch (error) {
+    console.warn("Firebase Storage upload fallback (using local/dataUrl):", error.message);
+  }
+  return fileOrDataUrl;
+}
+
 
 export function cleanCompanyId(companyId) {
   if (!companyId) return null;

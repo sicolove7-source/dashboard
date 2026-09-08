@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import { todayISO, fmtDate, compressImageFile } from '../utils/helpers';
+import { uploadMediaToFirebaseStorage } from '../services/cloudSync';
 
 export default function MobileQuickActionsModal({ projects, onUpdateProject, activeCompanyId }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -64,8 +65,15 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
         });
       }
 
-      const mediaObj = {
+      // رفع فوري إلى Firebase Storage والحصول على رابط HTTPS دائم
+      const cloudUrl = await uploadMediaToFirebaseStorage(
         src,
+        `companies/${activeCompanyId || 'general'}/projects/${activeProject?.id || 'common'}`,
+        file.name
+      );
+
+      const mediaObj = {
+        src: cloudUrl || src,
         type: isVideo ? 'video' : 'image',
         name: file.name
       };

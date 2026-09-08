@@ -1,0 +1,9 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // السماح بالقراءة والكتابة للوسائط الميدانية وصور وفيديوهات المشاريع
+    match /{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}

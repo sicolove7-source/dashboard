@@ -5,6 +5,7 @@ import StatusBadge from '../components/StatusBadge';
 import StampRing from '../components/StampRing';
 import { STAGES, ENGINEERS, TECH_OFFICE } from '../utils/constants';
 import { fmtDate, todayISO, compressImageFile } from '../utils/helpers';
+import { uploadMediaToFirebaseStorage } from '../services/cloudSync';
 import { openWhatsApp, WHATSAPP_TEMPLATES } from '../utils/whatsappTemplates';
 import ImageAnnotator from '../components/ImageAnnotator';
 import FloorPlanAnnotator from '../components/FloorPlanAnnotator';
@@ -649,10 +650,17 @@ function DiaryPanel({ project, team, onUpdate }) {
             reader.readAsDataURL(file);
           });
         }
+        // رفع سحابي مباشر لـ Firebase Storage
+        const cloudUrl = await uploadMediaToFirebaseStorage(
+          src,
+          `companies/${project.companyId || 'company'}/projects/${project.id}`,
+          file.name
+        );
+
         setMediaList(prev => [
           ...prev,
           {
-            src,
+            src: cloudUrl || src,
             type: isVideo ? 'video' : 'image',
             name: file.name
           }
