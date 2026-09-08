@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { Building2, CalendarDays, Pencil, Trash2, ArrowRight, Plus, X, AlertTriangle, Paperclip, CheckSquare, MessageCircle, FileText, Map, MapPin, Clock, Wallet, Package, Home, Wrench, Sparkles, Target, MessageSquare, Share2, Printer } from 'lucide-react';
+import { Building2, CalendarDays, Pencil, Trash2, ArrowRight, Plus, X, AlertTriangle, Paperclip, CheckSquare, MessageCircle, FileText, Map, MapPin, Clock, Wallet, Package, Home, Wrench, Sparkles, Target, MessageSquare, Share2, Printer, Camera, Video, Play, Eye } from 'lucide-react';
 import StatusBadge from '../components/StatusBadge';
 
 import StampRing from '../components/StampRing';
@@ -567,8 +566,12 @@ function SnagsPanel({ project, onUpdate }) {
                     <div className="snag-photos-strip">
                       {s.photo && (
                         <div className="snag-photo-box">
-                          <div className="snag-photo-label before">قبل الإصلاح:</div>
-                          <img src={s.photo} alt="Before Snag" />
+                          <div className="snag-photo-label before">توثيق الفحص:</div>
+                          {s.mediaType === 'video' || (typeof s.photo === 'string' && s.photo.startsWith('data:video')) ? (
+                            <video src={s.photo} controls style={{ width: '100%', maxHeight: 150, borderRadius: 8 }} />
+                          ) : (
+                            <img src={s.photo} alt="Before Snag" />
+                          )}
                         </div>
                       )}
                       
@@ -612,6 +615,8 @@ function DiaryPanel({ project, team, onUpdate }) {
   
   const defaultAuthor = project.engineer || authorOptions[0] || "";
   const [form, setForm] = useState({ date: todayISO(), author: defaultAuthor, work: "", issues: "", workers: 5 });
+  const [mediaList, setMediaList] = useState([]); // [{ src, type: 'image' | 'video', name }]
+  const [previewModal, setPreviewModal] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
 
   useEffect(() => {
@@ -622,22 +627,130 @@ function DiaryPanel({ project, team, onUpdate }) {
     }));
   }, [project.id, project.engineer, team]);
 
+  function handleMediaUpload(e) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    files.forEach(file => {
+      const isVideo = file.type.startsWith('video');
+      const maxSize = isVideo ? 30 * 1024 * 1024 : 8 * 1024 * 1024;
+      if (file.size > maxSize) {
+        alert(`حجم الملف كبير (أقصى حد ${isVideo ? '30' : '8'} ميجابايت)`);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = ev => {
+        setMediaList(prev => [
+          ...prev,
+          {
+            src: ev.target.result,
+            type: isVideo ? 'video' : 'image',
+            name: file.name
+          }
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  }
+
   function addLog(e) {
     e.preventDefault();
     if (!form.work.trim()) return;
-    const newLog = { ...form, id: "d" + Date.now(), workers: Number(form.workers) };
-    onUpdate({ dailyLogs: [newLog, ...logs] });
+    const newLog = {
+      ...form,
+      id: "d" + Date.now(),
+      workers: Number(form.workers),
+      photos: mediaList.filter(m => m.type === 'image').map(m => m.src),
+      media: mediaList,
+      timestamp: new Date().toISOString()
+    };
+
+    const patch = { dailyLogs: [newLog, ...logs] };
+    if (mediaList.length > 0) {
+      const existingFiles = project.files || [];
+      const newFiles = mediaList.map((m, idx) => ({
+        id: (m.type === 'video' ? 'vid_' : 'ph_') + Date.now() + '_' + idx,
+        src: m.src,
+        type: m.type,
+        caption: `يومية ${form.date}: ${form.work.slice(0, 35)}`,
+        date: form.date,
+        timestamp: new Date().toISOString()
+      }));
+      patch.files = [...newFiles, ...existingFiles];
+    }
+
+    onUpdate(patch);
     const currentDefault = project.engineer || authorOptions[0] || "";
     setForm({ date: todayISO(), author: currentDefault, work: "", issues: "", workers: 5 });
+    setMediaList([]);
   }
+
   function removeLog(id) {
     onUpdate({ dailyLogs: logs.filter((l) => l.id !== id) });
     setConfirmId(null);
   }
+
+  function getLogMedia(l) {
+    const items = [];
+    if (Array.isArray(l.media)) {
+      l.media.forEach(m => {
+        if (typeof m === 'string') {
+          const isVid = m.startsWith('data:video') || m.includes('.mp4') || m.includes('.webm');
+          items.push({ src: m, type: isVid ? 'video' : 'image' });
+        } else if (m && m.src) {
+          items.push(m);
+        }
+      });
+    }
+    if (Array.isArray(l.photos)) {
+      l.photos.forEach(p => {
+        const src = typeof p === 'string' ? p : p?.src;
+        if (src && !items.some(it => it.src === src)) {
+          const isVid = src.startsWith('data:video') || src.includes('.mp4') || src.includes('.webm') || p?.type === 'video';
+          items.push({ src, type: isVid ? 'video' : 'image', caption: p?.caption || '' });
+        }
+      });
+    }
+    if (l.video && !items.some(it => it.src === l.video)) {
+      items.push({ src: l.video, type: 'video' });
+    }
+    return items;
+  }
+
   const sorted = [...logs].sort((a, b) => (a.date < b.date ? 1 : -1));
 
   return (
     <div className="diary-container">
+      {/* Lightbox / Video Modal */}
+      {previewModal && (
+        <div
+          onClick={() => setPreviewModal(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+            zIndex: 10005, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16
+          }}
+        >
+          <div style={{ position: 'relative', maxWidth: '90vw', maxHeight: '85vh', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => setPreviewModal(null)}
+              style={{
+                position: 'absolute', top: -40, right: 0, background: 'transparent',
+                border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, fontWeight: 700,
+                display: 'flex', alignItems: 'center', gap: 6
+              }}
+            >
+              <X size={24} /> إغلاق
+            </button>
+            {previewModal.type === 'image' ? (
+              <img src={previewModal.src} alt="معاينة" style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: 12, border: '2px solid #fff' }} />
+            ) : (
+              <video src={previewModal.src} controls autoPlay style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: 12, border: '2px solid #6366F1' }} />
+            )}
+          </div>
+        </div>
+      )}
+
       {!hasTodayLog && (
         <div
           className="tab-fade"
@@ -661,7 +774,7 @@ function DiaryPanel({ project, team, onUpdate }) {
                 تذكير الأتمتة: لم تسجل يوميات هذا الموقع لليوم ({fmtDate(todayISO())})
               </div>
               <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-                سجل الأعمال المنجزة والعمالة لضمان توثيق الإنجاز ومشاركة التقرير مع الإدارة والعميل.
+                سجل الأعمال المنجزة والعمالة مع الصور والفيديو لتوثيق الإنجاز ومشاركته مع الإدارة والعميل.
               </div>
             </div>
           </div>
@@ -705,6 +818,72 @@ function DiaryPanel({ project, team, onUpdate }) {
             <label>عوائق طارئة (إن وجدت)</label>
             <input value={form.issues} onChange={(e) => setForm({ ...form, issues: e.target.value })} placeholder="مثال: تأخر توريد الرمل أو انقطاع الكهرباء" />
           </div>
+
+          {/* 📸🎥 حقل رفع وتصوير الصور والفيديو لليومية */}
+          <div className="form-field diary-full-row" style={{ marginTop: 6 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 13, marginBottom: 8, color: 'var(--ink)' }}>
+              <Camera size={16} color="#1877F2" />
+              <span>إرفاق صور وفيديوهات لتوثيق اليومية:</span>
+            </label>
+
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+              <label style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 16px',
+                borderRadius: 10, border: '1.5px dashed #1877F2', background: 'rgba(24,119,242,0.06)',
+                color: '#1877F2', cursor: 'pointer', fontSize: 13, fontWeight: 700
+              }}>
+                <Camera size={16} />
+                <span>التقاط / رفع صورة 📸</span>
+                <input type="file" accept="image/*" capture="environment" multiple onChange={handleMediaUpload} style={{ display: 'none' }} />
+              </label>
+
+              <label style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 16px',
+                borderRadius: 10, border: '1.5px dashed #6366F1', background: 'rgba(99,102,241,0.06)',
+                color: '#4F46E5', cursor: 'pointer', fontSize: 13, fontWeight: 700
+              }}>
+                <Video size={16} />
+                <span>تسجيل / رفع فيديو 🎥</span>
+                <input type="file" accept="video/*" capture="environment" onChange={handleMediaUpload} style={{ display: 'none' }} />
+              </label>
+
+              {mediaList.length > 0 && (
+                <span style={{ fontSize: 12, color: '#10B981', fontWeight: 700 }}>
+                  ({mediaList.length} ملفات جاهزة للحفظ)
+                </span>
+              )}
+            </div>
+
+            {/* معاينة المصغرات قبل الحفظ */}
+            {mediaList.length > 0 && (
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+                {mediaList.map((m, idx) => (
+                  <div key={idx} style={{ position: 'relative', width: 85, height: 85, borderRadius: 10, overflow: 'hidden', border: '1.5px solid var(--border)', background: '#0F172A' }}>
+                    {m.type === 'image' ? (
+                      <img src={m.src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#fff' }}>
+                        <Video size={24} color="#6366F1" />
+                        <span style={{ fontSize: 9, fontWeight: 700 }}>فيديو</span>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setMediaList(prev => prev.filter((_, i) => i !== idx))}
+                      style={{
+                        position: 'absolute', top: 3, right: 3, width: 22, height: 22, borderRadius: '50%',
+                        background: 'rgba(239,68,68,0.9)', color: '#fff', border: 'none', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="diary-submit-row">
             <button className="btn btn-primary diary-submit-btn" type="submit">
               <Plus size={16} /> تسجيل اليومية
@@ -714,42 +893,78 @@ function DiaryPanel({ project, team, onUpdate }) {
       </div>
 
       <div className="panel diary-history-panel">
-        <h3 className="diary-section-heading">سجل اليوميات ({logs.length})</h3>
+        <h3 className="diary-section-heading">سجل اليوميات والتوثيق الميداني ({logs.length})</h3>
         {sorted.length === 0 ? (
           <div className="diary-empty-state">لا توجد يوميات مسجلة بعد.</div>
         ) : (
           <div className="diary-logs-list">
-            {sorted.map((l) => (
-              <div key={l.id} className="diary-log-card">
-                <div className="diary-log-header">
-                  <div className="diary-log-meta">
-                    <span className="diary-date-badge font-mono">{fmtDate(l.date)}</span>
-                    <span className="diary-author-text">{l.author}</span>
-                    <span className="diary-workers-badge">{l.workers} عامل بالموقع</span>
+            {sorted.map((l) => {
+              const logMedia = getLogMedia(l);
+              return (
+                <div key={l.id} className="diary-log-card">
+                  <div className="diary-log-header">
+                    <div className="diary-log-meta">
+                      <span className="diary-date-badge font-mono">{fmtDate(l.date)}</span>
+                      <span className="diary-author-text">{l.author}</span>
+                      <span className="diary-workers-badge">{l.workers} عامل بالموقع</span>
+                    </div>
+                    
+                    {confirmId === l.id ? (
+                      <div className="diary-delete-confirm">
+                        <button className="btn btn-danger btn-xs" onClick={() => removeLog(l.id)}>تأكيد الحذف</button>
+                        <button className="btn btn-ghost btn-xs" onClick={() => setConfirmId(null)}>إلغاء</button>
+                      </div>
+                    ) : (
+                      <span className="icon-btn diary-delete-btn" title="حذف اليومية" onClick={() => setConfirmId(l.id)}>
+                        <Trash2 size={14} />
+                      </span>
+                    )}
                   </div>
                   
-                  {confirmId === l.id ? (
-                    <div className="diary-delete-confirm">
-                      <button className="btn btn-danger btn-xs" onClick={() => removeLog(l.id)}>تأكيد الحذف</button>
-                      <button className="btn btn-ghost btn-xs" onClick={() => setConfirmId(null)}>إلغاء</button>
+                  <div className="diary-log-content">{l.work}</div>
+                  
+                  {l.issues && l.issues !== "لا يوجد" && (
+                    <div className="diary-issue-alert">
+                      <AlertTriangle size={14} color="#D97706" />
+                      <span>عوائق مُسجلة: {l.issues}</span>
                     </div>
-                  ) : (
-                    <span className="icon-btn diary-delete-btn" title="حذف اليومية" onClick={() => setConfirmId(l.id)}>
-                      <Trash2 size={14} />
-                    </span>
+                  )}
+
+                  {/* 📸🎥 عرض الصور والفيديوهات المسجلة لليومية بشكل واضح وبارز */}
+                  {logMedia.length > 0 && (
+                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px dashed var(--border)' }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Camera size={14} color="#1877F2" />
+                        <span>الصور والفيديوهات المرفقة باليومية ({logMedia.length}):</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        {logMedia.map((item, mIdx) => (
+                          <div
+                            key={mIdx}
+                            style={{
+                              position: 'relative', width: 90, height: 90, borderRadius: 10,
+                              overflow: 'hidden', border: '1.5px solid var(--border)', cursor: 'pointer', background: '#0F172A',
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+                            }}
+                            onClick={() => setPreviewModal(item)}
+                            title="اضغط للتكبير أو التشغيل"
+                          >
+                            {item.type === 'image' ? (
+                              <img src={item.src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#fff', background: 'linear-gradient(135deg, #1E1B4B, #312E81)' }}>
+                                <Play size={24} fill="#fff" />
+                                <span style={{ fontSize: 10, fontWeight: 800 }}>فيديو</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
-                
-                <div className="diary-log-content">{l.work}</div>
-                
-                {l.issues && l.issues !== "لا يوجد" && (
-                  <div className="diary-issue-alert">
-                    <AlertTriangle size={14} color="#D97706" />
-                    <span>عوائق مُسجلة: {l.issues}</span>
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

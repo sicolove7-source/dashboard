@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import {
   Camera, Video, ClipboardList, CheckSquare, X, CheckCircle,
   Plus, HardHat, Save, Trash2, ArrowRight, ShieldCheck, Clock,
-  AlertCircle, AlertTriangle
+  AlertCircle, AlertTriangle, Play, Eye
 } from 'lucide-react';
 import VoiceInput from './VoiceInput';
-import { todayISO } from '../utils/helpers';
+import { todayISO, fmtDate } from '../utils/helpers';
 
 export default function MobileQuickActionsModal({ projects, onUpdateProject, activeCompanyId }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -13,8 +13,10 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
   const [selectedProjectId, setSelectedProjectId] = useState(() => projects?.[0]?.id || '');
   const [toast, setToast] = useState('');
   const [saving, setSaving] = useState(false);
+  const [previewMediaModal, setPreviewMediaModal] = useState(null); // { src, type, caption }
 
-  // ─── Daily Log State (يوميات سريعة) ───
+  // ─── Daily Log State (اليوميات) ───
+  const [logTab, setLogTab] = useState('add'); // 'add' | 'list'
   const [logWork, setLogWork] = useState('');
   const [logWorkers, setLogWorkers] = useState(4);
   const [logIssues, setLogIssues] = useState('');
@@ -30,6 +32,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
   const [snagMedia, setSnagMedia] = useState(null); // { src, type: 'image' | 'video', name }
 
   const activeProject = (projects || []).find(p => p.id === (selectedProjectId || projects?.[0]?.id));
+  const projectLogs = activeProject?.dailyLogs || [];
   const projectSnags = activeProject?.snags || [];
   const pendingSnagsCount = projectSnags.filter(s => s.status !== 'done').length;
 
@@ -62,6 +65,35 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
       }
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
+  }
+
+  // Helper to extract media from a daily log item
+  function extractLogMedia(log) {
+    const items = [];
+    if (Array.isArray(log.media)) {
+      log.media.forEach(m => {
+        if (typeof m === 'string') {
+          const isVid = m.startsWith('data:video') || m.includes('.mp4') || m.includes('.webm');
+          items.push({ src: m, type: isVid ? 'video' : 'image' });
+        } else if (m && m.src) {
+          items.push(m);
+        }
+      });
+    }
+    if (Array.isArray(log.photos)) {
+      log.photos.forEach(p => {
+        const src = typeof p === 'string' ? p : p?.src;
+        if (src && !items.some(it => it.src === src)) {
+          const isVid = src.startsWith('data:video') || src.includes('.mp4') || src.includes('.webm') || p?.type === 'video';
+          items.push({ src, type: isVid ? 'video' : 'image', caption: p?.caption || '' });
+        }
+      });
+    }
+    if (log.video && !items.some(it => it.src === log.video)) {
+      items.push({ src: log.video, type: 'video' });
+    }
+    return items;
   }
 
   // ─── Save Quick Daily Log (حفظ يومية سريعة) ───
@@ -86,7 +118,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
     const existingLogs = activeProject.dailyLogs || [];
     const patch = { dailyLogs: [newLog, ...existingLogs] };
 
-    // Also archive media in project files so it is accessible in Drawings/Files
+    // Also archive media in project files so it appears in project files & drawings
     if (logMedia) {
       const newFile = {
         id: (logMedia.type === 'video' ? 'vid_' : 'ph_') + Date.now(),
@@ -106,9 +138,9 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
     setLogIssues('');
     setLogMedia(null);
     setLogMediaCaption('');
-    setActiveAction(null);
-    setIsOpen(false);
-    showToast('✅ تم تسجيل اليومية والوسائط سحابياً بنجاح!');
+    // Switch to list tab so user immediately sees their log with the photo/video!
+    setLogTab('list');
+    showToast('✅ تم حفظ اليومية وعرض الصورة/الفيديو في السجل بنجاح!');
   }
 
   // ─── Save Inspection / Snag (حفظ استلام أو فحص) ───
@@ -152,8 +184,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
     setSnagLocation('');
     setSnagAssignee('');
     setSnagMedia(null);
-    setActiveAction(null);
-    setIsOpen(false);
+    setSnagTab('list');
     showToast(snagStatus === 'done' ? '✅ تم توثيق واعتماد الاستلام سحابياً!' : '⚠️ تم قيد ملاحظة الفحص سحابياً لمتابعتها!');
   }
 
@@ -171,6 +202,36 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
 
   return (
     <>
+      {/* ─── Media Lightbox Modal ─── */}
+      {previewMediaModal && (
+        <div
+          onClick={() => setPreviewMediaModal(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)',
+            zIndex: 10006, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16
+          }}
+        >
+          <div style={{ position: 'relative', maxWidth: '94vw', maxHeight: '85vh', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => setPreviewMediaModal(null)}
+              style={{
+                position: 'absolute', top: -42, right: 0, background: 'transparent',
+                border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, fontWeight: 800,
+                display: 'flex', alignItems: 'center', gap: 6
+              }}
+            >
+              <X size={24} /> إغلاق
+            </button>
+            {previewMediaModal.type === 'image' ? (
+              <img src={previewMediaModal.src} alt="معاينة" style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: 12, border: '2px solid #fff' }} />
+            ) : (
+              <video src={previewMediaModal.src} controls autoPlay style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: 12, border: '2px solid #6366F1' }} />
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ─── Toast Message ─── */}
       {toast && (
         <div style={{
@@ -282,7 +343,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>إجراءات الموقع السريعة للمهندس</h3>
-                  <p style={{ margin: 0, fontSize: 11.5, color: 'var(--muted)' }}>يوميات ميدانية واستلامات بجودة هندسية</p>
+                  <p style={{ margin: 0, fontSize: 11.5, color: 'var(--muted)' }}>اليوميات الميدانية والاستلامات المعتمدة</p>
                 </div>
               </div>
               <button
@@ -320,13 +381,13 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
               </select>
             </div>
 
-            {/* ─── TWO MAIN QUICK ACTION CARDS ─── */}
+            {/* ─── TWO MAIN QUICK ACTION CARDS (When at root) ─── */}
             {!activeAction && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
                 {/* 1. Quick Daily Log */}
                 <button
                   type="button"
-                  onClick={() => setActiveAction('log')}
+                  onClick={() => { setActiveAction('log'); setLogTab('add'); }}
                   style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                     padding: '18px 10px', borderRadius: 16, border: '2px solid #10B981',
@@ -343,7 +404,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                   </div>
                   <div>
                     <span style={{ display: 'block', fontSize: 14, fontWeight: 900, color: '#047857', marginBottom: 2 }}>
-                      يوميات سريعة 📝
+                      اليوميات 📝
                     </span>
                     <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748B' }}>
                       أعمال، عمالة، صورة أو فيديو 🎥
@@ -354,7 +415,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                 {/* 2. Site Inspections & Snags */}
                 <button
                   type="button"
-                  onClick={() => setActiveAction('snag')}
+                  onClick={() => { setActiveAction('snag'); setSnagTab('add'); }}
                   style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                     padding: '18px 10px', borderRadius: 16, border: '2px solid #1877F2',
@@ -381,13 +442,14 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
               </div>
             )}
 
-            {/* ══════════════ ACTION 1: QUICK DAILY LOG (يوميات سريعة) ══════════════ */}
+            {/* ══════════════ ACTION 1: DAILY LOGS (اليوميات والوسائط) ══════════════ */}
             {activeAction === 'log' && (
-              <form onSubmit={handleSaveQuickLog} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {/* Header with back button */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#059669', fontWeight: 800, fontSize: 14 }}>
                     <ClipboardList size={18} />
-                    <span>تسجيل يومية ميدانية سريعة</span>
+                    <span>يوميات الموقع الميدانية والتوثيق</span>
                   </div>
                   <button
                     type="button"
@@ -398,180 +460,313 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                   </button>
                 </div>
 
-                {/* الأعمال المنفذة اليوم */}
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <label style={{ fontSize: 12.5, fontWeight: 700 }}>الأعمال المنفذة اليوم بالموقع: <span style={{ color: '#EF4444' }}>*</span></label>
-                    <VoiceInput onResult={t => setLogWork(w => (w ? w + ' ' : '') + t)} />
-                  </div>
-                  <textarea
-                    required
-                    rows={3}
-                    value={logWork}
-                    onChange={e => setLogWork(e.target.value)}
-                    placeholder="اكتب أو اضغط على الميكروفون للتحدث: مثال تم صب بلاط السطح ومحارة الجدران..."
-                    style={{
-                      width: '100%', padding: '10px 12px', borderRadius: 10,
-                      border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
-                      fontFamily: "'Cairo'", fontSize: 13.5, resize: 'none', boxSizing: 'border-box'
-                    }}
-                  />
-                </div>
-
-                {/* عدد العمالة والمعوقات */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 5 }}>عدد العمالة:</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={logWorkers}
-                      onChange={e => setLogWorkers(e.target.value)}
-                      style={{
-                        width: '100%', minHeight: 42, padding: '8px 10px', borderRadius: 10,
-                        border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
-                        fontFamily: "'Cairo'", fontSize: 13.5, boxSizing: 'border-box'
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 5 }}>ملاحظات / معوقات (اختياري):</label>
-                    <input
-                      type="text"
-                      value={logIssues}
-                      onChange={e => setLogIssues(e.target.value)}
-                      placeholder="مثال: تأخر توريد الرمل ساعتين"
-                      style={{
-                        width: '100%', minHeight: 42, padding: '8px 10px', borderRadius: 10,
-                        border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
-                        fontFamily: "'Cairo'", fontSize: 13, boxSizing: 'border-box'
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* ─── Media Capture: Photo OR Video (تصوير صورة أو فيديو) ─── */}
-                <div style={{
-                  background: 'var(--bg-color, #F8FAFC)',
-                  padding: 12,
-                  borderRadius: 12,
-                  border: '1.5px dashed var(--border, #CBD5E1)',
-                }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 8, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Camera size={16} color="#10B981" />
-                    <span>توثيق الموقع (تصوير صورة أو تسجيل فيديو):</span>
-                  </div>
-
-                  {!logMedia ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                      {/* Photo Button */}
-                      <label style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                        padding: '12px 8px', borderRadius: 10, border: '1.5px solid #10B981',
-                        background: 'rgba(16,185,129,0.06)', color: '#059669',
-                        fontSize: 13, fontWeight: 800, cursor: 'pointer', textAlign: 'center'
-                      }}>
-                        <Camera size={18} />
-                        <span>تصوير صورة 📸</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          onChange={e => handleCaptureMedia(e, 'log')}
-                          style={{ display: 'none' }}
-                        />
-                      </label>
-
-                      {/* Video Button */}
-                      <label style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                        padding: '12px 8px', borderRadius: 10, border: '1.5px solid #6366F1',
-                        background: 'rgba(99,102,241,0.06)', color: '#4F46E5',
-                        fontSize: 13, fontWeight: 800, cursor: 'pointer', textAlign: 'center'
-                      }}>
-                        <Video size={18} />
-                        <span>تصوير فيديو 🎥</span>
-                        <input
-                          type="file"
-                          accept="video/*"
-                          capture="environment"
-                          onChange={e => handleCaptureMedia(e, 'log')}
-                          style={{ display: 'none' }}
-                        />
-                      </label>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <div style={{
-                        position: 'relative', borderRadius: 10, overflow: 'hidden',
-                        background: '#0F172A', maxHeight: 200, display: 'flex', justifyContent: 'center', alignItems: 'center'
-                      }}>
-                        {logMedia.type === 'image' ? (
-                          <img src={logMedia.src} alt="معاينة الصورة" style={{ maxHeight: 200, maxWidth: '100%', objectFit: 'contain' }} />
-                        ) : (
-                          <video src={logMedia.src} controls style={{ maxHeight: 200, width: '100%' }} />
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setLogMedia(null)}
-                          style={{
-                            position: 'absolute', top: 8, right: 8,
-                            background: 'rgba(239,68,68,0.9)', color: '#fff',
-                            border: 'none', borderRadius: 8, padding: '4px 8px',
-                            fontSize: 11, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
-                          }}
-                        >
-                          <Trash2 size={13} /> حذف المرفق
-                        </button>
-                      </div>
-                      <input
-                        type="text"
-                        value={logMediaCaption}
-                        onChange={e => setLogMediaCaption(e.target.value)}
-                        placeholder="وصف الصورة أو الفيديو (مثال: معاينة تشطيبات الصالة)"
-                        style={{
-                          width: '100%', minHeight: 38, padding: '6px 12px', borderRadius: 8,
-                          border: '1.5px solid var(--border)', background: 'transparent',
-                          fontFamily: "'Cairo'", fontSize: 12.5, color: 'var(--ink)', boxSizing: 'border-box'
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* زر الحفظ */}
-                <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                {/* Subtabs: ➕ إضافة يومية vs 📋 سجل اليوميات والوسائط */}
+                <div style={{ display: 'flex', gap: 8, background: 'var(--bg-color, #F1F5F9)', padding: 4, borderRadius: 10 }}>
                   <button
-                    type="submit"
-                    disabled={saving}
+                    type="button"
+                    onClick={() => setLogTab('add')}
                     style={{
-                      flex: 1, minHeight: 46, borderRadius: 12, background: 'linear-gradient(135deg, #10B981, #059669)',
-                      color: '#fff', border: 'none', fontWeight: 800, fontSize: 14, fontFamily: "'Cairo'", cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                      boxShadow: '0 4px 14px rgba(16,185,129,0.35)'
+                      flex: 1, padding: '8px 12px', borderRadius: 8, border: 'none',
+                      background: logTab === 'add' ? '#fff' : 'transparent',
+                      color: logTab === 'add' ? '#059669' : 'var(--muted)',
+                      fontWeight: 800, fontSize: 13, cursor: 'pointer',
+                      boxShadow: logTab === 'add' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
                     }}
                   >
-                    <Save size={16} />
-                    {saving ? 'جاري الحفظ والمزامنة...' : 'حفظ اليومية والوسائط في السحابة'}
+                    <Plus size={14} />
+                    <span>تسجيل يومية جديدة</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => setActiveAction(null)}
+                    onClick={() => setLogTab('list')}
                     style={{
-                      minHeight: 46, padding: '0 16px', borderRadius: 12, background: 'var(--border)',
-                      color: 'var(--ink)', border: 'none', fontFamily: "'Cairo'", cursor: 'pointer', fontWeight: 700, fontSize: 13
+                      flex: 1, padding: '8px 12px', borderRadius: 8, border: 'none',
+                      background: logTab === 'list' ? '#fff' : 'transparent',
+                      color: logTab === 'list' ? '#059669' : 'var(--muted)',
+                      fontWeight: 800, fontSize: 13, cursor: 'pointer',
+                      boxShadow: logTab === 'list' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
                     }}
                   >
-                    رجوع
+                    <ClipboardList size={14} />
+                    <span>سجل اليوميات والوسائط ({projectLogs.length})</span>
                   </button>
                 </div>
-              </form>
+
+                {/* Subtab 1: Form */}
+                {logTab === 'add' && (
+                  <form onSubmit={handleSaveQuickLog} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {/* الأعمال المنفذة اليوم */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <label style={{ fontSize: 12.5, fontWeight: 700 }}>الأعمال المنفذة اليوم بالموقع: <span style={{ color: '#EF4444' }}>*</span></label>
+                        <VoiceInput onResult={t => setLogWork(w => (w ? w + ' ' : '') + t)} />
+                      </div>
+                      <textarea
+                        required
+                        rows={3}
+                        value={logWork}
+                        onChange={e => setLogWork(e.target.value)}
+                        placeholder="اكتب أو اضغط على الميكروفون للتحدث: مثال تم صب بلاط السطح ومحارة الجدران..."
+                        style={{
+                          width: '100%', padding: '10px 12px', borderRadius: 10,
+                          border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
+                          fontFamily: "'Cairo'", fontSize: 13.5, resize: 'none', boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+
+                    {/* عدد العمالة والمعوقات */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 5 }}>عدد العمالة:</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={logWorkers}
+                          onChange={e => setLogWorkers(e.target.value)}
+                          style={{
+                            width: '100%', minHeight: 42, padding: '8px 10px', borderRadius: 10,
+                            border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
+                            fontFamily: "'Cairo'", fontSize: 13.5, boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 5 }}>عوائق / ملاحظات الموقع:</label>
+                        <input
+                          type="text"
+                          value={logIssues}
+                          onChange={e => setLogIssues(e.target.value)}
+                          placeholder="مثال: تأخر توريد الرمل ساعتين"
+                          style={{
+                            width: '100%', minHeight: 42, padding: '8px 10px', borderRadius: 10,
+                            border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
+                            fontFamily: "'Cairo'", fontSize: 13, boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* 📸🎥 حقل تصوير صورة أو تسجيل فيديو حي */}
+                    <div style={{
+                      background: 'var(--bg-color, #F8FAFC)',
+                      padding: 12,
+                      borderRadius: 12,
+                      border: '1.5px dashed var(--border, #CBD5E1)',
+                    }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 8, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Camera size={16} color="#10B981" />
+                        <span>توثيق الموقع (تصوير صورة أو تسجيل فيديو):</span>
+                      </div>
+
+                      {!logMedia ? (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                          {/* Photo Button */}
+                          <label style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                            padding: '12px 8px', borderRadius: 10, border: '1.5px solid #10B981',
+                            background: 'rgba(16,185,129,0.06)', color: '#059669',
+                            fontSize: 13, fontWeight: 800, cursor: 'pointer', textAlign: 'center'
+                          }}>
+                            <Camera size={18} />
+                            <span>تصوير صورة 📸</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              capture="environment"
+                              onChange={e => handleCaptureMedia(e, 'log')}
+                              style={{ display: 'none' }}
+                            />
+                          </label>
+
+                          {/* Video Button */}
+                          <label style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                            padding: '12px 8px', borderRadius: 10, border: '1.5px solid #6366F1',
+                            background: 'rgba(99,102,241,0.06)', color: '#4F46E5',
+                            fontSize: 13, fontWeight: 800, cursor: 'pointer', textAlign: 'center'
+                          }}>
+                            <Video size={18} />
+                            <span>تصوير فيديو 🎥</span>
+                            <input
+                              type="file"
+                              accept="video/*"
+                              capture="environment"
+                              onChange={e => handleCaptureMedia(e, 'log')}
+                              style={{ display: 'none' }}
+                            />
+                          </label>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div style={{
+                            position: 'relative', borderRadius: 10, overflow: 'hidden',
+                            background: '#0F172A', maxHeight: 200, display: 'flex', justifyContent: 'center', alignItems: 'center'
+                          }}>
+                            {logMedia.type === 'image' ? (
+                              <img src={logMedia.src} alt="معاينة الصورة" style={{ maxHeight: 200, maxWidth: '100%', objectFit: 'contain' }} />
+                            ) : (
+                              <video src={logMedia.src} controls style={{ maxHeight: 200, width: '100%' }} />
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setLogMedia(null)}
+                              style={{
+                                position: 'absolute', top: 8, right: 8,
+                                background: 'rgba(239,68,68,0.9)', color: '#fff',
+                                border: 'none', borderRadius: 8, padding: '4px 8px',
+                                fontSize: 11, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
+                              }}
+                            >
+                              <Trash2 size={13} /> حذف المرفق
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            value={logMediaCaption}
+                            onChange={e => setLogMediaCaption(e.target.value)}
+                            placeholder="وصف الصورة أو الفيديو (مثال: معاينة تشطيبات الصالة)"
+                            style={{
+                              width: '100%', minHeight: 38, padding: '6px 12px', borderRadius: 8,
+                              border: '1.5px solid var(--border)', background: 'transparent',
+                              fontFamily: "'Cairo'", fontSize: 12.5, color: 'var(--ink)', boxSizing: 'border-box'
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* أزرار الحفظ */}
+                    <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        style={{
+                          flex: 1, minHeight: 46, borderRadius: 12, background: 'linear-gradient(135deg, #10B981, #059669)',
+                          color: '#fff', border: 'none', fontWeight: 800, fontSize: 14, fontFamily: "'Cairo'", cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                          boxShadow: '0 4px 14px rgba(16,185,129,0.35)'
+                        }}
+                      >
+                        <Save size={16} />
+                        {saving ? 'جاري الحفظ والمزامنة...' : 'حفظ اليومية والوسائط في السحابة'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveAction(null)}
+                        style={{
+                          minHeight: 46, padding: '0 16px', borderRadius: 12, background: 'var(--border)',
+                          color: 'var(--ink)', border: 'none', fontFamily: "'Cairo'", cursor: 'pointer', fontWeight: 700, fontSize: 13
+                        }}
+                      >
+                        رجوع
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* Subtab 2: Logs History List with Photos & Videos (سجل اليوميات والوسائط) */}
+                {logTab === 'list' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {projectLogs.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--muted)' }}>
+                        <ClipboardList size={32} color="#10B981" style={{ marginBottom: 6 }} />
+                        <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--ink)' }}>لا توجد يوميات مسجلة بعد لهذا الموقع</div>
+                        <button
+                          type="button"
+                          onClick={() => setLogTab('add')}
+                          style={{
+                            marginTop: 10, padding: '8px 16px', borderRadius: 8, background: '#10B981',
+                            color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer'
+                          }}
+                        >
+                          + تسجيل أول يومية الآن
+                        </button>
+                      </div>
+                    ) : (
+                      projectLogs.map(log => {
+                        const mediaItems = extractLogMedia(log);
+                        return (
+                          <div
+                            key={log.id}
+                            style={{
+                              padding: '12px 14px', borderRadius: 12,
+                              background: 'var(--bg-color, #F8FAFC)',
+                              border: '1px solid var(--border)',
+                              display: 'flex', flexDirection: 'column', gap: 8
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                              <span style={{ fontWeight: 800, fontSize: 13, color: 'var(--ink)' }}>
+                                📅 {fmtDate(log.date)}
+                              </span>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <span style={{ fontSize: 11, color: '#10B981', fontWeight: 700, background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: 6 }}>
+                                  👷 {log.workers || 1} عمال
+                                </span>
+                                <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                                  {log.author}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div style={{ fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.6 }}>
+                              {log.work}
+                            </div>
+
+                            {log.issues && log.issues !== 'لا يوجد' && (
+                              <div style={{ fontSize: 11.5, color: '#D97706', background: 'rgba(245,158,11,0.08)', padding: '4px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <AlertTriangle size={13} />
+                                <span>{log.issues}</span>
+                              </div>
+                            )}
+
+                            {/* 📸🎥 مكان عرض الصور والفيديوهات المسجلة لليومية */}
+                            {mediaItems.length > 0 && (
+                              <div style={{ marginTop: 6, paddingTop: 8, borderTop: '1px dashed var(--border)' }}>
+                                <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+                                  <Camera size={13} color="#10B981" />
+                                  <span>الصور والفيديوهات المسجلة ({mediaItems.length}):</span>
+                                </div>
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                  {mediaItems.map((item, mIdx) => (
+                                    <div
+                                      key={mIdx}
+                                      onClick={() => setPreviewMediaModal(item)}
+                                      style={{
+                                        position: 'relative', width: 75, height: 75, borderRadius: 8,
+                                        overflow: 'hidden', border: '1.5px solid var(--border)', cursor: 'pointer',
+                                        background: '#0F172A', flexShrink: 0
+                                      }}
+                                    >
+                                      {item.type === 'image' ? (
+                                        <img src={item.src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                      ) : (
+                                        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, color: '#fff', background: 'linear-gradient(135deg, #1E1B4B, #312E81)' }}>
+                                          <Play size={18} fill="#fff" />
+                                          <span style={{ fontSize: 8.5, fontWeight: 800 }}>فيديو</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
             )}
 
             {/* ══════════════ ACTION 2: INSPECTIONS & SNAGS (الاستلامات) ══════════════ */}
             {activeAction === 'snag' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* Header with Switch */}
+                {/* Header with back button */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#1877F2', fontWeight: 800, fontSize: 14 }}>
                     <CheckSquare size={18} />
@@ -616,7 +811,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                     }}
                   >
                     <ClipboardList size={14} />
-                    <span>الملاحظات المعلقة ({pendingSnagsCount})</span>
+                    <span>سجل الملاحظات ({projectSnags.length})</span>
                   </button>
                 </div>
 
@@ -820,7 +1015,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                   </form>
                 )}
 
-                {/* Subtab 2: Pending Snags List */}
+                {/* Subtab 2: Snags List with Photo/Video previews */}
                 {snagTab === 'list' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {projectSnags.length === 0 ? (
@@ -832,47 +1027,73 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                     ) : (
                       projectSnags.map(snag => {
                         const isDone = snag.status === 'done';
+                        const isProgress = snag.status === 'progress';
                         return (
                           <div
                             key={snag.id}
                             style={{
-                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              display: 'flex', flexDirection: 'column', gap: 6,
                               padding: '10px 12px', borderRadius: 10,
                               background: isDone ? 'rgba(16,185,129,0.06)' : 'var(--bg-color, #F8FAFC)',
                               border: isDone ? '1px solid rgba(16,185,129,0.3)' : '1px solid var(--border)',
-                              gap: 8
                             }}
                           >
-                            <div style={{ flex: 1 }}>
-                              <div style={{
-                                fontWeight: 700, fontSize: 13,
-                                textDecoration: isDone ? 'line-through' : 'none',
-                                color: isDone ? 'var(--muted)' : 'var(--ink)'
-                              }}>
-                                {snag.desc}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{
+                                  fontWeight: 700, fontSize: 13,
+                                  textDecoration: isDone ? 'line-through' : 'none',
+                                  color: isDone ? 'var(--muted)' : 'var(--ink)'
+                                }}>
+                                  {snag.desc}
+                                </div>
+                                <div style={{ fontSize: 11, color: 'var(--muted)', display: 'flex', gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
+                                  {snag.location && <span>📍 {snag.location}</span>}
+                                  {snag.assignee && <span>👷 {snag.assignee}</span>}
+                                  <span>📅 {snag.date}</span>
+                                </div>
                               </div>
-                              <div style={{ fontSize: 11, color: 'var(--muted)', display: 'flex', gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
-                                {snag.location && <span>📍 {snag.location}</span>}
-                                {snag.assignee && <span>👷 {snag.assignee}</span>}
-                                <span>📅 {snag.date}</span>
-                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleToggleSnagStatus(snag.id, snag.status)}
+                                style={{
+                                  padding: '6px 10px', borderRadius: 8,
+                                  background: isDone ? '#10B981' : isProgress ? '#F59E0B' : '#EF4444',
+                                  color: '#fff',
+                                  border: 'none',
+                                  fontSize: 11, fontWeight: 800, cursor: 'pointer',
+                                  display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0
+                                }}
+                              >
+                                <CheckCircle size={13} />
+                                <span>{isDone ? 'معتمد ✅' : isProgress ? 'قيد التعديل ⏳' : 'مفتوح ❌'}</span>
+                              </button>
                             </div>
 
-                            <button
-                              type="button"
-                              onClick={() => handleToggleSnagStatus(snag.id, snag.status)}
-                              style={{
-                                padding: '6px 10px', borderRadius: 8,
-                                background: isDone ? '#10B981' : '#F1F5F9',
-                                color: isDone ? '#fff' : 'var(--ink)',
-                                border: '1px solid ' + (isDone ? '#10B981' : 'var(--border)'),
-                                fontSize: 11.5, fontWeight: 800, cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0
-                              }}
-                            >
-                              <CheckCircle size={14} />
-                              <span>{isDone ? 'معتمد ✅' : 'اعتماد'}</span>
-                            </button>
+                            {/* صورة أو فيديو الفحص إن وجد */}
+                            {snag.photo && (
+                              <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <div
+                                  onClick={() => setPreviewMediaModal({
+                                    src: snag.photo,
+                                    type: snag.mediaType || (snag.photo.startsWith('data:video') ? 'video' : 'image')
+                                  })}
+                                  style={{
+                                    width: 50, height: 50, borderRadius: 6, overflow: 'hidden',
+                                    border: '1px solid var(--border)', cursor: 'pointer', background: '#0F172A',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                                  }}
+                                >
+                                  {snag.mediaType === 'video' || snag.photo.startsWith('data:video') ? (
+                                    <Play size={16} color="#fff" />
+                                  ) : (
+                                    <img src={snag.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  )}
+                                </div>
+                                <span style={{ fontSize: 11, color: 'var(--muted)' }}>اضغط لمعاينة التوثيق المرفق</span>
+                              </div>
+                            )}
                           </div>
                         );
                       })
