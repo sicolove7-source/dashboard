@@ -5,7 +5,7 @@ import {
   AlertCircle, AlertTriangle, Play, Eye
 } from 'lucide-react';
 import VoiceInput from './VoiceInput';
-import { todayISO, fmtDate } from '../utils/helpers';
+import { todayISO, fmtDate, compressImageFile } from '../utils/helpers';
 
 export default function MobileQuickActionsModal({ projects, onUpdateProject, activeCompanyId }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -41,30 +41,43 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
     setTimeout(() => setToast(''), 3200);
   }
 
-  // Handle Photo or Video Capture
-  function handleCaptureMedia(e, target = 'log') {
+  // Handle Photo or Video Capture with auto compression
+  async function handleCaptureMedia(e, target = 'log') {
     const file = e.target.files?.[0];
     if (!file) return;
     const isVideo = file.type.startsWith('video');
-    const maxSize = isVideo ? 30 * 1024 * 1024 : 8 * 1024 * 1024;
+    const maxSize = isVideo ? 30 * 1024 * 1024 : 15 * 1024 * 1024;
     if (file.size > maxSize) {
-      alert(`حجم الملف كبير (أقصى حد ${isVideo ? '30' : '8'} ميجابايت)`);
+      alert(`حجم الملف كبير (أقصى حد ${isVideo ? '30' : '15'} ميجابايت)`);
       return;
     }
-    const reader = new FileReader();
-    reader.onload = ev => {
+
+    try {
+      let src = '';
+      if (!isVideo) {
+        src = await compressImageFile(file, 1200, 0.75);
+      } else {
+        src = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = ev => resolve(ev.target.result);
+          reader.readAsDataURL(file);
+        });
+      }
+
       const mediaObj = {
-        src: ev.target.result,
+        src,
         type: isVideo ? 'video' : 'image',
         name: file.name
       };
+
       if (target === 'log') {
         setLogMedia(mediaObj);
       } else {
         setSnagMedia(mediaObj);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.error("Error processing media:", err);
+    }
     e.target.value = '';
   }
 

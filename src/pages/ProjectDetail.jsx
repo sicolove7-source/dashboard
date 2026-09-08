@@ -4,7 +4,7 @@ import StatusBadge from '../components/StatusBadge';
 
 import StampRing from '../components/StampRing';
 import { STAGES, ENGINEERS, TECH_OFFICE } from '../utils/constants';
-import { fmtDate, todayISO } from '../utils/helpers';
+import { fmtDate, todayISO, compressImageFile } from '../utils/helpers';
 import { openWhatsApp, WHATSAPP_TEMPLATES } from '../utils/whatsappTemplates';
 import ImageAnnotator from '../components/ImageAnnotator';
 import FloorPlanAnnotator from '../components/FloorPlanAnnotator';
@@ -628,29 +628,39 @@ function DiaryPanel({ project, team, onUpdate }) {
     }));
   }, [project.id, project.engineer, team]);
 
-  function handleMediaUpload(e) {
+  async function handleMediaUpload(e) {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
-    files.forEach(file => {
+    for (const file of files) {
       const isVideo = file.type.startsWith('video');
-      const maxSize = isVideo ? 30 * 1024 * 1024 : 8 * 1024 * 1024;
+      const maxSize = isVideo ? 30 * 1024 * 1024 : 15 * 1024 * 1024;
       if (file.size > maxSize) {
-        alert(`حجم الملف كبير (أقصى حد ${isVideo ? '30' : '8'} ميجابايت)`);
-        return;
+        alert(`حجم الملف كبير (أقصى حد ${isVideo ? '30' : '15'} ميجابايت)`);
+        continue;
       }
-      const reader = new FileReader();
-      reader.onload = ev => {
+      try {
+        let src = '';
+        if (!isVideo) {
+          src = await compressImageFile(file, 1200, 0.75);
+        } else {
+          src = await new Promise((res) => {
+            const reader = new FileReader();
+            reader.onload = ev => res(ev.target.result);
+            reader.readAsDataURL(file);
+          });
+        }
         setMediaList(prev => [
           ...prev,
           {
-            src: ev.target.result,
+            src,
             type: isVideo ? 'video' : 'image',
             name: file.name
           }
         ]);
-      };
-      reader.readAsDataURL(file);
-    });
+      } catch (err) {
+        console.error("Error reading file:", err);
+      }
+    }
     e.target.value = '';
   }
 
