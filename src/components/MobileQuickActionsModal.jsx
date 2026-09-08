@@ -1,118 +1,170 @@
 import React, { useState } from 'react';
-import { Camera, ClipboardList, Banknote, X, CheckCircle, Mic, Plus, Building2, HardHat, Save } from 'lucide-react';
+import {
+  Camera, Video, ClipboardList, CheckSquare, X, CheckCircle,
+  Plus, HardHat, Save, Trash2, ArrowRight, ShieldCheck, Clock,
+  AlertCircle, AlertTriangle
+} from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import { todayISO } from '../utils/helpers';
 
 export default function MobileQuickActionsModal({ projects, onUpdateProject, activeCompanyId }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeAction, setActiveAction] = useState(null); // 'photo' | 'log' | 'expense' | null
+  const [activeAction, setActiveAction] = useState(null); // 'log' | 'snag' | null
   const [selectedProjectId, setSelectedProjectId] = useState(() => projects?.[0]?.id || '');
   const [toast, setToast] = useState('');
-
-  // Forms state
-  const [logWork, setLogWork] = useState('');
-  const [logWorkers, setLogWorkers] = useState(4);
-  const [expenseTitle, setExpenseTitle] = useState('');
-  const [expenseAmount, setExpenseAmount] = useState('');
-  const [photoCaption, setPhotoCaption] = useState('');
-  const [capturedPhoto, setCapturedPhoto] = useState(null);
   const [saving, setSaving] = useState(false);
 
+  // ─── Daily Log State (يوميات سريعة) ───
+  const [logWork, setLogWork] = useState('');
+  const [logWorkers, setLogWorkers] = useState(4);
+  const [logIssues, setLogIssues] = useState('');
+  const [logMedia, setLogMedia] = useState(null); // { src, type: 'image' | 'video', name }
+  const [logMediaCaption, setLogMediaCaption] = useState('');
+
+  // ─── Snag / Inspection State (الاستلامات) ───
+  const [snagTab, setSnagTab] = useState('add'); // 'add' | 'list'
+  const [snagDesc, setSnagDesc] = useState('');
+  const [snagLocation, setSnagLocation] = useState('');
+  const [snagAssignee, setSnagAssignee] = useState('');
+  const [snagStatus, setSnagStatus] = useState('done'); // 'done' | 'progress' | 'pending'
+  const [snagMedia, setSnagMedia] = useState(null); // { src, type: 'image' | 'video', name }
+
   const activeProject = (projects || []).find(p => p.id === (selectedProjectId || projects?.[0]?.id));
+  const projectSnags = activeProject?.snags || [];
+  const pendingSnagsCount = projectSnags.filter(s => s.status !== 'done').length;
 
   function showToast(msg) {
     setToast(msg);
-    setTimeout(() => setToast(''), 3000);
+    setTimeout(() => setToast(''), 3200);
   }
 
-  function handleCaptureFile(e) {
+  // Handle Photo or Video Capture
+  function handleCaptureMedia(e, target = 'log') {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 4 * 1024 * 1024) {
-      alert('حجم الصورة كبير جداً (أكثر من 4 ميجابايت)');
+    const isVideo = file.type.startsWith('video');
+    const maxSize = isVideo ? 30 * 1024 * 1024 : 8 * 1024 * 1024;
+    if (file.size > maxSize) {
+      alert(`حجم الملف كبير (أقصى حد ${isVideo ? '30' : '8'} ميجابايت)`);
       return;
     }
     const reader = new FileReader();
     reader.onload = ev => {
-      setCapturedPhoto(ev.target.result);
-      setActiveAction('photo');
+      const mediaObj = {
+        src: ev.target.result,
+        type: isVideo ? 'video' : 'image',
+        name: file.name
+      };
+      if (target === 'log') {
+        setLogMedia(mediaObj);
+      } else {
+        setSnagMedia(mediaObj);
+      }
     };
     reader.readAsDataURL(file);
   }
 
+  // ─── Save Quick Daily Log (حفظ يومية سريعة) ───
   function handleSaveQuickLog(e) {
     e.preventDefault();
     if (!activeProject || !logWork.trim()) return;
     setSaving(true);
     const today = todayISO();
+
     const newLog = {
       id: 'd_' + Date.now(),
       date: today,
       author: 'مهندس الموقع (ميداني)',
       work: logWork.trim(),
-      issues: '',
+      issues: logIssues.trim(),
       workers: Number(logWorkers) || 1,
-      photos: [],
+      photos: logMedia?.type === 'image' ? [logMedia.src] : [],
+      media: logMedia ? [logMedia] : [],
       timestamp: new Date().toISOString()
     };
+
     const existingLogs = activeProject.dailyLogs || [];
-    onUpdateProject(activeProject.id, {
-      dailyLogs: [newLog, ...existingLogs]
-    });
+    const patch = { dailyLogs: [newLog, ...existingLogs] };
+
+    // Also archive media in project files so it is accessible in Drawings/Files
+    if (logMedia) {
+      const newFile = {
+        id: (logMedia.type === 'video' ? 'vid_' : 'ph_') + Date.now(),
+        src: logMedia.src,
+        type: logMedia.type,
+        caption: logMediaCaption.trim() || (logMedia.type === 'video' ? 'فيديو توثيق الموقع' : 'صورة توثيق الموقع'),
+        date: today,
+        timestamp: new Date().toISOString()
+      };
+      const existingFiles = activeProject.files || [];
+      patch.files = [newFile, ...existingFiles];
+    }
+
+    onUpdateProject(activeProject.id, patch);
     setSaving(false);
     setLogWork('');
+    setLogIssues('');
+    setLogMedia(null);
+    setLogMediaCaption('');
     setActiveAction(null);
     setIsOpen(false);
-    showToast('✅ تم تسجيل اليومية سحابياً بنجاح!');
+    showToast('✅ تم تسجيل اليومية والوسائط سحابياً بنجاح!');
   }
 
-  function handleSaveQuickExpense(e) {
+  // ─── Save Inspection / Snag (حفظ استلام أو فحص) ───
+  function handleSaveSnag(e) {
     e.preventDefault();
-    if (!activeProject || !expenseTitle.trim() || !expenseAmount) return;
+    if (!activeProject || !snagDesc.trim()) return;
     setSaving(true);
-    const amountNum = Number(expenseAmount);
-    const newExpense = {
-      id: 'exp_' + Date.now(),
-      title: expenseTitle.trim(),
-      amount: amountNum,
-      category: 'مشتريات موقع ونثريات',
-      date: todayISO(),
+    const today = todayISO();
+
+    const newSnag = {
+      id: 'snag_' + Date.now(),
+      desc: snagDesc.trim(),
+      location: snagLocation.trim() || 'الموقع العام',
+      assignee: snagAssignee.trim() || 'المقاول المختص',
+      status: snagStatus,
+      date: today,
+      photo: snagMedia?.src || null,
+      mediaType: snagMedia?.type || null,
       timestamp: new Date().toISOString()
     };
-    const existingExpenses = activeProject.expenses || [];
-    const newSpent = (Number(activeProject.spent) || 0) + amountNum;
-    onUpdateProject(activeProject.id, {
-      expenses: [newExpense, ...existingExpenses],
-      spent: newSpent
-    });
+
+    const existingSnags = activeProject.snags || [];
+    const patch = { snags: [newSnag, ...existingSnags] };
+
+    if (snagMedia) {
+      const newFile = {
+        id: (snagMedia.type === 'video' ? 'snag_vid_' : 'snag_ph_') + Date.now(),
+        src: snagMedia.src,
+        type: snagMedia.type,
+        caption: `استلام وفحص: ${snagDesc.trim()} (${snagLocation.trim() || 'الموقع'})`,
+        date: today,
+        timestamp: new Date().toISOString()
+      };
+      const existingFiles = activeProject.files || [];
+      patch.files = [newFile, ...existingFiles];
+    }
+
+    onUpdateProject(activeProject.id, patch);
     setSaving(false);
-    setExpenseTitle('');
-    setExpenseAmount('');
+    setSnagDesc('');
+    setSnagLocation('');
+    setSnagAssignee('');
+    setSnagMedia(null);
     setActiveAction(null);
     setIsOpen(false);
-    showToast(`✅ تم قيد مصروف (${amountNum.toLocaleString('ar-EG')} ج.م) وتحديث إجمالي الصرف!`);
+    showToast(snagStatus === 'done' ? '✅ تم توثيق واعتماد الاستلام سحابياً!' : '⚠️ تم قيد ملاحظة الفحص سحابياً لمتابعتها!');
   }
 
-  function handleSaveQuickPhoto(e) {
-    e.preventDefault();
-    if (!activeProject || !capturedPhoto) return;
-    setSaving(true);
-    const newPhoto = {
-      src: capturedPhoto,
-      caption: photoCaption.trim() || 'توثيق موقع ميداني',
-      date: todayISO(),
-      id: 'ph_' + Date.now()
-    };
-    const existingFiles = activeProject.files || [];
-    onUpdateProject(activeProject.id, {
-      files: [newPhoto, ...existingFiles]
-    });
-    setSaving(false);
-    setCapturedPhoto(null);
-    setPhotoCaption('');
-    setActiveAction(null);
-    setIsOpen(false);
-    showToast('📸 تم حفظ وتوثيق صورة الموقع سحابياً!');
+  // ─── Toggle Existing Snag Status ───
+  function handleToggleSnagStatus(snagId, currentStatus) {
+    if (!activeProject) return;
+    const nextStatus = currentStatus === 'done' ? 'pending' : 'done';
+    const existingSnags = activeProject.snags || [];
+    const updatedSnags = existingSnags.map(s => s.id === snagId ? { ...s, status: nextStatus } : s);
+    onUpdateProject(activeProject.id, { snags: updatedSnags });
+    showToast(nextStatus === 'done' ? '✅ تم إغلاق واعتماد الملاحظة!' : '⏳ تم إعادة فتح الملاحظة للمتابعة');
   }
 
   if (!projects || projects.length === 0) return null;
@@ -130,7 +182,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
           color: '#10B981',
           padding: '12px 24px',
           borderRadius: 99,
-          boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
           border: '1px solid #10B98155',
           fontFamily: "'Cairo', sans-serif",
           fontSize: 14,
@@ -209,9 +261,9 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
               borderTopLeftRadius: 24,
               borderTopRightRadius: 24,
               borderTop: '2px solid var(--border, #E2E8F0)',
-              padding: '24px 20px 36px',
+              padding: '22px 18px 34px',
               zIndex: 10001,
-              maxHeight: '90vh',
+              maxHeight: '92vh',
               overflowY: 'auto',
               boxShadow: '0 -8px 32px rgba(0,0,0,0.2)',
               fontFamily: "'Cairo', sans-serif",
@@ -219,7 +271,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
             }}
           >
             {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{
                   width: 36, height: 36, borderRadius: 10,
@@ -230,7 +282,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>إجراءات الموقع السريعة للمهندس</h3>
-                  <p style={{ margin: 0, fontSize: 12, color: 'var(--muted)' }}>تحديثات ميدانية فورية متزامنة مع السحابة</p>
+                  <p style={{ margin: 0, fontSize: 11.5, color: 'var(--muted)' }}>يوميات ميدانية واستلامات بجودة هندسية</p>
                 </div>
               </div>
               <button
@@ -243,7 +295,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
 
             {/* Project Picker */}
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+              <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>
                 المشروع المستهدف:
               </label>
               <select
@@ -251,14 +303,14 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                 onChange={e => setSelectedProjectId(e.target.value)}
                 style={{
                   width: '100%',
-                  minHeight: 46,
+                  minHeight: 44,
                   padding: '8px 12px',
                   borderRadius: 10,
                   border: '1.5px solid var(--border, #E2E8F0)',
                   background: 'var(--bg-color, #F8FAFC)',
                   color: 'var(--ink)',
                   fontFamily: "'Cairo'",
-                  fontSize: 14,
+                  fontSize: 13.5,
                   fontWeight: 600,
                 }}
               >
@@ -268,110 +320,88 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
               </select>
             </div>
 
-            {/* 3 Quick Action Buttons if no active subaction */}
+            {/* ─── TWO MAIN QUICK ACTION CARDS ─── */}
             {!activeAction && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
-                {/* 1. Camera Direct */}
-                <label style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                  padding: '16px 8px', borderRadius: 14, border: '2px solid #1877F2',
-                  background: 'rgba(24,119,242,0.06)', color: '#1877F2',
-                  cursor: 'pointer', textAlign: 'center', gap: 8, minHeight: 96,
-                }}>
-                  <Camera size={26} />
-                  <span style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.2 }}>تصوير واستلام</span>
-                  <input type="file" accept="image/*" capture="environment" onChange={handleCaptureFile} style={{ display: 'none' }} />
-                </label>
-
-                {/* 2. Quick Log */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+                {/* 1. Quick Daily Log */}
                 <button
                   type="button"
                   onClick={() => setActiveAction('log')}
                   style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    padding: '16px 8px', borderRadius: 14, border: '2px solid #10B981',
-                    background: 'rgba(16,185,129,0.06)', color: '#10B981',
-                    cursor: 'pointer', textAlign: 'center', gap: 8, minHeight: 96,
+                    padding: '18px 10px', borderRadius: 16, border: '2px solid #10B981',
+                    background: 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.02))',
+                    color: '#059669', cursor: 'pointer', textAlign: 'center', gap: 10, minHeight: 120,
+                    boxShadow: '0 4px 14px rgba(16,185,129,0.12)',
                   }}
                 >
-                  <ClipboardList size={26} />
-                  <span style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.2 }}>يومية سريعة</span>
+                  <div style={{
+                    width: 44, height: 44, borderRadius: 12, background: 'rgba(16,185,129,0.15)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    <ClipboardList size={24} color="#10B981" />
+                  </div>
+                  <div>
+                    <span style={{ display: 'block', fontSize: 14, fontWeight: 900, color: '#047857', marginBottom: 2 }}>
+                      يوميات سريعة 📝
+                    </span>
+                    <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748B' }}>
+                      أعمال، عمالة، صورة أو فيديو 🎥
+                    </span>
+                  </div>
                 </button>
 
-                {/* 3. Quick Expense */}
+                {/* 2. Site Inspections & Snags */}
                 <button
                   type="button"
-                  onClick={() => setActiveAction('expense')}
+                  onClick={() => setActiveAction('snag')}
                   style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    padding: '16px 8px', borderRadius: 14, border: '2px solid #F59E0B',
-                    background: 'rgba(245,158,11,0.06)', color: '#D97706',
-                    cursor: 'pointer', textAlign: 'center', gap: 8, minHeight: 96,
+                    padding: '18px 10px', borderRadius: 16, border: '2px solid #1877F2',
+                    background: 'linear-gradient(135deg, rgba(24,119,242,0.08), rgba(24,119,242,0.02))',
+                    color: '#1877F2', cursor: 'pointer', textAlign: 'center', gap: 10, minHeight: 120,
+                    boxShadow: '0 4px 14px rgba(24,119,242,0.12)',
                   }}
                 >
-                  <Banknote size={26} />
-                  <span style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.2 }}>مصروف موقع</span>
+                  <div style={{
+                    width: 44, height: 44, borderRadius: 12, background: 'rgba(24,119,242,0.15)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    <CheckSquare size={24} color="#1877F2" />
+                  </div>
+                  <div>
+                    <span style={{ display: 'block', fontSize: 14, fontWeight: 900, color: '#1D4ED8', marginBottom: 2 }}>
+                      الاستلامات 🔍
+                    </span>
+                    <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748B' }}>
+                      فحص البنود وملاحظات الموقع
+                    </span>
+                  </div>
                 </button>
               </div>
             )}
 
-            {/* ─── Form 1: Photo Preview & Caption ─── */}
-            {activeAction === 'photo' && capturedPhoto && (
-              <form onSubmit={handleSaveQuickPhoto} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{ textAlign: 'center' }}>
-                  <img
-                    src={capturedPhoto}
-                    alt="صورة الموقع"
-                    style={{ maxHeight: 200, maxWidth: '100%', borderRadius: 12, border: '2px solid #1877F2', objectFit: 'contain' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>وصف / بند الصورة:</label>
-                  <input
-                    type="text"
-                    value={photoCaption}
-                    onChange={e => setPhotoCaption(e.target.value)}
-                    placeholder="مثال: استلام رخام الدرج، صب عتب الصالة..."
-                    style={{
-                      width: '100%', minHeight: 44, padding: '10px 14px', borderRadius: 10,
-                      border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
-                      fontFamily: "'Cairo'", fontSize: 14,
-                    }}
-                  />
-                </div>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    style={{
-                      flex: 1, minHeight: 46, borderRadius: 10, background: '#1877F2', color: '#fff',
-                      border: 'none', fontWeight: 800, fontSize: 14, fontFamily: "'Cairo'", cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                    }}
-                  >
-                    <Save size={16} />
-                    {saving ? 'جاري الحفظ...' : 'حفظ الصورة في السحابة'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setCapturedPhoto(null); setActiveAction(null); }}
-                    style={{
-                      minHeight: 46, padding: '0 16px', borderRadius: 10, background: 'var(--border)',
-                      color: 'var(--ink)', border: 'none', fontFamily: "'Cairo'", cursor: 'pointer',
-                    }}
-                  >
-                    إلغاء
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {/* ─── Form 2: Quick Daily Log ─── */}
+            {/* ══════════════ ACTION 1: QUICK DAILY LOG (يوميات سريعة) ══════════════ */}
             {activeAction === 'log' && (
               <form onSubmit={handleSaveQuickLog} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#059669', fontWeight: 800, fontSize: 14 }}>
+                    <ClipboardList size={18} />
+                    <span>تسجيل يومية ميدانية سريعة</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveAction(null)}
+                    style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    ← تبديل الإجراء
+                  </button>
+                </div>
+
+                {/* الأعمال المنفذة اليوم */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <label style={{ fontSize: 13, fontWeight: 700 }}>الأعمال المنفذة اليوم بالموقع:</label>
+                    <label style={{ fontSize: 12.5, fontWeight: 700 }}>الأعمال المنفذة اليوم بالموقع: <span style={{ color: '#EF4444' }}>*</span></label>
                     <VoiceInput onResult={t => setLogWork(w => (w ? w + ' ' : '') + t)} />
                   </div>
                   <textarea
@@ -381,45 +411,155 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                     onChange={e => setLogWork(e.target.value)}
                     placeholder="اكتب أو اضغط على الميكروفون للتحدث: مثال تم صب بلاط السطح ومحارة الجدران..."
                     style={{
-                      width: '100%', padding: '10px 14px', borderRadius: 10,
+                      width: '100%', padding: '10px 12px', borderRadius: 10,
                       border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
-                      fontFamily: "'Cairo'", fontSize: 14, resize: 'none',
+                      fontFamily: "'Cairo'", fontSize: 13.5, resize: 'none', boxSizing: 'border-box'
                     }}
                   />
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>عدد العمالة:</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={logWorkers}
-                    onChange={e => setLogWorkers(e.target.value)}
-                    style={{
-                      width: '100%', minHeight: 44, padding: '10px 14px', borderRadius: 10,
-                      border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
-                      fontFamily: "'Cairo'", fontSize: 14,
-                    }}
-                  />
+
+                {/* عدد العمالة والمعوقات */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 5 }}>عدد العمالة:</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={logWorkers}
+                      onChange={e => setLogWorkers(e.target.value)}
+                      style={{
+                        width: '100%', minHeight: 42, padding: '8px 10px', borderRadius: 10,
+                        border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
+                        fontFamily: "'Cairo'", fontSize: 13.5, boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 5 }}>ملاحظات / معوقات (اختياري):</label>
+                    <input
+                      type="text"
+                      value={logIssues}
+                      onChange={e => setLogIssues(e.target.value)}
+                      placeholder="مثال: تأخر توريد الرمل ساعتين"
+                      style={{
+                        width: '100%', minHeight: 42, padding: '8px 10px', borderRadius: 10,
+                        border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
+                        fontFamily: "'Cairo'", fontSize: 13, boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: 10 }}>
+
+                {/* ─── Media Capture: Photo OR Video (تصوير صورة أو فيديو) ─── */}
+                <div style={{
+                  background: 'var(--bg-color, #F8FAFC)',
+                  padding: 12,
+                  borderRadius: 12,
+                  border: '1.5px dashed var(--border, #CBD5E1)',
+                }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 8, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Camera size={16} color="#10B981" />
+                    <span>توثيق الموقع (تصوير صورة أو تسجيل فيديو):</span>
+                  </div>
+
+                  {!logMedia ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      {/* Photo Button */}
+                      <label style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                        padding: '12px 8px', borderRadius: 10, border: '1.5px solid #10B981',
+                        background: 'rgba(16,185,129,0.06)', color: '#059669',
+                        fontSize: 13, fontWeight: 800, cursor: 'pointer', textAlign: 'center'
+                      }}>
+                        <Camera size={18} />
+                        <span>تصوير صورة 📸</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={e => handleCaptureMedia(e, 'log')}
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+
+                      {/* Video Button */}
+                      <label style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                        padding: '12px 8px', borderRadius: 10, border: '1.5px solid #6366F1',
+                        background: 'rgba(99,102,241,0.06)', color: '#4F46E5',
+                        fontSize: 13, fontWeight: 800, cursor: 'pointer', textAlign: 'center'
+                      }}>
+                        <Video size={18} />
+                        <span>تصوير فيديو 🎥</span>
+                        <input
+                          type="file"
+                          accept="video/*"
+                          capture="environment"
+                          onChange={e => handleCaptureMedia(e, 'log')}
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{
+                        position: 'relative', borderRadius: 10, overflow: 'hidden',
+                        background: '#0F172A', maxHeight: 200, display: 'flex', justifyContent: 'center', alignItems: 'center'
+                      }}>
+                        {logMedia.type === 'image' ? (
+                          <img src={logMedia.src} alt="معاينة الصورة" style={{ maxHeight: 200, maxWidth: '100%', objectFit: 'contain' }} />
+                        ) : (
+                          <video src={logMedia.src} controls style={{ maxHeight: 200, width: '100%' }} />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setLogMedia(null)}
+                          style={{
+                            position: 'absolute', top: 8, right: 8,
+                            background: 'rgba(239,68,68,0.9)', color: '#fff',
+                            border: 'none', borderRadius: 8, padding: '4px 8px',
+                            fontSize: 11, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
+                          }}
+                        >
+                          <Trash2 size={13} /> حذف المرفق
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={logMediaCaption}
+                        onChange={e => setLogMediaCaption(e.target.value)}
+                        placeholder="وصف الصورة أو الفيديو (مثال: معاينة تشطيبات الصالة)"
+                        style={{
+                          width: '100%', minHeight: 38, padding: '6px 12px', borderRadius: 8,
+                          border: '1.5px solid var(--border)', background: 'transparent',
+                          fontFamily: "'Cairo'", fontSize: 12.5, color: 'var(--ink)', boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* زر الحفظ */}
+                <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                   <button
                     type="submit"
                     disabled={saving}
                     style={{
-                      flex: 1, minHeight: 46, borderRadius: 10, background: '#10B981', color: '#fff',
-                      border: 'none', fontWeight: 800, fontSize: 14, fontFamily: "'Cairo'", cursor: 'pointer',
+                      flex: 1, minHeight: 46, borderRadius: 12, background: 'linear-gradient(135deg, #10B981, #059669)',
+                      color: '#fff', border: 'none', fontWeight: 800, fontSize: 14, fontFamily: "'Cairo'", cursor: 'pointer',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      boxShadow: '0 4px 14px rgba(16,185,129,0.35)'
                     }}
                   >
                     <Save size={16} />
-                    {saving ? 'جاري الحفظ...' : 'حفظ اليومية في السحابة'}
+                    {saving ? 'جاري الحفظ والمزامنة...' : 'حفظ اليومية والوسائط في السحابة'}
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveAction(null)}
                     style={{
-                      minHeight: 46, padding: '0 16px', borderRadius: 10, background: 'var(--border)',
-                      color: 'var(--ink)', border: 'none', fontFamily: "'Cairo'", cursor: 'pointer',
+                      minHeight: 46, padding: '0 16px', borderRadius: 12, background: 'var(--border)',
+                      color: 'var(--ink)', border: 'none', fontFamily: "'Cairo'", cursor: 'pointer', fontWeight: 700, fontSize: 13
                     }}
                   >
                     رجوع
@@ -428,65 +568,318 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
               </form>
             )}
 
-            {/* ─── Form 3: Quick Field Expense ─── */}
-            {activeAction === 'expense' && (
-              <form onSubmit={handleSaveQuickExpense} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>بند المصروف:</label>
-                  <input
-                    type="text"
-                    required
-                    value={expenseTitle}
-                    onChange={e => setExpenseTitle(e.target.value)}
-                    placeholder="مثال: شراء شكائر أسمنت، نقل رمل، إكرامية ونش..."
-                    style={{
-                      width: '100%', minHeight: 44, padding: '10px 14px', borderRadius: 10,
-                      border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
-                      fontFamily: "'Cairo'", fontSize: 14,
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>المبلغ المدفوع (ج.م):</label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    value={expenseAmount}
-                    onChange={e => setExpenseAmount(e.target.value)}
-                    placeholder="مثال: 350"
-                    style={{
-                      width: '100%', minHeight: 44, padding: '10px 14px', borderRadius: 10,
-                      border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
-                      fontFamily: "'Cairo'", fontSize: 14,
-                    }}
-                  />
-                </div>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    style={{
-                      flex: 1, minHeight: 46, borderRadius: 10, background: '#F59E0B', color: '#fff',
-                      border: 'none', fontWeight: 800, fontSize: 14, fontFamily: "'Cairo'", cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                    }}
-                  >
-                    <Save size={16} />
-                    {saving ? 'جاري القيد...' : 'قيد المصروف وتحديث الصرف'}
-                  </button>
+            {/* ══════════════ ACTION 2: INSPECTIONS & SNAGS (الاستلامات) ══════════════ */}
+            {activeAction === 'snag' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {/* Header with Switch */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#1877F2', fontWeight: 800, fontSize: 14 }}>
+                    <CheckSquare size={18} />
+                    <span>الاستلامات وفحص الجودة (Snags)</span>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setActiveAction(null)}
-                    style={{
-                      minHeight: 46, padding: '0 16px', borderRadius: 10, background: 'var(--border)',
-                      color: 'var(--ink)', border: 'none', fontFamily: "'Cairo'", cursor: 'pointer',
-                    }}
+                    style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
                   >
-                    رجوع
+                    ← تبديل الإجراء
                   </button>
                 </div>
-              </form>
+
+                {/* Subtabs: Add vs List */}
+                <div style={{ display: 'flex', gap: 8, background: 'var(--bg-color, #F1F5F9)', padding: 4, borderRadius: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => setSnagTab('add')}
+                    style={{
+                      flex: 1, padding: '8px 12px', borderRadius: 8, border: 'none',
+                      background: snagTab === 'add' ? '#fff' : 'transparent',
+                      color: snagTab === 'add' ? '#1877F2' : 'var(--muted)',
+                      fontWeight: 800, fontSize: 13, cursor: 'pointer',
+                      boxShadow: snagTab === 'add' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+                    }}
+                  >
+                    <Plus size={14} />
+                    <span>تسجيل استلام جديد</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSnagTab('list')}
+                    style={{
+                      flex: 1, padding: '8px 12px', borderRadius: 8, border: 'none',
+                      background: snagTab === 'list' ? '#fff' : 'transparent',
+                      color: snagTab === 'list' ? '#1877F2' : 'var(--muted)',
+                      fontWeight: 800, fontSize: 13, cursor: 'pointer',
+                      boxShadow: snagTab === 'list' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+                    }}
+                  >
+                    <ClipboardList size={14} />
+                    <span>الملاحظات المعلقة ({pendingSnagsCount})</span>
+                  </button>
+                </div>
+
+                {/* Subtab 1: Add Snag/Inspection Form */}
+                {snagTab === 'add' && (
+                  <form onSubmit={handleSaveSnag} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {/* وصف البند المستلم */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <label style={{ fontSize: 12.5, fontWeight: 700 }}>بند الاستلام / وصف الملاحظة: <span style={{ color: '#EF4444' }}>*</span></label>
+                        <VoiceInput onResult={t => setSnagDesc(d => (d ? d + ' ' : '') + t)} />
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        value={snagDesc}
+                        onChange={e => setSnagDesc(e.target.value)}
+                        placeholder="مثال: استلام زوايا السيراميك، كبس مواسير السباكة..."
+                        style={{
+                          width: '100%', minHeight: 42, padding: '8px 12px', borderRadius: 10,
+                          border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
+                          fontFamily: "'Cairo'", fontSize: 13.5, boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+
+                    {/* المكان والغرفة + المقاول المسؤول */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 5 }}>المكان / الغرفة:</label>
+                        <input
+                          type="text"
+                          value={snagLocation}
+                          onChange={e => setSnagLocation(e.target.value)}
+                          placeholder="مثال: حمام الماستر"
+                          style={{
+                            width: '100%', minHeight: 42, padding: '8px 10px', borderRadius: 10,
+                            border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
+                            fontFamily: "'Cairo'", fontSize: 13, boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 5 }}>المقاول / الصنايعي:</label>
+                        <input
+                          type="text"
+                          value={snagAssignee}
+                          onChange={e => setSnagAssignee(e.target.value)}
+                          placeholder="مثال: مقاول السباكة"
+                          style={{
+                            width: '100%', minHeight: 42, padding: '8px 10px', borderRadius: 10,
+                            border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
+                            fontFamily: "'Cairo'", fontSize: 13, boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* نتيجة وحالة الاستلام */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6 }}>حالة الاستلام والاعتماد:</label>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => setSnagStatus('done')}
+                          style={{
+                            padding: '8px 4px', borderRadius: 8,
+                            border: snagStatus === 'done' ? '2px solid #10B981' : '1px solid var(--border)',
+                            background: snagStatus === 'done' ? 'rgba(16,185,129,0.12)' : 'transparent',
+                            color: snagStatus === 'done' ? '#059669' : 'var(--muted)',
+                            fontWeight: 800, fontSize: 12, cursor: 'pointer'
+                          }}
+                        >
+                          مطابق ومعتمد ✅
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSnagStatus('progress')}
+                          style={{
+                            padding: '8px 4px', borderRadius: 8,
+                            border: snagStatus === 'progress' ? '2px solid #F59E0B' : '1px solid var(--border)',
+                            background: snagStatus === 'progress' ? 'rgba(245,158,11,0.12)' : 'transparent',
+                            color: snagStatus === 'progress' ? '#D97706' : 'var(--muted)',
+                            fontWeight: 800, fontSize: 12, cursor: 'pointer'
+                          }}
+                        >
+                          تحت التعديل ⚠️
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSnagStatus('pending')}
+                          style={{
+                            padding: '8px 4px', borderRadius: 8,
+                            border: snagStatus === 'pending' ? '2px solid #EF4444' : '1px solid var(--border)',
+                            background: snagStatus === 'pending' ? 'rgba(239,68,68,0.12)' : 'transparent',
+                            color: snagStatus === 'pending' ? '#DC2626' : 'var(--muted)',
+                            fontWeight: 800, fontSize: 12, cursor: 'pointer'
+                          }}
+                        >
+                          مرفوض ❌
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* توثيق الفحص بصورة أو فيديو */}
+                    <div style={{
+                      background: 'var(--bg-color, #F8FAFC)',
+                      padding: 10,
+                      borderRadius: 10,
+                      border: '1.5px dashed var(--border)',
+                    }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: 'var(--ink)' }}>
+                        إرفاق توثيق فحص (صورة أو فيديو):
+                      </div>
+
+                      {!snagMedia ? (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          <label style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                            padding: '9px 6px', borderRadius: 8, border: '1.5px solid #1877F2',
+                            background: 'rgba(24,119,242,0.06)', color: '#1877F2',
+                            fontSize: 12, fontWeight: 800, cursor: 'pointer', textAlign: 'center'
+                          }}>
+                            <Camera size={16} />
+                            <span>صورة الفحص 📸</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              capture="environment"
+                              onChange={e => handleCaptureMedia(e, 'snag')}
+                              style={{ display: 'none' }}
+                            />
+                          </label>
+
+                          <label style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                            padding: '9px 6px', borderRadius: 8, border: '1.5px solid #6366F1',
+                            background: 'rgba(99,102,241,0.06)', color: '#4F46E5',
+                            fontSize: 12, fontWeight: 800, cursor: 'pointer', textAlign: 'center'
+                          }}>
+                            <Video size={16} />
+                            <span>فيديو الفحص 🎥</span>
+                            <input
+                              type="file"
+                              accept="video/*"
+                              capture="environment"
+                              onChange={e => handleCaptureMedia(e, 'snag')}
+                              style={{ display: 'none' }}
+                            />
+                          </label>
+                        </div>
+                      ) : (
+                        <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: '#0F172A', maxHeight: 160, display: 'flex', justifyContent: 'center' }}>
+                          {snagMedia.type === 'image' ? (
+                            <img src={snagMedia.src} alt="معاينة" style={{ maxHeight: 160, maxWidth: '100%', objectFit: 'contain' }} />
+                          ) : (
+                            <video src={snagMedia.src} controls style={{ maxHeight: 160, width: '100%' }} />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setSnagMedia(null)}
+                            style={{
+                              position: 'absolute', top: 6, right: 6,
+                              background: 'rgba(239,68,68,0.9)', color: '#fff',
+                              border: 'none', borderRadius: 6, padding: '3px 6px',
+                              fontSize: 11, fontWeight: 700, cursor: 'pointer'
+                            }}
+                          >
+                            حذف
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* أزرار الحفظ */}
+                    <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        style={{
+                          flex: 1, minHeight: 46, borderRadius: 12, background: 'linear-gradient(135deg, #1877F2, #0D65D9)',
+                          color: '#fff', border: 'none', fontWeight: 800, fontSize: 14, fontFamily: "'Cairo'", cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                          boxShadow: '0 4px 14px rgba(24,119,242,0.35)'
+                        }}
+                      >
+                        <Save size={16} />
+                        {saving ? 'جاري الحفظ...' : 'حفظ واعتماد بند الاستلام'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveAction(null)}
+                        style={{
+                          minHeight: 46, padding: '0 16px', borderRadius: 12, background: 'var(--border)',
+                          color: 'var(--ink)', border: 'none', fontFamily: "'Cairo'", cursor: 'pointer', fontWeight: 700, fontSize: 13
+                        }}
+                      >
+                        رجوع
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* Subtab 2: Pending Snags List */}
+                {snagTab === 'list' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {projectSnags.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--muted)' }}>
+                        <CheckCircle size={32} color="#10B981" style={{ marginBottom: 6 }} />
+                        <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--ink)' }}>الموقع نظيف بالكامل!</div>
+                        <div style={{ fontSize: 12 }}>لا توجد أي ملاحظات أو استلامات مسجلة لهذا المشروع.</div>
+                      </div>
+                    ) : (
+                      projectSnags.map(snag => {
+                        const isDone = snag.status === 'done';
+                        return (
+                          <div
+                            key={snag.id}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              padding: '10px 12px', borderRadius: 10,
+                              background: isDone ? 'rgba(16,185,129,0.06)' : 'var(--bg-color, #F8FAFC)',
+                              border: isDone ? '1px solid rgba(16,185,129,0.3)' : '1px solid var(--border)',
+                              gap: 8
+                            }}
+                          >
+                            <div style={{ flex: 1 }}>
+                              <div style={{
+                                fontWeight: 700, fontSize: 13,
+                                textDecoration: isDone ? 'line-through' : 'none',
+                                color: isDone ? 'var(--muted)' : 'var(--ink)'
+                              }}>
+                                {snag.desc}
+                              </div>
+                              <div style={{ fontSize: 11, color: 'var(--muted)', display: 'flex', gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
+                                {snag.location && <span>📍 {snag.location}</span>}
+                                {snag.assignee && <span>👷 {snag.assignee}</span>}
+                                <span>📅 {snag.date}</span>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleSnagStatus(snag.id, snag.status)}
+                              style={{
+                                padding: '6px 10px', borderRadius: 8,
+                                background: isDone ? '#10B981' : '#F1F5F9',
+                                color: isDone ? '#fff' : 'var(--ink)',
+                                border: '1px solid ' + (isDone ? '#10B981' : 'var(--border)'),
+                                fontSize: 11.5, fontWeight: 800, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0
+                              }}
+                            >
+                              <CheckCircle size={14} />
+                              <span>{isDone ? 'معتمد ✅' : 'اعتماد'}</span>
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </>
