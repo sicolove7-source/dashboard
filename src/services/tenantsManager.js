@@ -10,6 +10,7 @@ import { DEMO_ACCOUNTS } from '../utils/permissions';
 import { hashPassword, verifyPassword } from '../utils/security';
 import {
   fetchCompanyDataFromCloud,
+  fetchProjectsFromCloud,
   syncCompanyDataToCloud,
   syncSettingsToCloud,
   syncTeamToCloud,
@@ -603,7 +604,10 @@ export async function getTenantDataAsync(companyId) {
       const users = Array.isArray(cloud.users) && cloud.users.length > 0 ? cloud.users : null;
       const team = cloud.team || null;
       const leads = Array.isArray(cloud.leads) ? cloud.leads : null;
-      const projects = Array.isArray(cloud.projects) ? cloud.projects : null;
+      const subProjects = await fetchProjectsFromCloud(companyId);
+      const projects = (Array.isArray(subProjects) && subProjects.length > 0)
+        ? subProjects
+        : (Array.isArray(cloud.projects) ? cloud.projects : null);
 
       // تحديث الـ LocalStorage Cache
       if (settings) try { localStorage.setItem(`tenant_${companyId}_settings`, JSON.stringify(settings)); } catch (e) {}

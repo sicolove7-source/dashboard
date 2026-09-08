@@ -6,7 +6,7 @@
  */
 
 import app, { db, storage } from '../firebase';
-import { doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, getDocs, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, uploadString, getStorage } from 'firebase/storage';
 
 /**
@@ -166,85 +166,144 @@ export function sanitizeProjectForCloud(project) {
 }
 
 /**
- * حفظ ومزامنة المشاريع في السحابة
+ * ترحيل تلقائي صامت للمشاريع القديمة المسجلة في وثيقة الشركة إلى الـ Sub-collection
  */
-export async function syncProjectsToCloud(companyId, projects) {
-  const safeProjects = Array.isArray(projects) ? projects.map(sanitizeProjectForCloud) : projects;
-  return syncCompanyDataToCloud(companyId, { projects: safeProjects });
+export async function migrateLegacyProjectsToSubcollection(companyId, projects) {
+  const cId = cleanCompanyId(companyId);
+  if (!cId || !Array.isArray(projects) || projects.length === 0) return;
+  try {
+    for (const p of projects) {
+      if (!p || !p.id) continue;
+      const safe = sanitizeProjectForCloud(p);
+      const projectRef = doc(db, 'companies', cId, 'projects', p.id);
+      await setDoc(projectRef, { ...safe, id: p.id, migratedAt: new Date().toISOString() }, { merge: true });
+    }
+  } catch (err) {
+    console.warn("Auto-migration to subcollection failed:", err.message);
+  }
 }
 
 /**
- * حفظ ومزامنة مشروع واحد فقط بأسلوب ذري لمنع تضارب المهندسين (Granular Concurrency)
+ * حفظ ومزامنة المشاريع في السحابة داخل الـ Sub-collection المستقلة
  */
-export async function syncSingleProjectToCloud(companyId, projectId, patchOrProject) {
+export async function syncProjectsToCloud(companyId, projects) {
   const cId = cleanCompanyId(companyId);
-  if (!cId || !projectId) return false;
+  if (!cId || !Array.isArray(projects)) return false;
   try {
-    const docRef = doc(db, 'companies', cId);
-    const snap = await getDoc(docRef);
-    let existingProjects = [];
-    if (snap.exists() && Array.isArray(snap.data()?.projects)) {
-      existingProjects = snap.data().projects;
+    for (const p of projects) {
+      if (!p || !p.id) continue;
+      const safe = sanitizeProjectForCloud(p);
+      const projectRef = doc(db, 'companies', cId, 'projects', p.id);
+      await setDoc(projectRef, { ...safe, id: p.id, updatedAt: new Date().toISOString() }, { merge: true });
     }
-    
-    let found = false;
-    const updatedProjects = existingProjects.map(p => {
-      if (p.id === projectId) {
-        found = true;
-        const merged = typeof patchOrProject === 'function' 
-          ? patchOrProject(p) 
-          : { ...p, ...patchOrProject };
-        return sanitizeProjectForCloud(merged);
-      }
-      return p;
-    });
-
-    if (!found && typeof patchOrProject === 'object') {
-      // مشروع جديد يتم إضافته
-      updatedProjects.unshift(sanitizeProjectForCloud({ ...patchOrProject, id: projectId }));
-    }
-
-    await setDoc(docRef, {
-      projects: updatedProjects,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
-
+    // تحديث طابع وقت الشركة
+    const companyDocRef = doc(db, 'companies', cId);
+    await setDoc(companyDocRef, { updatedAt: new Date().toISOString() }, { merge: true });
     return true;
-  } catch (error) {
-    console.warn("Cloud sync (single project) offline or error:", error.message);
+  } catch (e) {
+    console.warn("syncProjectsToCloud error:", e.message);
     return false;
   }
 }
 
 /**
- * حذف مشروع محدد فقط من السحابة دون المساس بباقي مشاريع الشركة
+ * حفظ ومزامنة مشروع واحد فقط بأسلوب ذري في وثيقته المستقلة بالـ Sub-collection
+ * (Granular Subcollection Concurrency) لمنع أي تضارب بين المهندسين ولإتاحة سعة غير محدودة
+ */
+export async function syncSingleProjectToCloud(companyId, projectId, patchOrProject) {
+  const cId = cleanCompanyId(companyId);
+  if (!cId || !projectId) return false;
+  try {
+    const projectRef = doc(db, 'companies', cId, 'projects', projectId);
+    const existingSnap = await getDoc(projectRef);
+    let projectData = {};
+    if (existingSnap.exists()) {
+      projectData = existingSnap.data();
+    } else {
+      // فحص إذا كان موجوداً مسبقاً في الوثيقة الرئيسية للشركة (توافق قديم)
+      const companyRef = doc(db, 'companies', cId);
+      const companySnap = await getDoc(companyRef);
+      if (companySnap.exists() && Array.isArray(companySnap.data()?.projects)) {
+        const legacyProj = companySnap.data().projects.find(p => p.id === projectId);
+        if (legacyProj) projectData = legacyProj;
+      }
+    }
+
+    const merged = typeof patchOrProject === 'function' 
+      ? patchOrProject(projectData) 
+      : { ...projectData, ...patchOrProject, id: projectId };
+
+    const safeProject = sanitizeProjectForCloud(merged);
+
+    // 1. كتابة وثيقة المشروع المستقلة في الـ Sub-collection
+    await setDoc(projectRef, {
+      ...safeProject,
+      id: projectId,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+
+    // 2. تحديث طابع وقت الشركة الرئيسي
+    const companyDocRef = doc(db, 'companies', cId);
+    await setDoc(companyDocRef, {
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+
+    return true;
+  } catch (error) {
+    console.warn("Cloud sync (subcollection single project) offline or error:", error.message);
+    return false;
+  }
+}
+
+/**
+ * حذف مشروع محدد فقط من الـ Sub-collection دون المساس بباقي مشاريع الشركة
  */
 export async function deleteSingleProjectFromCloud(companyId, projectId) {
   const cId = cleanCompanyId(companyId);
   if (!cId || !projectId) return false;
   try {
+    // 1. حذف وثيقة المشروع من الـ Sub-collection
+    const projectRef = doc(db, 'companies', cId, 'projects', projectId);
+    await deleteDoc(projectRef);
+
+    // 2. إزالة من الوثيقة القديمة إن وُجد
     const docRef = doc(db, 'companies', cId);
     const snap = await getDoc(docRef);
     if (snap.exists() && Array.isArray(snap.data()?.projects)) {
-      const remainingProjects = snap.data().projects.filter(p => p.id !== projectId);
-      await setDoc(docRef, {
-        projects: remainingProjects,
-        updatedAt: new Date().toISOString(),
-      }, { merge: true });
-      return true;
+      const remaining = snap.data().projects.filter(p => p.id !== projectId);
+      await setDoc(docRef, { projects: remaining, updatedAt: new Date().toISOString() }, { merge: true });
     }
+    return true;
   } catch (e) {
-    console.warn("Cloud delete (single project) error:", e.message);
+    console.warn("Cloud delete (subcollection single project) error:", e.message);
+    return false;
   }
-  return false;
 }
 
 /**
- * جلب المشاريع من السحابة
+ * جلب المشاريع من السحابة عبر الـ Sub-collection مع الترحيل التلقائي للوثائق القديمة
  */
 export async function fetchProjectsFromCloud(companyId) {
-  const data = await fetchCompanyDataFromCloud(companyId);
-  return data?.projects || null;
+  const cId = cleanCompanyId(companyId);
+  if (!cId) return null;
+  try {
+    // 1. قراءة الـ Sub-collection أولاً
+    const projectsCol = collection(db, 'companies', cId, 'projects');
+    const snap = await getDocs(projectsCol);
+    if (!snap.empty) {
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    }
+
+    // 2. إذا كانت الـ Sub-collection فارغة، قراءة الوثيقة المجمعة القديمة وترحيلها تلقائياً
+    const companyData = await fetchCompanyDataFromCloud(cId);
+    if (Array.isArray(companyData?.projects) && companyData.projects.length > 0) {
+      migrateLegacyProjectsToSubcollection(cId, companyData.projects);
+      return companyData.projects;
+    }
+  } catch (e) {
+    console.warn("fetchProjectsFromCloud subcollection error:", e.message);
+  }
+  return null;
 }
 
 /**
@@ -292,24 +351,44 @@ export async function deleteCompanyFromCloud(companyId) {
 }
 
 /**
- * الاستماع الفوري والتحديث اللحظي للمشاريع (Real-time Listener)
+ * الاستماع الفوري والتحديث اللحظي للمشاريع عبر الـ Sub-collection مع التوافق التام
  */
 export function subscribeToCloudProjects(companyId, onUpdate) {
   const cId = cleanCompanyId(companyId);
   if (!cId || typeof onUpdate !== 'function') return () => {};
   try {
-    const docRef = doc(db, 'companies', cId);
-    const unsubscribe = onSnapshot(docRef, (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        if (Array.isArray(data?.projects)) {
+    const subColRef = collection(db, 'companies', cId, 'projects');
+    let hasSubcollectionData = false;
+
+    // استماع لحظي للـ Sub-collection
+    const unsubSub = onSnapshot(subColRef, (subSnap) => {
+      if (!subSnap.empty) {
+        hasSubcollectionData = true;
+        const projectsList = subSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        onUpdate(projectsList);
+      }
+    }, (err) => {
+      console.warn("Cloud snapshot error (subcollection projects):", err.message);
+    });
+
+    // استماع للوثيقة القديمة للشركات التي لم تُرحل بعد
+    const companyDocRef = doc(db, 'companies', cId);
+    const unsubLegacy = onSnapshot(companyDocRef, (legacySnap) => {
+      if (!hasSubcollectionData && legacySnap.exists()) {
+        const data = legacySnap.data();
+        if (Array.isArray(data?.projects) && data.projects.length > 0) {
           onUpdate(data.projects);
+          migrateLegacyProjectsToSubcollection(cId, data.projects);
         }
       }
     }, (err) => {
-      console.warn("Cloud snapshot error (projects):", err.message);
+      console.warn("Cloud snapshot error (legacy projects):", err.message);
     });
-    return unsubscribe;
+
+    return () => {
+      unsubSub();
+      unsubLegacy();
+    };
   } catch (e) {
     console.warn("Could not subscribe to cloud projects:", e);
     return () => {};
