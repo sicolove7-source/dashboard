@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   Building2, Lock, Mail, AlertTriangle, ShieldCheck, User, Phone,
-  MapPin, Sparkles, ArrowRight, CheckCircle2
+  Sparkles, ArrowRight, CheckCircle2
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import {
@@ -35,7 +35,6 @@ export default function Login({
   const [companyTitle, setCompanyTitle] = useState("");
   const [adminName, setAdminName] = useState("");
   const [phone, setPhone] = useState("");
-  const [city, setCity] = useState("القاهرة");
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -73,7 +72,6 @@ export default function Login({
         phone: phone,
         email: email,
         password: password,
-        city: city,
         currency: 'ج.م',
       });
 
@@ -249,7 +247,7 @@ export default function Login({
               }}
             >
               <CheckCircle2 size={16} />
-              <span>تجربة مجانية فورية لمدة 14 يوماً • بالجنيه المصري (ج.م)</span>
+              <span>تجربة مجانية فورية لمدة 14 يوماً</span>
             </div>
           )}
 
@@ -465,39 +463,6 @@ export default function Login({
                       }}
                     />
                   </div>
-                </div>
-              </div>
-
-              {/* المحافظة / المدينة */}
-              <div>
-                <label style={{ display: "block", marginBottom: 6, color: "var(--muted)", fontSize: 13, fontWeight: 700 }}>
-                  المحافظة / المقر الرئيسي
-                </label>
-                <div style={{ position: "relative" }}>
-                  <MapPin size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
-                  <select
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    style={{
-                      width: "100%", padding: "11px 42px 11px 14px",
-                      border: "1.5px solid var(--border)", borderRadius: 10,
-                      background: "transparent", color: "var(--ink)",
-                      fontFamily: "'Cairo', sans-serif", fontSize: 14,
-                      outline: "none", boxSizing: "border-box",
-                    }}
-                  >
-                    <option value="القاهرة">القاهرة</option>
-                    <option value="الجيزة">الجيزة</option>
-                    <option value="الإسكندرية">الإسكندرية</option>
-                    <option value="القليوبية">القليوبية</option>
-                    <option value="الشرقية">الشرقية</option>
-                    <option value="الدقهلية">الدقهلية (المنصورة)</option>
-                    <option value="الغربية">الغربية (طنطا)</option>
-                    <option value="البحيرة">البحيرة</option>
-                    <option value="أسيوط">أسيوط</option>
-                    <option value="سوهاج">سوهاج</option>
-                    <option value="محافظة أخرى">محافظة أخرى</option>
-                  </select>
                 </div>
               </div>
 
