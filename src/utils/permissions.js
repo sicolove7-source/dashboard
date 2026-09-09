@@ -60,12 +60,12 @@ export const ROLES = {
 
 // ─── التبويبات المتاحة لكل دور ───────────────────────
 export const NAV_PERMISSIONS = {
-  super_admin:      ['tenants', 'overview', 'automations', 'crm', 'finance', 'team', 'projects', 'suppliers', 'quotations', 'settings'],
-  owner:            ['overview', 'automations', 'crm', 'finance', 'team', 'projects', 'suppliers', 'quotations', 'settings'],
-  procurement:      ['projects', 'suppliers', 'overview'],
-  accountant:       ['overview', 'automations', 'finance', 'projects', 'suppliers', 'quotations'],
+  super_admin:      ['tenants', 'overview', 'automations', 'crm', 'finance', 'team', 'projects', 'subcontractors', 'suppliers', 'quotations', 'settings'],
+  owner:            ['overview', 'automations', 'crm', 'finance', 'team', 'projects', 'subcontractors', 'suppliers', 'quotations', 'settings'],
+  procurement:      ['projects', 'subcontractors', 'suppliers', 'overview'],
+  accountant:       ['overview', 'automations', 'finance', 'projects', 'subcontractors', 'suppliers', 'quotations'],
   engineer:         ['projects', 'suppliers'],
-  tech_office:      ['overview', 'crm', 'projects', 'suppliers', 'quotations'],
+  tech_office:      ['overview', 'crm', 'projects', 'subcontractors', 'suppliers', 'quotations'],
   customer_service: ['overview', 'crm', 'projects'],
 };
 
@@ -144,10 +144,10 @@ export const PERMISSIONS = {
   company_settings_view:  ['owner'],
 };
 
-// ─── قوائم التخصيص اليدوي للمستخدمين ────────────────
 export const CUSTOMIZABLE_NAV_TABS = [
   { key: 'overview',    label: 'نظرة عامة والتحليلات', badge: '📊', desc: 'مؤشرات الأداء العامة والإحصائيات الحية' },
   { key: 'projects',    label: 'المشاريع والمواقع',    badge: '🏗️', desc: 'استعراض المشاريع ومتابعة سير الأعمال والمواقع' },
+  { key: 'subcontractors', label: 'مقاولو الباطن',     badge: '👷', desc: 'متابعة أعمال مقاولي الباطن والمستخلصات' },
   { key: 'suppliers',   label: 'الموردون والتوريدات',  badge: '📦', desc: 'دليل الموردين وطلبيات وتوريدات الخامات' },
   { key: 'finance',     label: 'المالية والمصروفات',   badge: '💼', desc: 'المصروفات والإيرادات ومستخلصات المشاريع' },
   { key: 'quotations',  label: 'المقايسات والتسعير',   badge: '📐', desc: 'إنشاء ومراجعة مقايسات وعروض أسعار التشطيب' },

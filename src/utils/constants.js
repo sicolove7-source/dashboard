@@ -155,15 +155,17 @@ export const QUALITY_GATES = [
 ];
 
 export const NAV = [
-  { key: "tenants",       label: "إدارة الشركات (Hub) 👑",  icon: "Crown" },
-  { key: "overview",      label: "لوحة المتابعة",          icon: "LayoutDashboard" },
-  { key: "crm",           label: "العملاء والمبيعات (CRM)",icon: "BadgePercent" },
-  { key: "finance",       label: "المالية الشاملة",         icon: "TrendingUp" },
-  { key: "team",          label: "أداء المهندسين",          icon: "Users" },
-  { key: "projects",     label: "مواقع العمل",             icon: "Building2" },
-  { key: "suppliers",    label: "الموردون والصنايعية",     icon: "Truck" },
-  { key: "quotations",   label: "حاسبة المقايسات",        icon: "Calculator" },
+  { key: "tenants",        label: "إدارة الشركات (Hub) 👑",  icon: "Crown" },
+  { key: "overview",       label: "لوحة المتابعة",          icon: "LayoutDashboard" },
+  { key: "crm",            label: "العملاء والمبيعات (CRM)", icon: "BadgePercent" },
+  { key: "finance",        label: "المالية الشاملة",         icon: "TrendingUp" },
+  { key: "team",           label: "أداء المهندسين",          icon: "Users" },
+  { key: "projects",       label: "مواقع العمل",             icon: "Building2" },
+  { key: "subcontractors", label: "مقاولو الباطن",           icon: "HardHat" },
+  { key: "suppliers",      label: "الموردون والصنايعية",     icon: "Truck" },
+  { key: "quotations",     label: "حاسبة المقايسات",        icon: "Calculator" },
 ];
+
 
 export const SUBCONTRACTOR_SPECIALTIES = [
   "أعمال المحارة والبياض",

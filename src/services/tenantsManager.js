@@ -57,14 +57,16 @@ export function setSubAccountsLoginAllowed(allowed) {
 }
 
 // حساب مالك المنصة الرئيسي الافتراضي (Super Admin)
+// تنبيه أمني: كلمة المرور لا تُخزّن هنا أبداً — تُحفظ في localStorage فقط بعد أول إعداد
 export const DEFAULT_SUPER_ADMIN_ACCOUNT = {
   id: 'super_admin_master',
   email: 'admin@platform.com',
-  password: 'Admin@2026#Master',
+  password: '', // مشفوط متعمداً — تجب الإعداد عبر لوحة Super Admin أول مرة
   name: 'مالك المنصة الرئيسي',
   role: 'super_admin',
   isSuperAdmin: true,
 };
+
 
 export function getSuperAdminAccount() {
   try {

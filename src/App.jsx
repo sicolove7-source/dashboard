@@ -22,6 +22,7 @@ import ProjectForm from './pages/ProjectForm';
 const ProjectDetail = React.lazy(() => import('./pages/ProjectDetail'));
 const TeamPerformance = React.lazy(() => import('./pages/TeamPerformance'));
 const SuppliersTab = React.lazy(() => import('./pages/SuppliersTab'));
+const SubcontractorsTab = React.lazy(() => import('./pages/SubcontractorsTab'));
 const QuotationBuilder = React.lazy(() => import('./pages/QuotationBuilder'));
 const CompanyFinance = React.lazy(() => import('./pages/CompanyFinance'));
 const Login = React.lazy(() => import('./pages/Login'));
@@ -55,7 +56,7 @@ function PageLoadingFallback() {
 // Utils
 import { NAV, ENGINEERS, ACCOUNTANTS, TECH_OFFICE, TYPES, AREAS, SUBMITTAL_ITEMS, SUB_STATUS, DIARY_WORK_SAMPLES, DIARY_ISSUE_SAMPLES, LABOR_TRADES, MATERIALS_LIST, MATERIAL_STATUS, EQUIPMENT_LIST, STAGES, SEED_LEADS } from './utils/constants';
 import { mulberry32, todayISO, setGlobalCurrency } from './utils/helpers';
-import { DEFAULT_TAB, can } from './utils/permissions';
+import { DEFAULT_TAB, can, NAV_PERMISSIONS } from './utils/permissions';
 
 // Styles
 import './styles/index.css';
@@ -310,6 +311,7 @@ export default function App() {
       import('./pages/TeamPerformance');
       import('./pages/QuotationBuilder');
       import('./pages/SuppliersTab');
+      import('./pages/SubcontractorsTab');
       import('./pages/CompanySettings');
     };
     if (typeof window !== 'undefined') {
@@ -356,7 +358,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    loadTenantWorkspace(activeCompanyId);
+    loadTenantWorkspace(activeCompanyId).catch(e => console.warn('loadTenantWorkspace failed:', e));
   }, [activeCompanyId]);
 
   // استماع ومزامنة سحابية حية لمشاريع الشركة عبر Firebase
@@ -589,7 +591,7 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated) return;
     const pathMap = {
-      subcontractors: '/contractors',
+      subcontractors: '/subcontractors',
       projects: '/projects',
       overview: '/overview',
       crm: '/crm',
@@ -774,7 +776,7 @@ export default function App() {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
-              onClick={() => window.open(`https://wa.me/201018160582?text=${encodeURIComponent('مرحباً، جربت النسخة الحية لمنصة Tashteeb Pro وأرغب في الاشتراك وتفعيل مساحة عمل خاصة بشركتي')}`, '_blank')}
+              onClick={() => window.open(`https://wa.me/${(companySettings?.supportPhone || companySettings?.phone || '201018160582').replace(/[^0-9]/g, '')}?text=${encodeURIComponent('مرحباً، جربت النسخة الحية لمنصة Tashteeb Pro وأرغب في الاشتراك وتفعيل مساحة عمل خاصة بشركتي')}`, '_blank')}
               style={{
                 padding: '4px 10px',
                 fontSize: 11.5,
@@ -958,7 +960,7 @@ export default function App() {
               {saveState === "offline" && <span className="save-pill save-err tab-fade">حفظ محلي فقط</span>}
               <div className="meta" style={{ display: "flex", alignItems: "center", gap: 6, background: "#F1F5F9", padding: "4px 10px", borderRadius: 6, color: "#64748B", fontSize: 11.5 }}>
                 <Clock size={12} />
-                <span>REV. {projects.length} • {todayISO()}</span>
+                <span>المواقع: {projects.length} • {todayISO()}</span>
               </div>
             </div>
           </div>
@@ -1004,6 +1006,16 @@ export default function App() {
               />
             )}
 
+            {tab === "subcontractors" && can(currentUser || userRole, 'subcontractors_view') && (
+              <SubcontractorsTab
+                projects={projects}
+                companySettings={companySettings}
+                userRole={userRole}
+                currentUser={currentUser}
+                activeCompanyId={activeCompanyId}
+              />
+            )}
+
             {tab === "suppliers" && (
               <SuppliersTab
                 projects={projects}
@@ -1035,9 +1047,6 @@ export default function App() {
                 team={team}
                 onTeamChange={(nextTeam) => {
                   persistTeam(nextTeam);
-                  const updated = loadCompanySettings(activeCompanyId);
-                  setCompanySettings(updated);
-                  applyCompanyBranding(updated);
                 }}
                 currentUser={currentUser}
                 activeCompanyId={activeCompanyId}
