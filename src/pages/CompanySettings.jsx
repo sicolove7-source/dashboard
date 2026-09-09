@@ -9,6 +9,12 @@ import {
 import { setGlobalCurrency } from '../utils/helpers';
 import { getActiveTenantId } from '../services/tenantsManager';
 import AutomationsCenter from './AutomationsCenter';
+import {
+  DEFAULT_COMPANY_SETTINGS,
+  loadCompanySettings,
+  saveCompanySettings,
+  applyCompanyBranding,
+} from '../utils/branding';
 
 export {
   COMPANY_SETTINGS_KEY,
