@@ -9,6 +9,7 @@ import {
 import { setGlobalCurrency } from '../utils/helpers';
 import { getActiveTenantId } from '../services/tenantsManager';
 import AutomationsCenter from './AutomationsCenter';
+import UserManagement from './UserManagement';
 import {
   DEFAULT_COMPANY_SETTINGS,
   loadCompanySettings,
