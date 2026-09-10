@@ -98,6 +98,22 @@ export async function syncCompanyDataToCloud(companyId, partialData) {
 }
 
 /**
+ * حذف أي قيم undefined من شجرة الكائن لأن فايربيس ترفضها وتسبب فشل الحفظ
+ */
+export function stripUndefined(obj) {
+  if (obj === undefined) return null;
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(item => item === undefined ? null : stripUndefined(item));
+  const clean = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (val !== undefined) {
+      clean[key] = stripUndefined(val);
+    }
+  }
+  return clean;
+}
+
+/**
  * تطهير بيانات المشروع قبل الرفع السحابي لحمايته من تجاوز حد 1MB المسموح في Firestore
  * واستبدال أي سلاسل Base64 ضخمة بروابط IndexedDB أو مصغرات خفيفة
  */
@@ -113,7 +129,7 @@ export function sanitizeProjectForCloud(project) {
         l.media = l.media.map(m => {
           if (!m || typeof m !== 'object') return m;
           const src = m.src || '';
-          if (typeof src === 'string' && src.startsWith('data:') && src.length > 80000) {
+          if (typeof src === 'string' && src.startsWith('data:') && src.length > 60000) {
             return {
               ...m,
               src: m.rawSrc?.startsWith('idb://') ? m.rawSrc : (m.thumbnail || `idb://${m.id || Date.now()}`)
@@ -124,8 +140,20 @@ export function sanitizeProjectForCloud(project) {
       }
       if (Array.isArray(l.photos)) {
         l.photos = l.photos.map(photo => {
-          if (typeof photo === 'string' && photo.startsWith('data:') && photo.length > 80000) {
-            return '';
+          if (typeof photo === 'string') {
+            if (photo.startsWith('data:') && photo.length > 60000) {
+              return '';
+            }
+            return photo;
+          } else if (photo && typeof photo === 'object') {
+            const src = photo.src || '';
+            if (typeof src === 'string' && src.startsWith('data:') && src.length > 60000) {
+              return {
+                ...photo,
+                src: photo.rawSrc?.startsWith('idb://') ? photo.rawSrc : (photo.thumbnail || `idb://${photo.id || Date.now()}`)
+              };
+            }
+            return photo;
           }
           return photo;
         }).filter(Boolean);
@@ -134,25 +162,43 @@ export function sanitizeProjectForCloud(project) {
     });
   }
 
+  if (Array.isArray(p.sitePhotos)) {
+    p.sitePhotos = p.sitePhotos.map(photo => {
+      if (!photo || typeof photo !== 'object') return photo;
+      const src = photo.src || '';
+      if (typeof src === 'string' && src.startsWith('data:') && src.length > 60000) {
+        return {
+          ...photo,
+          src: photo.rawSrc?.startsWith('idb://') ? photo.rawSrc : (photo.thumbnail || `idb://${photo.id || Date.now()}`)
+        };
+      }
+      return photo;
+    });
+  }
+
   if (Array.isArray(p.snags)) {
     p.snags = p.snags.map(snag => {
       if (!snag || typeof snag !== 'object') return snag;
       const s = { ...snag };
-      if (typeof s.photo === 'string' && s.photo.startsWith('data:') && s.photo.length > 80000) {
+      if (typeof s.photo === 'string' && s.photo.startsWith('data:') && s.photo.length > 60000) {
         s.photo = s.thumbnail || (s.mediaId ? `idb://${s.mediaId}` : '');
       }
-      if (typeof s.afterPhoto === 'string' && s.afterPhoto.startsWith('data:') && s.afterPhoto.length > 80000) {
-        s.afterPhoto = '';
+      if (typeof s.afterPhoto === 'string' && s.afterPhoto.startsWith('data:') && s.afterPhoto.length > 60000) {
+        s.afterPhoto = s.afterThumbnail || s.thumbnail || (s.afterMediaId ? `idb://${s.afterMediaId}` : '');
       }
       return s;
     });
+  }
+
+  if (p.floorPlan && typeof p.floorPlan === 'string' && p.floorPlan.startsWith('data:') && p.floorPlan.length > 60000) {
+    p.floorPlan = p.floorPlanThumbnail || '';
   }
 
   if (Array.isArray(p.files)) {
     p.files = p.files.map(f => {
       if (!f || typeof f !== 'object') return f;
       const src = f.src || '';
-      if (typeof src === 'string' && src.startsWith('data:') && src.length > 80000) {
+      if (typeof src === 'string' && src.startsWith('data:') && src.length > 60000) {
         return {
           ...f,
           src: f.thumbnail || `idb://${f.id || Date.now()}`
@@ -162,7 +208,118 @@ export function sanitizeProjectForCloud(project) {
     });
   }
 
-  return p;
+  return stripUndefined(p);
+}
+
+/**
+ * دمج المشاريع السحابية والمحلية بذكاء مع الحفاظ الكامل على اليوميات والاستلامات الأحدث
+ * لمنع أي ضياع للبيانات عند بطء الاتصال أو إعادة التحميل (Zero-Data-Loss Merge)
+ */
+export function mergeProjectsPreservingLocal(localProjects, incomingProjects) {
+  if (!Array.isArray(localProjects) || localProjects.length === 0) {
+    return Array.isArray(incomingProjects) ? incomingProjects : [];
+  }
+  if (!Array.isArray(incomingProjects) || incomingProjects.length === 0) {
+    return localProjects;
+  }
+
+  const localMap = new Map();
+  localProjects.forEach(p => {
+    if (p && p.id) localMap.set(p.id, p);
+  });
+
+  const merged = incomingProjects.map(incoming => {
+    if (!incoming || !incoming.id) return incoming;
+    const local = localMap.get(incoming.id);
+    if (!local) return incoming;
+
+    // تم العثور على المشروع محلياً وسحابياً: ندمج بحذر شديد
+    // 1. دمج اليوميات (dailyLogs): تجميع الفريد بالـ ID مع تفضيل المحلي إذا كان أحدث
+    const logsMap = new Map();
+    (incoming.dailyLogs || []).forEach(l => {
+      if (l && (l.id || l.timestamp || l.date)) {
+        logsMap.set(l.id || `${l.date}_${l.timestamp}`, l);
+      }
+    });
+    (local.dailyLogs || []).forEach(l => {
+      if (l && (l.id || l.timestamp || l.date)) {
+        const key = l.id || `${l.date}_${l.timestamp}`;
+        if (!logsMap.has(key)) {
+          logsMap.set(key, l);
+        } else {
+          const inc = logsMap.get(key);
+          const localPhotos = l.photos?.length || 0;
+          const incPhotos = inc.photos?.length || 0;
+          const localMedia = l.media?.length || 0;
+          const incMedia = inc.media?.length || 0;
+          if (localPhotos > incPhotos || localMedia > incMedia) {
+            logsMap.set(key, { ...inc, ...l });
+          }
+        }
+      }
+    });
+    const mergedLogs = Array.from(logsMap.values()).sort((a, b) => {
+      const timeA = new Date(a.timestamp || a.date || 0).getTime();
+      const timeB = new Date(b.timestamp || b.date || 0).getTime();
+      return timeB - timeA;
+    });
+
+    // 2. دمج الاستلامات والفحص (snags): تجميع الفريد بالـ ID
+    const snagsMap = new Map();
+    (incoming.snags || []).forEach(s => {
+      if (s && (s.id || s.number)) snagsMap.set(s.id || `s_${s.number}`, s);
+    });
+    (local.snags || []).forEach(s => {
+      if (s && (s.id || s.number)) {
+        const key = s.id || `s_${s.number}`;
+        if (!snagsMap.has(key)) {
+          snagsMap.set(key, s);
+        } else {
+          const inc = snagsMap.get(key);
+          if (s.updatedAt && (!inc.updatedAt || s.updatedAt > inc.updatedAt)) {
+            snagsMap.set(key, { ...inc, ...s });
+          }
+        }
+      }
+    });
+    const mergedSnags = Array.from(snagsMap.values()).sort((a, b) => {
+      const timeA = new Date(a.createdAt || a.timestamp || 0).getTime();
+      const timeB = new Date(b.createdAt || b.timestamp || 0).getTime();
+      return timeB - timeA;
+    });
+
+    // 3. دمج الملفات والوسائط (files)
+    const filesMap = new Map();
+    (incoming.files || []).forEach(f => {
+      if (f && f.id) filesMap.set(f.id, f);
+    });
+    (local.files || []).forEach(f => {
+      if (f && f.id && !filesMap.has(f.id)) {
+        filesMap.set(f.id, f);
+      }
+    });
+    const mergedFiles = Array.from(filesMap.values());
+
+    const localTime = new Date(local.updatedAt || 0).getTime();
+    const incomingTime = new Date(incoming.updatedAt || 0).getTime();
+    const base = localTime > incomingTime ? { ...incoming, ...local } : { ...local, ...incoming };
+
+    return {
+      ...base,
+      dailyLogs: mergedLogs,
+      snags: mergedSnags,
+      files: mergedFiles,
+    };
+  });
+
+  // إضافة أي مشاريع أُنشئت محلياً فقط ولم تُرفع بعد إلى السحابة
+  localProjects.forEach(local => {
+    if (local && local.id && !incomingProjects.some(inc => inc.id === local.id)) {
+      merged.push(local);
+    }
+  });
+
+  return merged;
 }
 
 /**
@@ -233,14 +390,14 @@ export async function syncSingleProjectToCloud(companyId, projectId, patchOrProj
       ? patchOrProject(projectData) 
       : { ...projectData, ...patchOrProject, id: projectId };
 
-    const safeProject = sanitizeProjectForCloud(merged);
+    const safeProject = sanitizeProjectForCloud({
+      ...merged,
+      id: projectId,
+      updatedAt: new Date().toISOString()
+    });
 
     // 1. كتابة وثيقة المشروع المستقلة في الـ Sub-collection
-    await setDoc(projectRef, {
-      ...safeProject,
-      id: projectId,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
+    await setDoc(projectRef, safeProject, { merge: true });
 
     // 2. تحديث طابع وقت الشركة الرئيسي
     const companyDocRef = doc(db, 'companies', cId);
@@ -358,37 +515,33 @@ export function subscribeToCloudProjects(companyId, onUpdate) {
   if (!cId || typeof onUpdate !== 'function') return () => {};
   try {
     const subColRef = collection(db, 'companies', cId, 'projects');
-    let hasSubcollectionData = false;
 
-    // استماع لحظي للـ Sub-collection
-    const unsubSub = onSnapshot(subColRef, (subSnap) => {
+    // استماع لحظي للـ Sub-collection — المصدر الأساسي والوحيد للمشاريع
+    const unsub = onSnapshot(subColRef, async (subSnap) => {
       if (!subSnap.empty) {
-        hasSubcollectionData = true;
         const projectsList = subSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         onUpdate(projectsList);
+      } else {
+        // فحص لمرة واحدة فقط عند بداية تهيئة الشركة إن كانت مشاريعها في وثيقة قديمة
+        try {
+          const companyDocRef = doc(db, 'companies', cId);
+          const snap = await getDoc(companyDocRef);
+          if (snap.exists()) {
+            const data = snap.data();
+            if (Array.isArray(data?.projects) && data.projects.length > 0) {
+              onUpdate(data.projects);
+              await migrateLegacyProjectsToSubcollection(cId, data.projects);
+            }
+          }
+        } catch (e) {
+          console.warn("Legacy projects check error:", e.message);
+        }
       }
     }, (err) => {
       console.warn("Cloud snapshot error (subcollection projects):", err.message);
     });
 
-    // استماع للوثيقة القديمة للشركات التي لم تُرحل بعد
-    const companyDocRef = doc(db, 'companies', cId);
-    const unsubLegacy = onSnapshot(companyDocRef, (legacySnap) => {
-      if (!hasSubcollectionData && legacySnap.exists()) {
-        const data = legacySnap.data();
-        if (Array.isArray(data?.projects) && data.projects.length > 0) {
-          onUpdate(data.projects);
-          migrateLegacyProjectsToSubcollection(cId, data.projects);
-        }
-      }
-    }, (err) => {
-      console.warn("Cloud snapshot error (legacy projects):", err.message);
-    });
-
-    return () => {
-      unsubSub();
-      unsubLegacy();
-    };
+    return unsub;
   } catch (e) {
     console.warn("Could not subscribe to cloud projects:", e);
     return () => {};

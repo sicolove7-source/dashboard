@@ -180,7 +180,10 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
     };
 
     const existingLogs = activeProject.dailyLogs || [];
-    const patch = { dailyLogs: [newLog, ...existingLogs] };
+    const patch = { 
+      dailyLogs: [newLog, ...existingLogs],
+      updatedAt: new Date().toISOString()
+    };
 
     // Also archive media in project files so it appears in project files & drawings
     if (mediaToSave) {
@@ -237,7 +240,10 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
     };
 
     const existingSnags = activeProject.snags || [];
-    const patch = { snags: [newSnag, ...existingSnags] };
+    const patch = { 
+      snags: [newSnag, ...existingSnags],
+      updatedAt: new Date().toISOString()
+    };
 
     if (mediaToSave) {
       const newFile = {

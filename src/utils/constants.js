@@ -161,10 +161,10 @@ export const NAV = [
   { key: "finance",        label: "المالية الشاملة",         icon: "TrendingUp" },
   { key: "team",           label: "أداء المهندسين",          icon: "Users" },
   { key: "projects",       label: "مواقع العمل",             icon: "Building2" },
-  { key: "subcontractors", label: "مقاولو الباطن",           icon: "HardHat" },
   { key: "suppliers",      label: "الموردون والصنايعية",     icon: "Truck" },
   { key: "quotations",     label: "حاسبة المقايسات",        icon: "Calculator" },
 ];
+
 
 
 export const SUBCONTRACTOR_SPECIALTIES = [

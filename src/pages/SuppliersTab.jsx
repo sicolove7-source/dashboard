@@ -713,7 +713,7 @@ function WorkersSection() {
 }
 
 /* ── Main Page ─────────────────────────────────────── */
-export default function SuppliersTab({ projects = [], companySettings, userRole }) {
+export default function SuppliersTab({ projects = [], companySettings, userRole, currentUser, activeCompanyId }) {
   const [activeTab, setActiveTab] = useState('suppliers');
   const tabs = [
     { key:'suppliers',      label:'الموردون والمواد',          shortLabel:'الموردون',        icon:Truck },
@@ -754,6 +754,8 @@ export default function SuppliersTab({ projects = [], companySettings, userRole 
             projects={projects}
             userRole={userRole}
             companySettings={companySettings}
+            currentUser={currentUser}
+            activeCompanyId={activeCompanyId}
           />
         )}
       </div>

@@ -186,34 +186,34 @@ export default function CompanySettings({
     <div className="grid tab-fade cs-root" style={{ gap: 20 }} dir="rtl">
 
       {/* ─── Header ─── */}
-      <div className="panel cs-header" style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '20px 24px' }}>
-        <div className="cs-header-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-          <div className="cs-header-info" style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 260 }}>
+      <div className="panel cs-header" style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px 20px' }}>
+        <div className="cs-header-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div className="cs-header-info" style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
             <div style={{
-              width: 40, height: 40, borderRadius: 8,
+              width: 38, height: 38, borderRadius: 8,
               background: '#F1F5F9', border: '1px solid #E2E8F0',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: '#0F172A', flexShrink: 0
             }}>
-              <Building2 size={20} />
+              <Building2 size={19} />
             </div>
-            <div>
-              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>إعدادات الشركة الشاملة</h2>
-              <p style={{ margin: 0, fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>
-                إدارة هوية المؤسسة، مركز الأتمتة، وفريق العمل وحسابات الدخول
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>إعدادات الشركة الشاملة</h2>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                هوية المؤسسة • مركز الأتمتة • فريق العمل والصلاحيات
               </p>
             </div>
           </div>
 
           {activeTab === 'branding' && (
-            <div className="cs-header-actions" style={{ display: 'flex', gap: 10 }}>
+            <div className="cs-header-actions" style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
               {saved ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#16A34A', fontWeight: 600, fontSize: 13 }}>
-                  <CheckCircle2 size={16} /> تم الحفظ بنجاح!
+                  <CheckCircle2 size={16} /> تم الحفظ!
                 </div>
               ) : (
-                <button type="button" className="btn btn-primary" onClick={handleSave} style={{ gap: 8, padding: '8px 18px', fontSize: 13 }}>
-                  <Save size={15} /> حفظ البيانات
+                <button type="button" className="btn btn-primary" onClick={handleSave} style={{ gap: 6, padding: '7px 14px', fontSize: 12.5 }}>
+                  <Save size={14} /> حفظ
                 </button>
               )}
             </div>
@@ -221,16 +221,19 @@ export default function CompanySettings({
         </div>
       </div>
 
+
       {/* ─── Fully Responsive Navigation Subtabs Switcher ─── */}
       <div className="cs-tabs-nav" style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: 4,
         background: 'var(--card)',
         padding: '4px',
         borderRadius: 10,
         border: '1px solid var(--border)',
-        flexWrap: 'wrap',
+        width: '100%',
+        boxSizing: 'border-box',
+        overflowX: 'auto',
       }}>
         {/* Tab 1: Branding & Profile */}
         <button
@@ -238,13 +241,11 @@ export default function CompanySettings({
           className="cs-tab-btn"
           onClick={() => setActiveTab('branding')}
           style={{
-            flex: '1 1 170px',
-            minWidth: 140,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 8,
-            padding: '9px 16px',
+            gap: 6,
+            padding: '9px 12px',
             borderRadius: 8,
             border: activeTab === 'branding' ? '1px solid #0F172A' : '1px solid transparent',
             background: activeTab === 'branding' ? '#0F172A' : 'transparent',
@@ -254,10 +255,12 @@ export default function CompanySettings({
             fontWeight: activeTab === 'branding' ? 700 : 500,
             cursor: 'pointer',
             transition: 'all 0.15s',
+            whiteSpace: 'nowrap',
+            minWidth: 0,
           }}
         >
-          <Building2 size={16} color={activeTab === 'branding' ? '#FFFFFF' : 'currentColor'} />
-          <span>هوية وبيانات الشركة</span>
+          <Building2 size={15} color={activeTab === 'branding' ? '#FFFFFF' : 'currentColor'} />
+          <span>هوية الشركة</span>
         </button>
 
         {/* Tab 2: Smart Automation Center */}
@@ -266,13 +269,11 @@ export default function CompanySettings({
           className="cs-tab-btn"
           onClick={() => setActiveTab('automations')}
           style={{
-            flex: '1 1 200px',
-            minWidth: 160,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 8,
-            padding: '9px 16px',
+            gap: 6,
+            padding: '9px 12px',
             borderRadius: 8,
             border: activeTab === 'automations' ? '1px solid #0F172A' : '1px solid transparent',
             background: activeTab === 'automations' ? '#0F172A' : 'transparent',
@@ -282,10 +283,12 @@ export default function CompanySettings({
             fontWeight: activeTab === 'automations' ? 700 : 500,
             cursor: 'pointer',
             transition: 'all 0.15s',
+            whiteSpace: 'nowrap',
+            minWidth: 0,
           }}
         >
-          <Zap size={16} color={activeTab === 'automations' ? '#FFFFFF' : 'currentColor'} />
-          <span>مركز الأتمتة الذكي</span>
+          <Zap size={15} color={activeTab === 'automations' ? '#FFFFFF' : 'currentColor'} />
+          <span>مركز الأتمتة</span>
         </button>
 
         {/* Tab 3: Team & Users */}
@@ -294,13 +297,11 @@ export default function CompanySettings({
           className="cs-tab-btn"
           onClick={() => setActiveTab('team_users')}
           style={{
-            flex: '1 1 170px',
-            minWidth: 140,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 8,
-            padding: '9px 16px',
+            gap: 6,
+            padding: '9px 12px',
             borderRadius: 8,
             border: activeTab === 'team_users' ? '1px solid #0F172A' : '1px solid transparent',
             background: activeTab === 'team_users' ? '#0F172A' : 'transparent',
@@ -310,12 +311,15 @@ export default function CompanySettings({
             fontWeight: activeTab === 'team_users' ? 700 : 500,
             cursor: 'pointer',
             transition: 'all 0.15s',
+            whiteSpace: 'nowrap',
+            minWidth: 0,
           }}
         >
-          <Users size={16} color={activeTab === 'team_users' ? '#FFFFFF' : 'currentColor'} />
-          <span>فريق العمل والصلاحيات</span>
+          <Users size={15} color={activeTab === 'team_users' ? '#FFFFFF' : 'currentColor'} />
+          <span>الفريق والصلاحيات</span>
         </button>
       </div>
+
 
       {/* ─── TAB 1: Branding & Company Info ─── */}
       {activeTab === 'branding' && (
@@ -715,7 +719,7 @@ export default function CompanySettings({
             </div>
 
             {/* DNS CNAME Configuration Guide with Horizontal Scroll Container */}
-            <div style={{
+            <div className="cs-dns-table-wrap" style={{
               background: 'var(--bg-color)',
               padding: '14px 18px', borderRadius: 12, border: '1px solid var(--border)'
             }}>
@@ -787,7 +791,7 @@ export default function CompanySettings({
 
       {/* ─── TAB 3: Team & System Users ─── */}
       {activeTab === 'team_users' && (
-        <div className="grid tab-fade" style={{ gap: 24 }}>
+        <div className="grid tab-fade cs-team-section" style={{ gap: 24 }}>
           {/* Team Management */}
           <div className="panel">
             <h3 style={{ margin: '0 0 4px', fontSize: 15.5, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>

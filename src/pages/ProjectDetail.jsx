@@ -233,7 +233,7 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
 function SnagsPanel({ project, onUpdate }) {
   const snags = project.snags || [];
   const floorPlan = project.floorPlan || null;
-  const [form, setForm] = useState({ desc: "", location: "", assignee: project.engineer, status: "pending", photo: null, pin: null });
+  const [form, setForm] = useState({ desc: "", location: "", assignee: project.engineer || "", status: "pending", photo: null, thumbnail: "", mediaId: null, pin: null });
   const [confirmId, setConfirmId] = useState(null);
   const [previewModal, setPreviewModal] = useState(null);
   
@@ -252,9 +252,32 @@ function SnagsPanel({ project, onUpdate }) {
     
     setIsUploading(true);
     try {
+      const mediaId = 'snag_ph_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+      const thumb = await createMicroThumbnail(selected, false);
+      await saveMediaBlob(mediaId, selected, { type: selected.type, name: selected.name });
       const compressed = await compressImageFile(selected, 1200, 0.75);
+      
+      setForm(prev => ({
+        ...prev,
+        photo: `idb://${mediaId}`,
+        thumbnail: thumb,
+        mediaId
+      }));
+
+      // رفع سحابي في الخلفية بدون حجب الواجهة
+      uploadMediaToFirebaseStorage(
+        selected,
+        `companies/${project.companyId || 'company'}/projects/${project.id}`,
+        selected.name
+      ).then(cloudUrl => {
+        if (cloudUrl) {
+          setForm(prev => prev.mediaId === mediaId ? { ...prev, photo: cloudUrl } : prev);
+        }
+      }).catch(() => {});
+
       setAnnotatingImage(compressed);
     } catch (err) {
+      console.warn("handlePhotoUpload error:", err);
       const reader = new FileReader();
       reader.onload = (ev) => setAnnotatingImage(ev.target.result);
       reader.readAsDataURL(selected);
@@ -263,16 +286,25 @@ function SnagsPanel({ project, onUpdate }) {
     }
   };
 
-  const handleFloorPlanUpload = (e) => {
+  const handleFloorPlanUpload = async (e) => {
     const selected = e.target.files[0];
     if (!selected) return;
     setIsUploadingFP(true);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      onUpdate({ floorPlan: ev.target.result });
+    try {
+      const mediaId = 'fp_' + Date.now();
+      const thumb = await createMicroThumbnail(selected, false);
+      await saveMediaBlob(mediaId, selected, { type: selected.type, name: selected.name });
+      const compressed = await compressImageFile(selected, 1400, 0.8);
+      onUpdate({ floorPlan: compressed, floorPlanThumbnail: thumb, updatedAt: new Date().toISOString() });
+    } catch (err) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        onUpdate({ floorPlan: ev.target.result, updatedAt: new Date().toISOString() });
+      };
+      reader.readAsDataURL(selected);
+    } finally {
       setIsUploadingFP(false);
-    };
-    reader.readAsDataURL(selected);
+    }
   };
   
   const handleAfterPhotoUpload = async (id, e) => {
@@ -280,14 +312,36 @@ function SnagsPanel({ project, onUpdate }) {
     if (!selected) return;
     setUploadingAfterPhotoFor(id);
     try {
-      const compressed = await compressImageFile(selected, 1200, 0.75);
-      onUpdate({ snags: snags.map(s => s.id === id ? { ...s, afterPhoto: compressed } : s) });
+      const mediaId = 'snag_after_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+      const thumb = await createMicroThumbnail(selected, false);
+      await saveMediaBlob(mediaId, selected, { type: selected.type, name: selected.name });
+      const now = new Date().toISOString();
+
+      onUpdate({
+        snags: snags.map(s => s.id === id ? {
+          ...s,
+          afterPhoto: `idb://${mediaId}`,
+          afterThumbnail: thumb,
+          afterMediaId: mediaId,
+          updatedAt: now
+        } : s),
+        updatedAt: now
+      });
+
+      // رفع سحابي في الخلفية
+      uploadMediaToFirebaseStorage(
+        selected,
+        `companies/${project.companyId || 'company'}/projects/${project.id}`,
+        selected.name
+      ).then(cloudUrl => {
+        if (cloudUrl) {
+          onUpdate({
+            snags: snags.map(s => s.id === id ? { ...s, afterPhoto: cloudUrl } : s)
+          });
+        }
+      }).catch(() => {});
     } catch (err) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        onUpdate({ snags: snags.map(s => s.id === id ? { ...s, afterPhoto: ev.target.result } : s) });
-      };
-      reader.readAsDataURL(selected);
+      console.warn("handleAfterPhotoUpload error:", err);
     } finally {
       setUploadingAfterPhotoFor(null);
     }
@@ -296,18 +350,35 @@ function SnagsPanel({ project, onUpdate }) {
   function addSnag(e) {
     e.preventDefault();
     if (!form.desc.trim()) return;
+    const now = new Date().toISOString();
     const newSnag = { 
-      ...form, 
-      id: "snag" + Date.now(),
+      id: "snag_" + Date.now() + "_" + Math.random().toString(36).substr(2, 4),
+      desc: form.desc.trim(),
+      location: (form.location || "").trim(),
+      assignee: (form.assignee || project.engineer || "").trim(),
+      status: form.status || "pending",
+      photo: form.photo || null,
+      thumbnail: form.thumbnail || "",
+      mediaId: form.mediaId || null,
+      pin: form.pin || null,
       date: todayISO(),
-      number: snags.length + 1
+      number: snags.length + 1,
+      createdAt: now,
+      updatedAt: now
     };
-    onUpdate({ snags: [newSnag, ...snags] });
-    setForm({ desc: "", location: "", assignee: project.engineer, status: "pending", photo: null, pin: null });
+    onUpdate({
+      snags: [newSnag, ...snags],
+      updatedAt: now
+    });
+    setForm({ desc: "", location: "", assignee: project.engineer || "", status: "pending", photo: null, thumbnail: "", mediaId: null, pin: null });
   }
 
   function setSnagStatus(id, status) {
-    onUpdate({ snags: snags.map((s) => (s.id === id ? { ...s, status } : s)) });
+    const now = new Date().toISOString();
+    onUpdate({
+      snags: snags.map((s) => (s.id === id ? { ...s, status, updatedAt: now } : s)),
+      updatedAt: now
+    });
     
     if (status === 'done') {
       const doneCountNow = snags.filter(s => s.id !== id && s.status === 'done').length + 1;
@@ -323,7 +394,11 @@ function SnagsPanel({ project, onUpdate }) {
   }
 
   function removeSnag(id) {
-    onUpdate({ snags: snags.filter((s) => s.id !== id) });
+    const now = new Date().toISOString();
+    onUpdate({
+      snags: snags.filter((s) => s.id !== id),
+      updatedAt: now
+    });
     setConfirmId(null);
   }
 
@@ -363,8 +438,20 @@ function SnagsPanel({ project, onUpdate }) {
       {annotatingImage && (
         <ImageAnnotator
           imageSrc={annotatingImage}
-          onSave={(annotatedUrl) => {
-            setForm({ ...form, photo: annotatedUrl });
+          onSave={async (annotatedUrl) => {
+            try {
+              const mediaId = 'snag_ann_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+              const thumb = await createMicroThumbnail(annotatedUrl, false);
+              await saveMediaBlob(mediaId, annotatedUrl, { type: 'image/jpeg' });
+              setForm(prev => ({
+                ...prev,
+                photo: `idb://${mediaId}`,
+                thumbnail: thumb,
+                mediaId
+              }));
+            } catch (err) {
+              setForm(prev => ({ ...prev, photo: annotatedUrl }));
+            }
             setAnnotatingImage(null);
           }}
           onCancel={() => setAnnotatingImage(null)}
@@ -713,40 +800,54 @@ function DiaryPanel({ project, team, onUpdate }) {
   function addLog(e) {
     e.preventDefault();
     if (!form.work.trim()) return;
+    const now = new Date().toISOString();
 
     const safeMediaToSave = mediaList.map(m => ({
       id: m.id,
       src: m.rawSrc || (m.src?.startsWith('blob:') ? `idb://${m.id}` : m.src),
       thumbnail: m.thumbnail || '',
       type: m.type,
-      name: m.name,
+      name: m.name || '',
       caption: `يومية ${form.date}: ${form.work.slice(0, 35)}`
     }));
 
     const safePhotos = safeMediaToSave
       .filter(m => m.type === 'image')
-      .map(m => m.thumbnail || m.src);
+      .map(m => ({
+        id: m.id,
+        // استخدام rawSrc (idb://) دائماً لضمان استرداد الصورة من IndexedDB بعد إعادة التحميل
+        src: m.rawSrc || (m.src?.startsWith('blob:') ? `idb://${m.id}` : m.src),
+        thumbnail: m.thumbnail || '',
+        caption: m.caption || '',
+        type: 'image'
+      }));
 
     const newLog = {
       ...form,
-      id: "d" + Date.now(),
-      workers: Number(form.workers),
+      id: "d_" + Date.now() + "_" + Math.random().toString(36).substr(2, 4),
+      workers: Number(form.workers) || 1,
       photos: safePhotos,
       media: safeMediaToSave,
-      timestamp: new Date().toISOString()
+      timestamp: now,
+      createdAt: now,
+      updatedAt: now
     };
 
-    const patch = { dailyLogs: [newLog, ...logs] };
+    const patch = { 
+      dailyLogs: [newLog, ...logs],
+      updatedAt: now 
+    };
+
     if (safeMediaToSave.length > 0) {
       const existingFiles = project.files || [];
       const newFiles = safeMediaToSave.map((m, idx) => ({
         id: m.id || ((m.type === 'video' ? 'vid_' : 'ph_') + Date.now() + '_' + idx),
-        src: m.src,
-        thumbnail: m.thumbnail,
+        src: m.rawSrc || (m.src?.startsWith('blob:') ? `idb://${m.id}` : m.src),
+        thumbnail: m.thumbnail || '',
         type: m.type,
-        caption: m.caption,
+        caption: m.caption || '',
         date: form.date,
-        timestamp: new Date().toISOString()
+        timestamp: now
       }));
       patch.files = [...newFiles, ...existingFiles];
     }
@@ -758,7 +859,11 @@ function DiaryPanel({ project, team, onUpdate }) {
   }
 
   function removeLog(id) {
-    onUpdate({ dailyLogs: logs.filter((l) => l.id !== id) });
+    const now = new Date().toISOString();
+    onUpdate({
+      dailyLogs: logs.filter((l) => l.id !== id),
+      updatedAt: now
+    });
     setConfirmId(null);
   }
 
@@ -769,17 +874,18 @@ function DiaryPanel({ project, team, onUpdate }) {
         if (typeof m === 'string') {
           const isVid = m.startsWith('data:video') || m.includes('.mp4') || m.includes('.webm');
           items.push({ src: m, type: isVid ? 'video' : 'image' });
-        } else if (m && m.src) {
+        } else if (m && (m.src || m.thumbnail || m.id)) {
           items.push(m);
         }
       });
     }
     if (Array.isArray(l.photos)) {
       l.photos.forEach(p => {
-        const src = typeof p === 'string' ? p : p?.src;
-        if (src && !items.some(it => it.src === src)) {
-          const isVid = src.startsWith('data:video') || src.includes('.mp4') || src.includes('.webm') || p?.type === 'video';
-          items.push({ src, type: isVid ? 'video' : 'image', caption: p?.caption || '' });
+        const src = typeof p === 'string' ? p : (p?.src || p?.thumbnail);
+        const id = typeof p === 'object' ? p?.id : null;
+        if ((src || id) && !items.some(it => (id && it.id === id) || (src && it.src === src))) {
+          const isVid = (typeof src === 'string' && (src.startsWith('data:video') || src.includes('.mp4') || src.includes('.webm'))) || p?.type === 'video';
+          items.push(typeof p === 'object' ? p : { src, type: isVid ? 'video' : 'image', caption: '' });
         }
       });
     }

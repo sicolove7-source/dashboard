@@ -22,6 +22,8 @@ import {
   syncTenantsListToCloud,
   fetchSuperAdminFromCloud,
   syncSuperAdminToCloud,
+  mergeProjectsPreservingLocal,
+  sanitizeProjectForCloud,
 } from './cloudSync';
 
 export const PLATFORM_TENANTS_KEY = 'platform-tenants-master-v1';
@@ -607,20 +609,27 @@ export async function getTenantDataAsync(companyId) {
       const team = cloud.team || null;
       const leads = Array.isArray(cloud.leads) ? cloud.leads : null;
       const subProjects = await fetchProjectsFromCloud(companyId);
-      const projects = (Array.isArray(subProjects) && subProjects.length > 0)
+      const cloudProjects = (Array.isArray(subProjects) && subProjects.length > 0)
         ? subProjects
         : (Array.isArray(cloud.projects) ? cloud.projects : null);
+
+      const localFallback = getTenantData(companyId);
+      const projects = mergeProjectsPreservingLocal(localFallback.projects, cloudProjects);
 
       // تحديث الـ LocalStorage Cache
       if (settings) try { localStorage.setItem(`tenant_${companyId}_settings`, JSON.stringify(settings)); } catch (e) {}
       if (users) try { localStorage.setItem(`tenant_${companyId}_users`, JSON.stringify(users)); } catch (e) {}
       if (team) try { localStorage.setItem(`tenant_${companyId}_team`, JSON.stringify(team)); } catch (e) {}
       if (leads) try { localStorage.setItem(`tenant_${companyId}_leads`, JSON.stringify(leads)); } catch (e) {}
-      if (projects) try { localStorage.setItem(`tenant_${companyId}_projects`, JSON.stringify(projects)); } catch (e) {}
+      if (projects) {
+        try {
+          const lean = projects.map(p => sanitizeProjectForCloud(p));
+          localStorage.setItem(`tenant_${companyId}_projects`, JSON.stringify(lean));
+        } catch (e) {}
+      }
 
       if (settings.currency) setGlobalCurrency(settings.currency);
 
-      const localFallback = getTenantData(companyId);
       return {
         tenant,
         settings,
@@ -634,7 +643,7 @@ export async function getTenantDataAsync(companyId) {
     console.warn("getTenantDataAsync error, using local:", e);
   }
 
-  // في حال تعذر السحابة، نعتمد على الكاش المحلي ونرفعه للسحابة لتهيئتها
+  // في حال تعذر السحابة، نعتمد على الكاش المحلي
   const localData = getTenantData(companyId);
   try {
     syncCompanyDataToCloud(companyId, {
@@ -642,7 +651,6 @@ export async function getTenantDataAsync(companyId) {
       users: localData.users,
       team: localData.team,
       leads: localData.leads,
-      projects: localData.projects,
     });
   } catch (e) {}
   return localData;

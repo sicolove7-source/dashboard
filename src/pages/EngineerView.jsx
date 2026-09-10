@@ -5,6 +5,9 @@ import {
 } from 'lucide-react';
 import { STAGES } from '../utils/constants';
 import { fmtDate, todayISO, compressImageFile } from '../utils/helpers';
+import { saveMediaBlob, createMicroThumbnail } from '../utils/mediaStorage';
+import { uploadMediaToFirebaseStorage } from '../services/cloudSync';
+import MediaThumbnail from '../components/MediaThumbnail';
 import VoiceInput from '../components/VoiceInput';
 import InteractiveGantt from '../components/InteractiveGantt';
 import ProjectSupply from '../components/ProjectSupply';
@@ -139,19 +142,57 @@ function TodayPanel({ project, currentUser, onUpdate }) {
     }));
   }, [project.id]);
 
-  function handlePhoto(e) {
+  async function handlePhoto(e) {
     const file = e.target.files[0];
     if (!file) return;
-    readImg(file, src => setForm(f => ({ ...f, photos: [...f.photos, { src, caption: '', date: today }] })));
+    try {
+      const mediaId = 'ph_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+      const instantUrl = URL.createObjectURL(file);
+      const thumb = await createMicroThumbnail(file);
+      await saveMediaBlob(mediaId, file, { type: file.type, name: file.name });
+
+      const photoObj = {
+        id: mediaId,
+        src: instantUrl,
+        rawSrc: `idb://${mediaId}`,
+        thumbnail: thumb,
+        caption: '',
+        date: today
+      };
+
+      setForm(f => ({ ...f, photos: [...f.photos, photoObj] }));
+
+      uploadMediaToFirebaseStorage(file, `companies/${project.companyId || 'company'}/projects/${project.id}`, file.name)
+        .then(cloudUrl => {
+          if (cloudUrl) {
+            setForm(f => ({
+              ...f,
+              photos: f.photos.map(p => p.id === mediaId ? { ...p, src: cloudUrl, rawSrc: cloudUrl } : p)
+            }));
+          }
+        }).catch(() => {});
+    } catch (err) {
+      console.error("handlePhoto error:", err);
+    }
+    e.target.value = '';
   }
+
   function removePhoto(i) {
     setForm(f => ({ ...f, photos: f.photos.filter((_, idx) => idx !== i) }));
   }
+
   function handleSave(e) {
     e.preventDefault();
     if (!form.work.trim()) return;
     setSaving(true);
-    const newLog = { ...form, id: todayLog?.id || ('d' + Date.now()), workers: Number(form.workers) };
+    const safePhotos = (form.photos || []).map(p => ({
+      id: p.id || ('ph_' + Date.now()),
+      src: p.rawSrc || (p.src?.startsWith('blob:') ? `idb://${p.id}` : p.src),
+      thumbnail: p.thumbnail || '',
+      caption: p.caption || '',
+      date: p.date || today
+    }));
+    const newLog = { ...form, id: todayLog?.id || ('d' + Date.now()), workers: Number(form.workers), photos: safePhotos };
     onUpdate({ dailyLogs: [newLog, ...logs.filter(l => l.date !== today)] });
     setTimeout(() => { setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000); }, 400);
   }
@@ -211,12 +252,13 @@ function TodayPanel({ project, currentUser, onUpdate }) {
             <label style={{ display: 'block', marginBottom: 8, fontWeight: 700, fontSize: 14 }}>صور من الموقع (استلام أعمال / توريدات / فواتير)</label>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               {form.photos.map((p, i) => (
-                <div key={i} style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: '2px solid var(--border)' }}>
-                  <img src={p.src} alt="موقع" style={{ width: 85, height: 85, objectFit: 'cover', display: 'block' }} />
+                <div key={i} style={{ position: 'relative', width: 85, height: 85, borderRadius: 10, overflow: 'hidden', border: '2px solid var(--border)' }}>
+                  <MediaThumbnail item={p} style={{ width: '100%', height: '100%' }} />
                   <button type="button" onClick={() => removePhoto(i)} style={{
                     position: 'absolute', top: 2, left: 2, width: 22, height: 22,
                     background: 'rgba(239,68,68,0.9)', border: 'none', borderRadius: '50%',
-                    color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 2
                   }}><X size={12} /></button>
                 </div>
               ))}
@@ -360,7 +402,13 @@ function DiaryPanel({ project }) {
               )}
               {l.photos && l.photos.length > 0 && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                  {l.photos.map((p, i) => <img key={i} src={p.src} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />)}
+                  {l.photos.map((p, i) => (
+                    <MediaThumbnail
+                      key={i}
+                      item={typeof p === 'string' ? { src: p } : p}
+                      style={{ width: 72, height: 72, borderRadius: 8, border: '1px solid var(--border)' }}
+                    />
+                  ))}
                 </div>
               )}
             </div>
@@ -377,19 +425,46 @@ function PhotosPanel({ project, onUpdate }) {
   const [caption, setCaption] = useState('');
   const [uploading, setUploading] = useState(false);
 
-  function handleUpload(e) {
+  async function handleUpload(e) {
     const files = Array.from(e.target.files);
     if (!files.length) return;
     setUploading(true);
-    let done = 0;
     const newPhotos = [];
-    files.forEach(file => {
-      readImg(file, src => {
-        newPhotos.push({ id: 'p' + Date.now() + Math.random(), src, caption, date: todayISO() });
-        done++;
-        if (done === files.length) { onUpdate({ sitePhotos: [...photos, ...newPhotos] }); setUploading(false); setCaption(''); }
-      });
-    });
+    for (const file of files) {
+      try {
+        const mediaId = 'ph_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+        const instantUrl = URL.createObjectURL(file);
+        const thumb = await createMicroThumbnail(file);
+        await saveMediaBlob(mediaId, file, { type: file.type, name: file.name });
+
+        const pObj = {
+          id: mediaId,
+          src: instantUrl,
+          rawSrc: `idb://${mediaId}`,
+          thumbnail: thumb,
+          caption: caption.trim() || 'صورة من موقع العمل',
+          date: todayISO()
+        };
+        newPhotos.push(pObj);
+
+        uploadMediaToFirebaseStorage(file, `companies/${project.companyId || 'company'}/projects/${project.id}`, file.name)
+          .then(cloudUrl => {
+            if (cloudUrl) {
+              onUpdate(prevProject => {
+                const sp = prevProject?.sitePhotos || [];
+                return {
+                  sitePhotos: sp.map(x => x.id === mediaId ? { ...x, src: cloudUrl, rawSrc: cloudUrl } : x)
+                };
+              });
+            }
+          }).catch(() => {});
+      } catch (err) {
+        console.warn("Upload site photo error:", err);
+      }
+    }
+    onUpdate({ sitePhotos: [...photos, ...newPhotos] });
+    setUploading(false);
+    setCaption('');
     e.target.value = '';
   }
 
@@ -415,7 +490,7 @@ function PhotosPanel({ project, onUpdate }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
             {photos.slice().reverse().map(p => (
               <div key={p.id} style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                <img src={p.src} alt={p.caption || 'موقع'} style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block' }} />
+                <MediaThumbnail item={p} style={{ width: '100%', height: 130 }} />
                 <div style={{ padding: '6px 8px', background: 'var(--card)' }}>
                   <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmtDate(p.date)}</div>
                   {p.caption && <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginTop: 2 }}>{p.caption}</div>}
@@ -423,7 +498,7 @@ function PhotosPanel({ project, onUpdate }) {
                 <button onClick={() => onUpdate({ sitePhotos: photos.filter(x => x.id !== p.id) })} style={{
                   position: 'absolute', top: 6, left: 6, width: 24, height: 24, background: 'rgba(239,68,68,0.85)',
                   border: 'none', borderRadius: '50%', color: '#fff', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2
                 }}><X size={12} /></button>
               </div>
             ))}

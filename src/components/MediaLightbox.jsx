@@ -16,7 +16,7 @@ export default function MediaLightbox({ item, onClose }) {
     setLoading(true);
     const rawSrc = item.src || item.rawSrc || '';
 
-    if (rawSrc.startsWith('http://') || rawSrc.startsWith('https://') || rawSrc.startsWith('blob:') || rawSrc.startsWith('data:')) {
+    if (rawSrc.startsWith('http://') || rawSrc.startsWith('https://') || rawSrc.startsWith('data:')) {
       setResolvedUrl(rawSrc);
       setLoading(false);
       return;
@@ -24,12 +24,19 @@ export default function MediaLightbox({ item, onClose }) {
 
     resolveMediaDisplayUrl(item).then((url) => {
       if (active) {
-        setResolvedUrl(url || item.thumbnail || rawSrc);
+        const safeUrl = (url && !url.startsWith('idb://')) 
+          ? url 
+          : (item.thumbnail && !item.thumbnail.startsWith('idb://')) 
+            ? item.thumbnail 
+            : (rawSrc && (rawSrc.startsWith('http') || rawSrc.startsWith('data:') || rawSrc.startsWith('blob:'))) 
+              ? rawSrc 
+              : '';
+        setResolvedUrl(safeUrl);
         setLoading(false);
       }
     }).catch(() => {
       if (active) {
-        setResolvedUrl(item.thumbnail || rawSrc);
+        setResolvedUrl(item.thumbnail || '');
         setLoading(false);
       }
     });

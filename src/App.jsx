@@ -22,7 +22,8 @@ import ProjectForm from './pages/ProjectForm';
 const ProjectDetail = React.lazy(() => import('./pages/ProjectDetail'));
 const TeamPerformance = React.lazy(() => import('./pages/TeamPerformance'));
 const SuppliersTab = React.lazy(() => import('./pages/SuppliersTab'));
-const SubcontractorsTab = React.lazy(() => import('./pages/SubcontractorsTab'));
+const SubcontractorsTab = null; // مُدمج داخل SuppliersTab - لا يحتاج استيراد مستقل
+
 const QuotationBuilder = React.lazy(() => import('./pages/QuotationBuilder'));
 const CompanyFinance = React.lazy(() => import('./pages/CompanyFinance'));
 const Login = React.lazy(() => import('./pages/Login'));
@@ -35,7 +36,7 @@ const OnboardingTourModal = React.lazy(() => import('./components/OnboardingTour
 
 import { loadCompanySettings, applyCompanyBranding, COMPANY_SETTINGS_KEY } from './utils/branding';
 import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, loadAllTenants, loadAllTenantsAsync, isSubAccountsLoginAllowed } from './services/tenantsManager';
-import { syncProjectsToCloud, syncSingleProjectToCloud, deleteSingleProjectFromCloud, syncTeamToCloud, syncLeadsToCloud, subscribeToCloudProjects, cleanUpInvalidDocs } from './services/cloudSync';
+import { syncProjectsToCloud, syncSingleProjectToCloud, deleteSingleProjectFromCloud, syncTeamToCloud, syncLeadsToCloud, subscribeToCloudProjects, cleanUpInvalidDocs, sanitizeProjectForCloud, mergeProjectsPreservingLocal } from './services/cloudSync';
 
 function PageLoadingFallback() {
   return (
@@ -311,7 +312,6 @@ export default function App() {
       import('./pages/TeamPerformance');
       import('./pages/QuotationBuilder');
       import('./pages/SuppliersTab');
-      import('./pages/SubcontractorsTab');
       import('./pages/CompanySettings');
     };
     if (typeof window !== 'undefined') {
@@ -339,11 +339,20 @@ export default function App() {
       setGlobalCurrency(localData.settings.currency);
     }
 
-    // 2. فحص وجلب أحدث البيانات سحابياً من Firestore
+    // 2. فحص وجلب أحدث البيانات سحابياً من Firestore مع الحفاظ التام على أحدث التعديلات المحلية
     try {
       const cloudData = await getTenantDataAsync(companyId);
       if (cloudData) {
-        if (Array.isArray(cloudData.projects)) setProjects(cloudData.projects);
+        if (Array.isArray(cloudData.projects)) {
+          setProjects((prev) => {
+            const merged = mergeProjectsPreservingLocal(prev || localData.projects, cloudData.projects);
+            try {
+              const lean = merged.map(p => sanitizeProjectForCloud(p));
+              localStorage.setItem(`tenant_${companyId}_projects`, JSON.stringify(lean));
+            } catch (e) {}
+            return merged;
+          });
+        }
         if (cloudData.team) setTeam(cloudData.team);
         if (Array.isArray(cloudData.leads)) setLeads(cloudData.leads);
         if (cloudData.settings) {
@@ -361,15 +370,19 @@ export default function App() {
     loadTenantWorkspace(activeCompanyId).catch(e => console.warn('loadTenantWorkspace failed:', e));
   }, [activeCompanyId]);
 
-  // استماع ومزامنة سحابية حية لمشاريع الشركة عبر Firebase
+  // استماع ومزامنة سحابية حية لمشاريع الشركة عبر Firebase (بدون إتلاف اليوميات المسجلة محلياً)
   useEffect(() => {
     if (!activeCompanyId) return;
     const unsub = subscribeToCloudProjects(activeCompanyId, (cloudProjects) => {
       if (Array.isArray(cloudProjects) && cloudProjects.length > 0) {
-        setProjects(cloudProjects);
-        try {
-          localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(cloudProjects));
-        } catch (e) {}
+        setProjects((prev) => {
+          const merged = mergeProjectsPreservingLocal(prev, cloudProjects);
+          try {
+            const lean = merged.map(p => sanitizeProjectForCloud(p));
+            localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(lean));
+          } catch (e) {}
+          return merged;
+        });
       }
     });
     return () => unsub();
@@ -509,7 +522,8 @@ export default function App() {
       const updated = [newProject, ...(projects || [])];
       setProjects(updated);
       try {
-        localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(updated));
+        const lean = updated.map(p => sanitizeProjectForCloud(p));
+        localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(lean));
         flashSave(true);
       } catch (e) { flashSave(false); }
       // مزامنة فورية ذرية للمشروع الجديد في السحابة
@@ -532,14 +546,25 @@ export default function App() {
   }
 
   function updateProject(id, patch) {
-    const updated = (projects || []).map((p) => (p.id === id ? { ...p, ...patch } : p));
+    const now = new Date().toISOString();
+    const updated = (projects || []).map((p) => (p.id === id ? { ...p, ...patch, updatedAt: patch?.updatedAt || now } : p));
     setProjects(updated);
+    // دائماً نظّف الصور والوسائط قبل الحفظ في localStorage لتجنب QuotaExceededError
     try {
-      localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(updated));
+      const lean = updated.map(p => sanitizeProjectForCloud(p));
+      localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(lean));
       flashSave(true);
-    } catch (e) { flashSave(false); }
-    // تحديث ذري سحابي للمشروع المحدد فقط (Atomic Granular Sync) لمنع تضارب المهندسين المتزامنين
-    syncSingleProjectToCloud(activeCompanyId, id, patch);
+    } catch (e) {
+      console.error("localStorage save error", e);
+      flashSave(false);
+    }
+    // إرسال المشروع المدمج كاملاً للسحابة (وليس patch فقط) لضمان تطابق كامل
+    const fullProject = updated.find(p => p.id === id);
+    if (fullProject) {
+      syncSingleProjectToCloud(activeCompanyId, id, fullProject);
+    } else {
+      syncSingleProjectToCloud(activeCompanyId, id, { ...patch, updatedAt: now });
+    }
   }
 
   const activeProject = projects && activeId ? projects.find((p) => p.id === activeId) : null;
@@ -1011,21 +1036,13 @@ export default function App() {
               />
             )}
 
-            {tab === "subcontractors" && can(currentUser || userRole, 'subcontractors_view') && (
-              <SubcontractorsTab
-                projects={projects}
-                companySettings={companySettings}
-                userRole={userRole}
-                currentUser={currentUser}
-                activeCompanyId={activeCompanyId}
-              />
-            )}
-
             {tab === "suppliers" && (
               <SuppliersTab
                 projects={projects}
                 companySettings={companySettings}
                 userRole={userRole}
+                currentUser={currentUser}
+                activeCompanyId={activeCompanyId}
               />
             )}
 

@@ -41,13 +41,29 @@ export async function saveMediaBlob(id, blobOrFile, meta = {}) {
   try {
     const db = await getDB();
     if (!db) return false;
+    let finalBlob = blobOrFile;
+    if (typeof blobOrFile === 'string' && blobOrFile.startsWith('data:')) {
+      try {
+        const parts = blobOrFile.split(',');
+        const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+        const bstr = atob(parts[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        finalBlob = new Blob([u8arr], { type: mime });
+      } catch (err) {
+        finalBlob = blobOrFile;
+      }
+    }
     return new Promise((resolve) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
       const record = {
         id,
-        blob: blobOrFile,
-        type: blobOrFile.type || meta.type || 'image/jpeg',
+        blob: finalBlob,
+        type: finalBlob?.type || meta.type || 'image/jpeg',
         name: meta.name || 'media',
         timestamp: Date.now(),
       };
@@ -96,8 +112,7 @@ export function createMicroThumbnail(fileOrBlob, isVideo = false) {
     }
 
     if (!isVideo) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
+      const renderImgToCanvas = (src) => {
         const img = new Image();
         img.onload = () => {
           const maxDim = 320;
@@ -108,7 +123,7 @@ export function createMicroThumbnail(fileOrBlob, isVideo = false) {
               h = Math.round((h * maxDim) / w);
               w = maxDim;
             } else {
-              w = Math.round((w * maxDim) / h);
+              h = Math.round((w * maxDim) / h);
               h = maxDim;
             }
           }
@@ -120,10 +135,19 @@ export function createMicroThumbnail(fileOrBlob, isVideo = false) {
           resolve(canvas.toDataURL('image/jpeg', 0.65));
         };
         img.onerror = () => resolve('');
-        img.src = e.target.result;
+        img.src = src;
       };
-      reader.onerror = () => resolve('');
-      reader.readAsDataURL(fileOrBlob);
+
+      if (typeof fileOrBlob === 'string' && fileOrBlob.startsWith('data:')) {
+        renderImgToCanvas(fileOrBlob);
+      } else if (fileOrBlob instanceof Blob || fileOrBlob instanceof File) {
+        const reader = new FileReader();
+        reader.onload = (e) => renderImgToCanvas(e.target.result);
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(fileOrBlob);
+      } else {
+        resolve('');
+      }
     } else {
       // بالنسبة للفيديو، نأخذ أول إطار كصورة مصغرة
       try {
@@ -154,38 +178,77 @@ export function createMicroThumbnail(fileOrBlob, isVideo = false) {
   });
 }
 
+// ذاكرة تخزين مؤقت للروابط لتسريع العرض الفوري ومنع تسريب الذاكرة
+const blobUrlCache = new Map();
+
 /**
- * حل رابط العرض للمرفق سواء كان سحابياً أو محلياً
+ * جلب رابط عرض فوري تزامني إن توفر في الكاش أو الروابط المباشرة
+ */
+export function syncResolveMediaUrl(item) {
+  if (!item) return '';
+  const src = typeof item === 'string' ? item : item.src;
+  if (!src) return item.thumbnail || '';
+  if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) {
+    return src;
+  }
+  const id = typeof item === 'object' ? (item.id || (src.startsWith('idb://') ? src.replace('idb://', '') : null)) : (src.startsWith('idb://') ? src.replace('idb://', '') : null);
+  if (id && blobUrlCache.has(id)) {
+    return blobUrlCache.get(id);
+  }
+  if (item.thumbnail && item.thumbnail.startsWith('data:')) {
+    return item.thumbnail;
+  }
+  return '';
+}
+
+/**
+ * حل رابط العرض للمرفق سواء كان سحابياً أو محلياً مع حماية تامة من الروابط المنتهية أو المعطوبة
  */
 export async function resolveMediaDisplayUrl(item) {
   if (!item) return '';
   const src = typeof item === 'string' ? item : item.src;
-  if (!src) return item.thumbnail || '';
+  const thumbnail = (typeof item === 'object' && item?.thumbnail) ? item.thumbnail : '';
+  const id = typeof item === 'object' ? (item.id || (src?.startsWith('idb://') ? src.replace('idb://', '') : null)) : (src?.startsWith('idb://') ? src.replace('idb://', '') : null);
 
-  // 1. إذا كان رابط سحابي HTTPS صريح
-  if (src.startsWith('http://') || src.startsWith('https://')) {
+  // 1. فحص الكاش السريع في الذاكرة
+  if (id && blobUrlCache.has(id)) {
+    return blobUrlCache.get(id);
+  }
+
+  // 2. إذا كان رابط سحابي HTTPS صريح
+  if (typeof src === 'string' && (src.startsWith('http://') || src.startsWith('https://'))) {
     return src;
   }
 
-  // 2. إذا كان رابط Blob مباشر قيد الجلسة
-  if (src.startsWith('blob:')) {
+  // 3. إذا كان DataURL (مصغرات وبيانات base64)
+  if (typeof src === 'string' && src.startsWith('data:')) {
     return src;
   }
 
-  // 3. إذا كان مخزناً في IndexedDB
-  if (src.startsWith('idb://') || item.id) {
-    const mediaId = src.startsWith('idb://') ? src.replace('idb://', '') : item.id;
-    const blob = await getMediaBlob(mediaId);
-    if (blob) {
-      return URL.createObjectURL(blob);
+  // 4. استرجاع الملف الثنائي الكامل من IndexedDB المحلي
+  if (id) {
+    try {
+      const blob = await getMediaBlob(id);
+      if (blob) {
+        const objectUrl = URL.createObjectURL(blob);
+        blobUrlCache.set(id, objectUrl);
+        return objectUrl;
+      }
+    } catch (e) {
+      console.warn("Could not load media from IndexedDB:", e);
     }
   }
 
-  // 4. إذا كان DataURL (صور صغيرة)
-  if (src.startsWith('data:')) {
+  // 5. إذا كان رابط blob في الجلسة الحالية
+  if (typeof src === 'string' && src.startsWith('blob:')) {
     return src;
   }
 
-  // 5. الرجوع للمصغرة إن وجدت
-  return item.thumbnail || src;
+  // 6. استخدام المصغرة كبديل آمن إن وُجدت
+  if (thumbnail && (thumbnail.startsWith('data:') || thumbnail.startsWith('http'))) {
+    return thumbnail;
+  }
+
+  // 7. منع إرجاع idb:// نهائياً للمتصفح حتى لا يظهر كصورة مكسورة
+  return '';
 }

@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { getGlobalCurrency } from "../utils/helpers";
 import SignaturePad from "../components/SignaturePad";
+import MediaThumbnail from "../components/MediaThumbnail";
 import { openWhatsApp, WHATSAPP_TEMPLATES } from "../utils/whatsappTemplates";
 import { can, isEngineer, isOwner } from "../utils/permissions";
 
@@ -64,6 +65,8 @@ export default function ClientPortal({
         photos.push({
           id: p.id || Math.random(),
           src: p.src,
+          rawSrc: p.rawSrc,
+          thumbnail: p.thumbnail,
           caption: p.caption || "صورة من موقع العمل",
           date: p.date || project.startDate || "",
           source: "ألبوم الموقع"
@@ -76,8 +79,10 @@ export default function ClientPortal({
         if (log.photos && Array.isArray(log.photos)) {
           log.photos.forEach((lp, idx) => {
             photos.push({
-              id: `${log.id}_photo_${idx}`,
+              id: (typeof lp === 'object' && lp.id) ? lp.id : `${log.id}_photo_${idx}`,
               src: typeof lp === 'string' ? lp : lp.src,
+              rawSrc: typeof lp === 'object' ? lp.rawSrc : null,
+              thumbnail: typeof lp === 'object' ? lp.thumbnail : null,
               caption: (typeof lp === 'object' && lp.caption) ? lp.caption : `يومية: ${log.date}`,
               date: log.date,
               source: `يومية ${log.author || 'المهندس'}`
@@ -480,10 +485,9 @@ export default function ClientPortal({
                         }}
                       >
                         <div style={{ height: 130, position: "relative", background: "#f1f5f9" }}>
-                          <img
-                            src={photo.src}
-                            alt={photo.caption}
-                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          <MediaThumbnail
+                            item={photo}
+                            style={{ width: "100%", height: "100%", borderRadius: 0 }}
                           />
                           <div style={{
                             position: "absolute", inset: 0, background: "rgba(0,0,0,0.2)",
@@ -579,15 +583,19 @@ export default function ClientPortal({
                             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>الصور المرفقة بالتقرير:</div>
                             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                               {log.photos.map((lp, pIdx) => {
-                                const pSrc = typeof lp === 'string' ? lp : lp.src;
-                                const pCap = typeof lp === 'object' ? lp.caption : '';
+                                const itemObj = typeof lp === 'string' 
+                                  ? { src: lp, caption: `يومية ${log.date}`, date: log.date } 
+                                  : { ...lp, caption: lp.caption || `يومية ${log.date}`, date: log.date };
                                 return (
                                   <div
                                     key={pIdx}
-                                    onClick={() => setSelectedPhoto({ src: pSrc, caption: pCap || `تقرير ${log.date}`, date: log.date })}
-                                    style={{ width: 75, height: 75, borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)", cursor: "pointer" }}
+                                    style={{ width: 75, height: 75, borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}
                                   >
-                                    <img src={pSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                    <MediaThumbnail
+                                      item={itemObj}
+                                      onClick={setSelectedPhoto}
+                                      style={{ width: "100%", height: "100%" }}
+                                    />
                                   </div>
                                 );
                               })}
@@ -773,8 +781,11 @@ export default function ClientPortal({
                 <X size={20} />
               </button>
             </div>
-            <div style={{ background: "#000", maxHeight: "70vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <img src={selectedPhoto.src} alt="" style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain" }} />
+            <div style={{ background: "#000", minHeight: 250, maxHeight: "70vh", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+              <MediaThumbnail
+                item={selectedPhoto}
+                style={{ width: "100%", maxHeight: "70vh", height: "auto", minHeight: 250, borderRadius: 0, background: "#000" }}
+              />
             </div>
             <div style={{ padding: "10px 18px", fontSize: 12, color: "var(--muted)", display: "flex", justifyContent: "space-between" }}>
               <span>تاريخ الصورة: {selectedPhoto.date || "—"}</span>
