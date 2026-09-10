@@ -73,7 +73,7 @@ export default function FinanceTab({ projects }) {
             <tbody>
               {sortedProjects.map((p) => {
                 const isOverspent = p.spent > p.budget;
-                const spendPercentage = (p.spent / p.budget) * 100;
+                const spendPercentage = p.budget > 0 ? (p.spent / p.budget) * 100 : 0;
                 
                 return (
                   <tr key={p.id}>

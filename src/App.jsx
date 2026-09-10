@@ -424,6 +424,7 @@ export default function App() {
 
   function addMember(role, name, meta) {
     if (!name || !name.trim()) return false;
+    if (!team) return false; // team still loading
     const trimmed = name.trim();
     if ((team[role] || []).includes(trimmed)) return false;
     const nextTeam = { ...team, [role]: [...(team[role] || []), trimmed] };

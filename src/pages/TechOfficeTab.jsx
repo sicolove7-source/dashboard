@@ -34,7 +34,7 @@ export default function TechOfficeTab({ projects, onSelect }) {
             </thead>
             <tbody>
               {projects.flatMap((p) => {
-                const submittals = p.submittals.length ? p.submittals : [{ item: "—", status: "—" }];
+                const submittals = (p.submittals || []).length ? p.submittals : [{ item: "—", status: "—" }];
                 return submittals.map((s, idx) => {
                   const meta = s.status !== "—" ? subMeta[s.status] : null;
                   const Icon = meta ? meta.icon : null;
@@ -42,7 +42,7 @@ export default function TechOfficeTab({ projects, onSelect }) {
                   return (
                     <tr key={p.id + "-" + idx} onClick={() => onSelect(p)} style={{ cursor: "pointer" }}>
                       {idx === 0 ? <td rowSpan={submittals.length} style={{ fontWeight: 600, borderRight: "3px solid transparent", borderRightColor: p.status === "delayed" ? "#EF4444" : "transparent" }}>{p.name}</td> : null}
-                      {idx === 0 ? <td rowSpan={submittals.length}>{p.techOffice}</td> : null}
+                      {idx === 0 ? <td rowSpan={submittals.length}>{p.techOffice || "—"}</td> : null}
                       <td>{s.item}</td>
                       <td>
                         {s.status !== "—" ? (
