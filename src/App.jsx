@@ -441,6 +441,7 @@ export default function App() {
 
   function updateMember(role, oldName, newName, meta) {
     if (!newName || !newName.trim()) return false;
+    if (!team) return false; // team still loading
     const trimmedNew = newName.trim();
     const list = team[role] || [];
     if (oldName !== trimmedNew && list.includes(trimmedNew)) return false;
@@ -468,6 +469,7 @@ export default function App() {
   }
 
   function removeMember(role, name) {
+    if (!team) return; // team still loading
     persistTeam({ ...team, [role]: (team[role] || []).filter((n) => n !== name) });
     try {
       const storedMeta = JSON.parse(localStorage.getItem('db-team-meta-v1') || '{}');
@@ -628,7 +630,9 @@ export default function App() {
     setTab(defaultTab);
     setView('list');
     setActiveId(null);
-    localStorage.setItem('isAdmin', JSON.stringify(userData));
+    // حذف كلمة المرور قبل الحفظ في localStorage لأسباب أمنية
+    const { password: _pw, ...safeUser } = userData;
+    localStorage.setItem('isAdmin', JSON.stringify(safeUser));
 
     const compId = tenantData?.id || userData.companyId || getActiveTenantId() || 'comp_alain';
     setActiveTenantId(compId);

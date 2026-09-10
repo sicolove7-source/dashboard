@@ -197,7 +197,7 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
     const totalCompanyExpenses = companyExpenses.reduce((s, e) => s + parseFloat(e.amount || 0), 0);
     const totalExpenses = totalProjectExpenses + totalCompanyExpenses;
     const grossProfit = totalCollected - totalExpenses;
-    const profitMargin = totalCollected > 0 ? ((grossProfit / totalCollected) * 100).toFixed(1) : 0;
+    const profitMargin = totalCollected > 0 ? +((grossProfit / totalCollected) * 100).toFixed(1) : 0;
     const totalPending = totalContracts - totalCollected;
 
     return {
