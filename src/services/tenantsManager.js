@@ -594,7 +594,11 @@ export async function getTenantDataAsync(companyId) {
       const tenants = await loadAllTenantsAsync();
       const tenant = tenants.find(t => t.id === companyId) || tenants[0] || DEFAULT_TENANTS[0];
 
-      const settings = cloud.settings || {
+      const localFallback = getTenantData(companyId);
+      const localSettings = localFallback?.settings;
+      const cloudSettings = cloud.settings;
+
+      const settings = {
         companyName: tenant.name,
         companySubtitle: tenant.subtitle,
         city: tenant.city,
@@ -604,7 +608,14 @@ export async function getTenantDataAsync(companyId) {
         primaryColor: tenant.primaryColor,
         accentColor: tenant.accentColor,
         companyLogo: null,
+        ...(localSettings || {}),
+        ...(cloudSettings || {}),
+        companyLogo: cloudSettings?.companyLogo || localSettings?.companyLogo || null,
       };
+
+      if (localSettings?.companyLogo && !cloudSettings?.companyLogo) {
+        try { syncSettingsToCloud(companyId, settings); } catch (e) {}
+      }
       const users = Array.isArray(cloud.users) && cloud.users.length > 0 ? cloud.users : null;
       const team = cloud.team || null;
       const leads = Array.isArray(cloud.leads) ? cloud.leads : null;
@@ -613,7 +624,6 @@ export async function getTenantDataAsync(companyId) {
         ? subProjects
         : (Array.isArray(cloud.projects) ? cloud.projects : null);
 
-      const localFallback = getTenantData(companyId);
       const projects = mergeProjectsPreservingLocal(localFallback.projects, cloudProjects);
 
       // تحديث الـ LocalStorage Cache

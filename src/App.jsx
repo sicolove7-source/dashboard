@@ -36,7 +36,7 @@ const OnboardingTourModal = React.lazy(() => import('./components/OnboardingTour
 
 import { loadCompanySettings, applyCompanyBranding, COMPANY_SETTINGS_KEY } from './utils/branding';
 import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, loadAllTenants, loadAllTenantsAsync, isSubAccountsLoginAllowed } from './services/tenantsManager';
-import { syncProjectsToCloud, syncSingleProjectToCloud, deleteSingleProjectFromCloud, syncTeamToCloud, syncLeadsToCloud, subscribeToCloudProjects, cleanUpInvalidDocs, sanitizeProjectForCloud, mergeProjectsPreservingLocal } from './services/cloudSync';
+import { syncProjectsToCloud, syncSingleProjectToCloud, deleteSingleProjectFromCloud, syncTeamToCloud, syncLeadsToCloud, subscribeToCloudProjects, cleanUpInvalidDocs, sanitizeProjectForCloud, mergeProjectsPreservingLocal, syncSettingsToCloud } from './services/cloudSync';
 
 function PageLoadingFallback() {
   return (
@@ -356,9 +356,14 @@ export default function App() {
         if (cloudData.team) setTeam(cloudData.team);
         if (Array.isArray(cloudData.leads)) setLeads(cloudData.leads);
         if (cloudData.settings) {
-          setCompanySettings(cloudData.settings);
-          applyCompanyBranding(cloudData.settings);
-          if (cloudData.settings.currency) setGlobalCurrency(cloudData.settings.currency);
+          const mergedSettings = {
+            ...localData.settings,
+            ...cloudData.settings,
+            companyLogo: cloudData.settings.companyLogo || localData.settings?.companyLogo || null,
+          };
+          setCompanySettings(mergedSettings);
+          applyCompanyBranding(mergedSettings);
+          if (mergedSettings.currency) setGlobalCurrency(mergedSettings.currency);
         }
       }
     } catch (e) {
@@ -368,6 +373,23 @@ export default function App() {
 
   useEffect(() => {
     loadTenantWorkspace(activeCompanyId).catch(e => console.warn('loadTenantWorkspace failed:', e));
+  }, [activeCompanyId]);
+
+  // الاستماع الفوري لتحديثات إعدادات وهوية الشركة وشعارها
+  useEffect(() => {
+    const handleSettingsUpdated = () => {
+      const fresh = loadCompanySettings(activeCompanyId);
+      if (fresh) {
+        setCompanySettings(prev => ({
+          ...prev,
+          ...fresh,
+          companyLogo: fresh.companyLogo || prev?.companyLogo || null,
+        }));
+        applyCompanyBranding(fresh);
+      }
+    };
+    window.addEventListener('company_settings_updated', handleSettingsUpdated);
+    return () => window.removeEventListener('company_settings_updated', handleSettingsUpdated);
   }, [activeCompanyId]);
 
   // استماع ومزامنة سحابية حية لمشاريع الشركة عبر Firebase (بدون إتلاف اليوميات المسجلة محلياً)
@@ -1065,6 +1087,7 @@ export default function App() {
                   if (updated?.currency) {
                     setGlobalCurrency(updated.currency);
                   }
+                  syncSettingsToCloud(activeCompanyId, updated).catch(e => console.warn("Cloud sync error for company settings:", e));
                 }}
                 team={team}
                 onTeamChange={(nextTeam) => {

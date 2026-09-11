@@ -8,6 +8,7 @@ import {
 
 import { setGlobalCurrency } from '../utils/helpers';
 import { getActiveTenantId } from '../services/tenantsManager';
+import { syncSettingsToCloud } from '../services/cloudSync';
 import AutomationsCenter from './AutomationsCenter';
 import UserManagement from './UserManagement';
 import {
@@ -15,6 +16,7 @@ import {
   loadCompanySettings,
   saveCompanySettings,
   applyCompanyBranding,
+  compressLogoImage,
 } from '../utils/branding';
 
 export {
@@ -53,12 +55,24 @@ const TEAM_GROUPS = [
 function LogoUploader({ logo, onChange }) {
   const inputRef = useRef(null);
   const [drag, setDrag] = useState(false);
+  const [processing, setProcessing] = useState(false);
 
-  function handleFile(file) {
+  async function handleFile(file) {
     if (!file || !file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = (e) => onChange(e.target.result);
-    reader.readAsDataURL(file);
+    setProcessing(true);
+    try {
+      const compressed = await compressLogoImage(file, 400, 0.88);
+      if (compressed) {
+        onChange(compressed);
+      }
+    } catch (err) {
+      console.warn('Logo compression error, fallback to FileReader:', err);
+      const reader = new FileReader();
+      reader.onload = (e) => onChange(e.target.result);
+      reader.readAsDataURL(file);
+    } finally {
+      setProcessing(false);
+    }
   }
 
   return (
@@ -82,7 +96,17 @@ function LogoUploader({ logo, onChange }) {
           margin: '0 auto',
         }}
       >
-        {logo ? (
+        {processing ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '0 8px' }}>
+            <div style={{
+              width: 22, height: 22, borderRadius: '50%',
+              border: '2px solid rgba(99,102,241,0.2)',
+              borderTopColor: '#6366F1',
+              animation: 'spin 0.6s linear infinite'
+            }} />
+            <span style={{ fontSize: 10.5, color: '#6366F1', fontWeight: 600 }}>جاري معالجة الشعار...</span>
+          </div>
+        ) : logo ? (
           <img src={logo} alt="شعار الشركة" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16 }} />
         ) : (
           <>
@@ -96,10 +120,10 @@ function LogoUploader({ logo, onChange }) {
       <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleFile(e.target.files[0])} />
 
       <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-        <button type="button" className="btn btn-primary" style={{ fontSize: 12, padding: '6px 14px', flex: 1, whiteSpace: 'nowrap' }} onClick={() => inputRef.current?.click()}>
-          <Upload size={13} /> رفع صورة
+        <button type="button" className="btn btn-primary" style={{ fontSize: 12, padding: '6px 14px', flex: 1, whiteSpace: 'nowrap' }} onClick={() => inputRef.current?.click()} disabled={processing}>
+          <Upload size={13} /> {processing ? 'جاري التحميل...' : 'رفع صورة'}
         </button>
-        {logo && (
+        {logo && !processing && (
           <button type="button" className="btn" style={{ fontSize: 12, padding: '6px 10px', background: 'var(--danger-subtle)', color: 'var(--danger)', border: 'none' }} onClick={() => onChange(null)}>
             <Trash2 size={13} />
           </button>
@@ -144,10 +168,13 @@ export default function CompanySettings({
   });
   const [teamErrors, setTeamErrors] = useState({});
 
-  // Sync state if external companySettings changes
+  // Sync state if external companySettings changes without wiping current logo
   useEffect(() => {
     if (companySettings && Object.keys(companySettings).length > 0) {
-      setSettings(prev => ({ ...prev, ...companySettings }));
+      setSettings(prev => {
+        const preservedLogo = prev.companyLogo || companySettings.companyLogo || null;
+        return { ...prev, ...companySettings, companyLogo: preservedLogo };
+      });
     }
   }, [companySettings, activeCompanyId]);
 
@@ -156,15 +183,30 @@ export default function CompanySettings({
     applyCompanyBranding(settings);
   }, [settings]);
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     saveCompanySettings(settings, activeCompanyId);
     onCompanySettingsChange?.(settings);
+    try {
+      await syncSettingsToCloud(activeCompanyId, settings);
+    } catch (e) {
+      console.warn("syncSettingsToCloud in handleSave error:", e);
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   }, [settings, activeCompanyId, onCompanySettingsChange]);
 
   function updateSetting(key, val) {
-    setSettings(prev => ({ ...prev, [key]: val }));
+    setSettings(prev => {
+      const next = { ...prev, [key]: val };
+      if (key === 'companyLogo') {
+        saveCompanySettings(next, activeCompanyId);
+        onCompanySettingsChange?.(next);
+        try {
+          syncSettingsToCloud(activeCompanyId, next);
+        } catch (e) {}
+      }
+      return next;
+    });
   }
 
   // ── Team Management ──
