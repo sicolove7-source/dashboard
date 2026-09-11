@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import {
   X, Printer, Copy, Check, FileText, Wrench, User, MapPin,
   DollarSign, ShieldCheck, Calendar, AlertTriangle, Eye, Edit3, Save, Sparkles, FileDown,
-  PenTool, CheckCircle2, Stamp, MessageCircle
+  PenTool, CheckCircle2, Stamp, MessageCircle, Building2, Phone, Briefcase
 } from 'lucide-react';
 import { fmtDate, todayISO, getGlobalCurrency } from '../utils/helpers';
 import { printElement } from '../utils/printHelper';
+import { loadCompanySettings } from '../utils/branding';
 import SignaturePad from './SignaturePad';
 import StampRing from './StampRing';
 
@@ -126,7 +127,8 @@ export const CRAFTSMAN_SPECS = {
 
 export const CRAFTSMAN_PRESETS = CRAFTSMAN_SPECS;
 
-export default function CraftsmanContractModal({ project, initialWorker, onUpdate, onClose }) {
+export default function CraftsmanContractModal({ project, initialWorker, onUpdate, onClose, companySettings: propCompanySettings }) {
+  const activeCompanySettings = propCompanySettings || loadCompanySettings();
   const [tradeKey, setTradeKey] = useState(initialWorker?.trade ? mapTradeToKey(initialWorker.trade) : 'ceramics');
   const activeTrade = CRAFTSMAN_SPECS[tradeKey] || CRAFTSMAN_SPECS.ceramics;
 
@@ -137,17 +139,20 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
     contractNumber: savedForThisTrade.contractNumber || `SUB-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
     contractDate: savedForThisTrade.contractDate || todayISO(),
     
-    // First Party (Contractor / Company)
-    companyName: savedForThisTrade.companyName || 'شركة أملاك للعمارة والديكور',
-    companyRep: savedForThisTrade.companyRep || 'م/ حسين أحمد',
-    companyPhone: savedForThisTrade.companyPhone || '01000000000',
+    // First Party (الطرف الأول - الشركة / الجهة المشرفة / صاحب العمل)
+    firstPartyRole: savedForThisTrade.firstPartyRole || 'الجهة المشرفة / المقاول العام',
+    companyName: savedForThisTrade.companyName || activeCompanySettings?.companyName || 'شركة المقاولات والتشطيبات',
+    companyRep: savedForThisTrade.companyRep || project?.engineer || 'مدير المشروعات',
+    companyPhone: savedForThisTrade.companyPhone || activeCompanySettings?.phone || '',
+    companyAddress: savedForThisTrade.companyAddress || activeCompanySettings?.address || '',
 
-    // Second Party (Craftsman / Subcontractor)
+    // Second Party (الطرف الثاني - المعلم / مقاول المصنعية / الحرفي)
+    secondPartyRole: savedForThisTrade.secondPartyRole || 'المعلم / مقاول المصنعية',
     craftsmanName: savedForThisTrade.craftsmanName || initialWorker?.name || '',
     craftsmanPhone: savedForThisTrade.craftsmanPhone || initialWorker?.phone || '',
     craftsmanNationalId: savedForThisTrade.craftsmanNationalId || '',
     craftsmanAddress: savedForThisTrade.craftsmanAddress || '',
-    craftsmanTitle: savedForThisTrade.craftsmanTitle || 'مقاول مصنعية وباطن',
+    craftsmanTitle: savedForThisTrade.craftsmanTitle || (activeTrade.name ? activeTrade.name.replace('أعمال ', 'معلم / مقاول ') : 'مقاول مصنعية وباطن'),
 
     // Project & Location
     projectName: savedForThisTrade.projectName || project?.name || 'موقع تشطيب دمياط',
@@ -210,7 +215,8 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
         unitPrice: tr.priceDefault,
         estimatedQty: tr.quantityDefault,
         totalAgreedAmount: tr.priceDefault * tr.quantityDefault,
-        specsList: [...tr.specs]
+        specsList: [...tr.specs],
+        craftsmanTitle: prev.craftsmanTitle || (tr.name ? tr.name.replace('أعمال ', 'معلم / مقاول ') : 'مقاول مصنعية')
       }));
     }
   }
@@ -222,6 +228,17 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
         const p = field === 'unitPrice' ? Number(val) : Number(next.unitPrice);
         const q = field === 'estimatedQty' ? Number(val) : Number(next.estimatedQty);
         next.totalAgreedAmount = Math.round(p * q);
+      }
+      if (field === 'startWorkDate' || field === 'durationDays') {
+        const start = field === 'startWorkDate' ? val : next.startWorkDate;
+        const days = field === 'durationDays' ? Number(val) : Number(next.durationDays);
+        if (start && days > 0) {
+          try {
+            const d = new Date(start);
+            d.setDate(d.getDate() + days);
+            next.finishWorkDate = d.toISOString().slice(0, 10);
+          } catch (e) {}
+        }
       }
       return next;
     });
@@ -364,8 +381,10 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
 
     let msg = `*مشارطة وعقد اتفاق مقاولة مصنعية (${activeTrade.name})*\n`;
     msg += `📄 كود العقد: ${formData.contractNumber}\n`;
-    msg += `🏢 الطرف الأول (الجهة المشرفة): ${formData.companyName}\n`;
-    msg += `👷 الطرف الثاني (المعلم): ${formData.craftsmanName || 'المحترم'}\n`;
+    msg += `🏢 الطرف الأول (${formData.firstPartyRole || 'الجهة المشرفة'}): ${formData.companyName}\n`;
+    if (formData.companyRep) msg += `👤 ممثل الطرف الأول: ${formData.companyRep} ${formData.companyPhone ? `(${formData.companyPhone})` : ''}\n`;
+    msg += `👷 الطرف الثاني (${formData.secondPartyRole || 'المعلم'}): ${formData.craftsmanName || 'المحترم'}${formData.craftsmanTitle ? ` - ${formData.craftsmanTitle}` : ''}\n`;
+    if (formData.craftsmanPhone) msg += `📞 هاتف المعلم: ${formData.craftsmanPhone}\n`;
     msg += `📍 الموقع: ${formData.projectLocation} - ${formData.projectName}\n\n`;
     
     msg += `*💰 الاتفاق المالي وجدول الدفعات:*\n`;
@@ -388,7 +407,7 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
       msg += `... ومطابقة باقي بنود العقد المعتمد لدى مهندس الموقع.\n`;
     }
 
-    msg += `\n_شركة ${formData.companyName} - إدارة الرقابة الهندسية على الجودة_ ✨`;
+    msg += `\n_${formData.companyName} - إدارة الرقابة الهندسية على الجودة_ ✨`;
     return { cleanPhone, text: msg };
   }
 
@@ -423,7 +442,7 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
             <Wrench size={20} color="#94A3B8" />
             <div>
               <div style={{ fontWeight: 800, fontSize: 16 }}>مشارطة وعقد اتفاق مقاول مصنعية وباطن</div>
-              <div style={{ fontSize: 12, color: '#94A3B8' }}>صياغة فنية مشددة تضمن استلام الشغل بالقِدة والميزان وخصم العيوب</div>
+              <div style={{ fontSize: 12, color: '#94A3B8' }}>صياغة فنية مشددة تضمن استلام الشغل بالقِدة والميزان وتعديل الطرفين</div>
             </div>
           </div>
 
@@ -450,7 +469,7 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
                   fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
                 }}
               >
-                <Edit3 size={14} /> تخصيص البنود
+                <Edit3 size={14} /> تخصيص الطرفين والبنود ✍️
               </button>
             </div>
 
@@ -543,34 +562,196 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
 
         {/* TAB 1: EDIT FORM */}
         <div className="no-print" style={{ display: activeTab === 'edit' ? 'flex' : 'none', padding: '24px 32px', flexDirection: 'column', gap: 20 }}>
-          {/* Section 1: Craftsman info */}
-          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 14, padding: 18 }}>
-            <h4 style={{ margin: '0 0 14px', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <User size={17} color="#4338CA" /> بيانات المعلم / مقاول المصنعية (الطرف الثاني)
-            </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+          
+          {/* Section 1: First Party (الطرف الأول) */}
+          <div style={{ background: 'var(--bg)', border: '1.5px solid rgba(59, 130, 246, 0.35)', borderRadius: 14, padding: 18 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+              <h4 style={{ margin: 0, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 800 }}>
+                <Building2 size={18} color="#3B82F6" /> بيانات الطرف الأول (الشركة / الجهة المشرفة / صاحب العمل)
+              </h4>
+              <span style={{ fontSize: 11, color: '#3B82F6', background: 'rgba(59, 130, 246, 0.1)', padding: '3px 10px', borderRadius: 12, fontWeight: 700 }}>
+                جهة الإشراف والتعاقد
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
               <div>
-                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 2 }}>اسم المعلم / المقاول *</label>
-                <input value={formData.craftsmanName} placeholder="مثال: المعلم مصطفى أحمد" onChange={e => handleFieldChange('craftsmanName', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3, fontWeight: 700 }}>
+                  صفة الطرف الأول في العقد *
+                </label>
+                <input
+                  value={formData.firstPartyRole}
+                  placeholder="مثال: الجهة المشرفة / المقاول العام / المالك"
+                  onChange={e => handleFieldChange('firstPartyRole', e.target.value)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontWeight: 600 }}
+                />
               </div>
               <div>
-                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 2 }}>رقم هاتف المعلم</label>
-                <input value={formData.craftsmanPhone} placeholder="010-..." onChange={e => handleFieldChange('craftsmanPhone', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3, fontWeight: 700 }}>
+                  اسم الشركة / المنشأة أو الشخص *
+                </label>
+                <input
+                  value={formData.companyName}
+                  placeholder="اسم الشركة أو المالك"
+                  onChange={e => handleFieldChange('companyName', e.target.value)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontWeight: 700 }}
+                />
               </div>
               <div>
-                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 2 }}>الرقم القومي</label>
-                <input value={formData.craftsmanNationalId} placeholder="285..." onChange={e => handleFieldChange('craftsmanNationalId', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3, fontWeight: 700 }}>
+                  ممثل الطرف الأول (المهندس / المدير) *
+                </label>
+                <input
+                  value={formData.companyRep}
+                  placeholder="مثال: م/ أحمد مصطفى"
+                  onChange={e => handleFieldChange('companyRep', e.target.value)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }}
+                />
               </div>
               <div>
-                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 2 }}>عنوان وسكن المعلم</label>
-                <input value={formData.craftsmanAddress} placeholder="دمياط - ..." onChange={e => handleFieldChange('craftsmanAddress', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3 }}>
+                  هاتف التواصل للطرف الأول
+                </label>
+                <input
+                  value={formData.companyPhone}
+                  placeholder="010... أو +971..."
+                  onChange={e => handleFieldChange('companyPhone', e.target.value)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }}
+                />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3 }}>
+                  عنوان ومقر الطرف الأول
+                </label>
+                <input
+                  value={formData.companyAddress}
+                  placeholder="مثال: المقر الرئيسي أو عنوان الإشراف"
+                  onChange={e => handleFieldChange('companyAddress', e.target.value)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }}
+                />
               </div>
             </div>
           </div>
 
-          {/* Section 2: Pricing & Calculation */}
+          {/* Section 2: Second Party (الطرف الثاني) */}
+          <div style={{ background: 'var(--bg)', border: '1.5px solid rgba(99, 102, 241, 0.35)', borderRadius: 14, padding: 18 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+              <h4 style={{ margin: 0, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 800 }}>
+                <User size={18} color="#6366F1" /> بيانات الطرف الثاني (المعلم / مقاول المصنعية / الحرفي)
+              </h4>
+              <span style={{ fontSize: 11, color: '#6366F1', background: 'rgba(99, 102, 241, 0.1)', padding: '3px 10px', borderRadius: 12, fontWeight: 700 }}>
+                الجهة المنفذة بالمصنعية
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3, fontWeight: 700 }}>
+                  صفة الطرف الثاني في العقد *
+                </label>
+                <input
+                  value={formData.secondPartyRole}
+                  placeholder="مثال: المعلم / مقاول المصنعية / فني باطن"
+                  onChange={e => handleFieldChange('secondPartyRole', e.target.value)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontWeight: 600 }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3, fontWeight: 700 }}>
+                  اسم المعلم / الصنايعي *
+                </label>
+                <input
+                  value={formData.craftsmanName}
+                  placeholder="مثال: المعلم مصطفى أحمد"
+                  onChange={e => handleFieldChange('craftsmanName', e.target.value)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontWeight: 700 }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3 }}>
+                  المسمى المهني أو التخصص
+                </label>
+                <input
+                  value={formData.craftsmanTitle}
+                  placeholder="مثال: معلم سيراميك وبورسلين"
+                  onChange={e => handleFieldChange('craftsmanTitle', e.target.value)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3, fontWeight: 700 }}>
+                  رقم هاتف المعلم / واتساب *
+                </label>
+                <input
+                  value={formData.craftsmanPhone}
+                  placeholder="010-..."
+                  onChange={e => handleFieldChange('craftsmanPhone', e.target.value)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3 }}>
+                  بطاقة الرقم القومي
+                </label>
+                <input
+                  value={formData.craftsmanNationalId}
+                  placeholder="285..."
+                  onChange={e => handleFieldChange('craftsmanNationalId', e.target.value)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3 }}>
+                  محل إقامة وسكن المعلم
+                </label>
+                <input
+                  value={formData.craftsmanAddress}
+                  placeholder="دمياط - ..."
+                  onChange={e => handleFieldChange('craftsmanAddress', e.target.value)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: Project Location & Duration */}
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 14, padding: 18 }}>
+            <h4 style={{ margin: '0 0 14px', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 800 }}>
+              <MapPin size={17} color="#0D9488" /> بيانات موقع العمل والبرنامج الزمني
+            </h4>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 2 }}>اسم الموقع / العمارة</label>
+                <input value={formData.projectName} onChange={e => handleFieldChange('projectName', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 2 }}>المنطقة / الحي</label>
+                <input value={formData.projectLocation} onChange={e => handleFieldChange('projectLocation', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 2 }}>تفاصيل الوحدة / العميل</label>
+                <input value={formData.unitDetails} onChange={e => handleFieldChange('unitDetails', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 2 }}>تاريخ بدء العمل</label>
+                <input type="date" value={formData.startWorkDate} onChange={e => handleFieldChange('startWorkDate', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 2 }}>المدة المحددة للتنفيذ (أيام)</label>
+                <input type="number" value={formData.durationDays} onChange={e => handleFieldChange('durationDays', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontWeight: 700 }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 2 }}>تاريخ التسليم المتوقع</label>
+                <input type="date" value={formData.finishWorkDate} onChange={e => handleFieldChange('finishWorkDate', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 2 }}>غرامة التأخير اليومية ({getGlobalCurrency()})</label>
+                <input type="number" value={formData.dailyDelayPenalty} onChange={e => handleFieldChange('dailyDelayPenalty', Number(e.target.value))} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Section 4: Pricing & Calculation */}
           <div style={{ background: 'var(--bg)', border: '1.5px solid rgba(16,185,129,0.3)', borderRadius: 14, padding: 18 }}>
-            <h4 style={{ margin: '0 0 14px', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h4 style={{ margin: '0 0 14px', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 800 }}>
               <DollarSign size={17} color="#10B981" /> حساب المصنعية والكميات والدفعات
             </h4>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 14 }}>
@@ -579,7 +760,7 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
                 <input value={formData.unitMeasure} onChange={e => handleFieldChange('unitMeasure', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
               </div>
               <div>
-                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 2 }}>سعر الوحدة المتفق عليه (ج.م)</label>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 2 }}>سعر الوحدة المتفق عليه ({getGlobalCurrency()})</label>
                 <input type="number" value={formData.unitPrice} onChange={e => handleFieldChange('unitPrice', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontWeight: 700 }} />
               </div>
               <div>
@@ -587,7 +768,7 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
                 <input type="number" value={formData.estimatedQty} onChange={e => handleFieldChange('estimatedQty', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
               </div>
               <div>
-                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 2, fontWeight: 700 }}>إجمالي القيمة المقدرة (ج.م)</label>
+                <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 2, fontWeight: 700 }}>إجمالي القيمة المقدرة ({getGlobalCurrency()})</label>
                 <input type="number" value={formData.totalAgreedAmount} onChange={e => handleFieldChange('totalAgreedAmount', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '2px solid #10B981', background: 'var(--card)', color: '#10B981', fontWeight: 800, fontSize: 15 }} />
               </div>
             </div>
@@ -613,10 +794,10 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
             </div>
           </div>
 
-          {/* Section 3: Technical Specs Checklist */}
+          {/* Section 5: Technical Specs Checklist */}
           <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 14, padding: 18 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h4 style={{ margin: 0, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h4 style={{ margin: 0, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 800 }}>
                 <ShieldCheck size={17} color="#F59E0B" /> الشروط والمواصفات الفنية الإلزامية للاستلام
               </h4>
               <button type="button" onClick={addSpecItem} style={{ padding: '4px 10px', borderRadius: 6, background: '#4338CA', color: '#fff', border: 'none', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
@@ -641,10 +822,10 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
             </div>
           </div>
 
-          {/* Section 4: Craftsman Digital Signature Pad */}
+          {/* Section 6: Craftsman Digital Signature Pad */}
           <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 14, padding: 18 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h4 style={{ margin: 0, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h4 style={{ margin: 0, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 800 }}>
                 <PenTool size={17} color="#10B981" /> توقيع وبصمة المعلم الرقمية (باللمس أو الماوس) ✍️
               </h4>
               {formData.craftsmanSignature && (
@@ -670,7 +851,7 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-            <button className="btn btn-primary" onClick={() => setActiveTab('preview')} style={{ padding: '10px 24px' }}>
+            <button className="btn btn-primary" onClick={() => setActiveTab('preview')} style={{ padding: '10px 24px', fontSize: 13, fontWeight: 700 }}>
               عرض العقد النهائي للطباعة والتوقيع ←
             </button>
           </div>
@@ -678,17 +859,58 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
 
         {/* TAB 2: LIVE PRINTABLE CRAFTSMAN CONTRACT PREVIEW */}
         <div style={{ display: activeTab === 'preview' ? 'block' : 'none', padding: '24px', background: '#e2e8f0' }}>
+          
+          {/* Quick Parties Bar on top of preview (No-Print) */}
+          <div className="no-print" style={{
+            maxWidth: 840, margin: '0 auto 16px', background: '#fff', border: '1px solid #CBD5E1',
+            borderRadius: 12, padding: '12px 18px', display: 'flex', alignItems: 'center',
+            justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+          }}>
+            <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#2563EB', background: '#EFF6FF', padding: '2px 8px', borderRadius: 6, border: '1px solid #DBEAFE' }}>الطرف الأول</span>
+                <strong style={{ fontSize: 13, color: '#0F172A' }}>{formData.companyName}</strong>
+                <span style={{ fontSize: 11, color: '#64748B' }}>({formData.firstPartyRole || 'الجهة المشرفة'})</span>
+              </div>
+              <div style={{ width: 1, height: 20, background: '#E2E8F0' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#7C3AED', background: '#F5F3FF', padding: '2px 8px', borderRadius: 6, border: '1px solid #EDE9FE' }}>الطرف الثاني</span>
+                <strong style={{ fontSize: 13, color: '#0F172A' }}>{formData.craftsmanName || 'صنايعي'}</strong>
+                <span style={{ fontSize: 11, color: '#64748B' }}>({formData.secondPartyRole || 'المعلم / مقاول المصنعية'})</span>
+              </div>
+            </div>
+            <button
+              onClick={() => setActiveTab('edit')}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8,
+                background: '#0F172A', color: '#fff', border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                transition: 'all 0.15s'
+              }}
+            >
+              <Edit3 size={13} /> تعديل الطرفين والبيانات ✏️
+            </button>
+          </div>
+
           <div id="craftsman-contract-printable" className="print-container legal-contract-frame printable-document-target" style={{
             padding: '36px 44px', color: '#0F172A', background: '#fff', lineHeight: 1.7, fontSize: 13,
             fontFamily: 'Cairo, Tahoma, sans-serif', maxWidth: 840, margin: '0 auto', boxShadow: '0 4px 20px rgba(0,0,0,0.08)'
           }}>
 
             {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2.5px solid #0F172A', paddingBottom: 14, marginBottom: 18 }}>
-              <div>
-                <div style={{ fontSize: 21, fontWeight: 900, color: '#0F172A', letterSpacing: -0.5 }}>{formData.companyName}</div>
-                <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>إدارة المشروعات والتنفيذ والرقابة الهندسية على الجودة</div>
-                <div style={{ fontSize: 11, color: '#64748B' }}>هاتف الإدارة: {formData.companyPhone}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2.5px solid #0F172A', paddingBottom: 14, marginBottom: 18, gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                {activeCompanySettings?.companyLogo && (
+                  <img
+                    src={activeCompanySettings.companyLogo}
+                    alt="شعار الشركة"
+                    style={{ maxHeight: 52, maxWidth: 100, objectFit: 'contain' }}
+                  />
+                )}
+                <div>
+                  <div style={{ fontSize: 21, fontWeight: 900, color: '#0F172A', letterSpacing: -0.5 }}>{formData.companyName}</div>
+                  <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>إدارة المشروعات والتنفيذ والرقابة الهندسية على الجودة</div>
+                  {formData.companyPhone && <div style={{ fontSize: 11, color: '#64748B' }}>هاتف الإدارة: {formData.companyPhone}</div>}
+                </div>
               </div>
               <div style={{ textAlign: 'left', direction: 'ltr' }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: '#0F172A' }}>كود العقد: {formData.contractNumber}</div>
@@ -708,9 +930,13 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
               <p>
                 إنه في يوم <strong>{new Date(formData.contractDate).toLocaleDateString('ar-EG', { weekday: 'long' })}</strong> الموافق <strong>{formData.contractDate}</strong>، اتفق كل من:
               </p>
-              <div style={{ padding: '10px 14px', background: '#F1F5F9', borderRadius: 6, margin: '8px 0', borderRight: '4px solid #0F172A' }}>
-                <div><strong>الطرف الأول (الجهة المشرفة):</strong> {formData.companyName}، ويمثلها السيد / <strong>{formData.companyRep}</strong>، هاتف: {formData.companyPhone}.</div>
-                <div style={{ marginTop: 6 }}><strong>الطرف الثاني (المعلم / مقاول المصنعية):</strong> السيد / <strong>{formData.craftsmanName || '................................'}</strong>، بطاقة رقم قومي: <strong>{formData.craftsmanNationalId || '............................'}</strong>، هاتف: <strong>{formData.craftsmanPhone || '............................'}</strong>، المقيم في: <strong>{formData.craftsmanAddress || '............................'}</strong>.</div>
+              <div style={{ padding: '12px 16px', background: '#F1F5F9', borderRadius: 6, margin: '8px 0', borderRight: '4px solid #0F172A', lineHeight: 1.8 }}>
+                <div>
+                  <strong>الطرف الأول ({formData.firstPartyRole || 'الجهة المشرفة'}):</strong> {formData.companyName}، {formData.companyAddress ? `المقر: ${formData.companyAddress}، ` : ''}ويمثلها السيد / <strong>{formData.companyRep}</strong>{formData.companyPhone ? `، هاتف: ${formData.companyPhone}` : ''}.
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <strong>الطرف الثاني ({formData.secondPartyRole || 'المعلم / مقاول المصنعية'}):</strong> السيد / <strong>{formData.craftsmanName || '................................'}</strong>{formData.craftsmanTitle ? ` (${formData.craftsmanTitle})` : ''}، بطاقة رقم قومي: <strong>{formData.craftsmanNationalId || '............................'}</strong>، هاتف: <strong>{formData.craftsmanPhone || '............................'}</strong>، المقيم في: <strong>{formData.craftsmanAddress || '............................'}</strong>.
+                </div>
               </div>
             </div>
 
@@ -797,10 +1023,11 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
                 تحرر هذا العقد من نسختين موقعتين للعمل بموجبها وتعتبر بنوده ملزمة للطرفين فور التوقيع.
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, textAlign: 'center', alignItems: 'start' }}>
-                {/* First Party (Company) */}
+                {/* First Party (Company / Owner) */}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>الطرف الأول (الجهة المشرفة)</div>
-                  <div style={{ fontSize: 12, color: '#475569', marginBottom: 8 }}>{formData.companyName}</div>
+                  <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>الطرف الأول ({formData.firstPartyRole || 'الجهة المشرفة'})</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', marginBottom: 2 }}>{formData.companyName}</div>
+                  <div style={{ fontSize: 11, color: '#64748B', marginBottom: 8 }}>الممثل: {formData.companyRep}</div>
                   
                   {/* Official Company Seal & Signature */}
                   <div style={{ height: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
@@ -816,8 +1043,9 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
 
                 {/* Second Party (Craftsman) */}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>الطرف الثاني (المعلم / مقاول المصنعية)</div>
-                  <div style={{ fontSize: 12, color: '#475569', marginBottom: 8 }}>المعلم / {formData.craftsmanName || '...............................'}</div>
+                  <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>الطرف الثاني ({formData.secondPartyRole || 'المعلم / مقاول المصنعية'})</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', marginBottom: 2 }}>{formData.craftsmanTitle ? `${formData.craftsmanTitle} / ` : 'المعلم / '}{formData.craftsmanName || '...............................'}</div>
+                  {formData.craftsmanPhone && <div style={{ fontSize: 11, color: '#64748B', marginBottom: 8 }}>هاتف: {formData.craftsmanPhone}</div>}
                   
                   {formData.craftsmanSignature ? (
                     <div style={{ height: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>

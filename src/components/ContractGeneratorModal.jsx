@@ -2,28 +2,30 @@ import React, { useState } from 'react';
 import {
   X, Printer, Copy, Check, FileText, Building2, Calendar,
   DollarSign, ShieldCheck, User, MapPin, Edit3, Eye, Save, Lock, FileDown, Download,
-  PenTool, MessageCircle
+  PenTool, MessageCircle, Phone
 } from 'lucide-react';
 import { PROJECT_PHASES } from '../utils/constants';
 import { fmtDate, todayISO, getGlobalCurrency } from '../utils/helpers';
 import { printElement } from '../utils/printHelper';
+import { loadCompanySettings } from '../utils/branding';
 import SignaturePad from './SignaturePad';
 import StampRing from './StampRing';
 
-export default function ContractGeneratorModal({ project, onUpdate, onClose }) {
+export default function ContractGeneratorModal({ project, onUpdate, onClose, companySettings: propCompanySettings }) {
+  const activeCompanySettings = propCompanySettings || loadCompanySettings();
   const savedContract = project.contractData || {};
 
   // Form state initialized with saved contract data or project defaults
   const [formData, setFormData] = useState({
-    contractNumber: savedContract.contractNumber || `AMLAK-${new Date().getFullYear()}-${project.id.slice(1)}`,
+    contractNumber: savedContract.contractNumber || `CONT-${new Date().getFullYear()}-${project.id.slice(1)}`,
     contractDate: savedContract.contractDate || todayISO(),
     
     // First Party (Contractor)
-    companyName: savedContract.companyName || 'شركة أملاك للعمارة والديكور',
-    companyRep: savedContract.companyRep || 'م/ حسين أحمد',
-    companyCR: savedContract.companyCR || 'س.ت: 482910 - ب.ض: 593-201',
-    companyPhone: savedContract.companyPhone || '01000000000',
-    companyAddress: savedContract.companyAddress || 'دمياط الجديدة - المنطقة المركزية',
+    companyName: savedContract.companyName || activeCompanySettings.companyName || 'شركة المقاولات والتشطيبات',
+    companyRep: savedContract.companyRep || project.engineer || activeCompanySettings.adminName || 'مدير المشروعات',
+    companyCR: savedContract.companyCR || (activeCompanySettings.commercialRegister ? `س.ت: ${activeCompanySettings.commercialRegister}${activeCompanySettings.taxNumber ? ` - ب.ض: ${activeCompanySettings.taxNumber}` : ''}` : 'س.ت: 482910 - ب.ض: 593-201'),
+    companyPhone: savedContract.companyPhone || activeCompanySettings.phone || '',
+    companyAddress: savedContract.companyAddress || activeCompanySettings.address || '',
 
     // Second Party (Client)
     clientName: savedContract.clientName || project.client || '',
@@ -341,33 +343,65 @@ export default function ContractGeneratorModal({ project, onUpdate, onClose }) {
         <div className="no-print" style={{ display: activeTab === 'edit' ? 'flex' : 'none', padding: '28px 32px', flexDirection: 'column', gap: 24 }}>
           {/* Section 1: Parties */}
           <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 14, padding: 20 }}>
-            <h4 style={{ margin: '0 0 16px', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h4 style={{ margin: '0 0 16px', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 800 }}>
               <User size={18} color="var(--teal)" /> بيانات الطرفين والتعاقد
             </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
-              <div>
-                <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>رقم العقد</label>
-                <input value={formData.contractNumber} onChange={e => handleChange('contractNumber', e.target.value)} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
+            
+            {/* First Party (Company) */}
+            <div style={{ marginBottom: 16, padding: 14, background: 'var(--card)', borderRadius: 10, border: '1px solid var(--border)' }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--teal)', marginBottom: 10 }}>🏢 الطرف الأول (المقاول المنفذ / الشركة):</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3, fontWeight: 700 }}>اسم الشركة / المنشأة *</label>
+                  <input value={formData.companyName} onChange={e => handleChange('companyName', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--ink)', fontWeight: 700 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3, fontWeight: 700 }}>ممثل الشركة (المهندس / المدير) *</label>
+                  <input value={formData.companyRep} onChange={e => handleChange('companyRep', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--ink)' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3 }}>هاتف الشركة</label>
+                  <input value={formData.companyPhone} onChange={e => handleChange('companyPhone', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--ink)' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3 }}>السجل التجاري والبطاقة الضريبية</label>
+                  <input value={formData.companyCR} onChange={e => handleChange('companyCR', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--ink)' }} />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3 }}>عنوان ومقر الشركة</label>
+                  <input value={formData.companyAddress} onChange={e => handleChange('companyAddress', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--ink)' }} />
+                </div>
               </div>
-              <div>
-                <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>تاريخ تحرير العقد</label>
-                <input type="date" value={formData.contractDate} onChange={e => handleChange('contractDate', e.target.value)} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
-              </div>
-              <div>
-                <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>ممثل الشركة (الطرف الأول)</label>
-                <input value={formData.companyRep} onChange={e => handleChange('companyRep', e.target.value)} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
-              </div>
-              <div>
-                <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>اسم العميل / المالك (الطرف الثاني)</label>
-                <input value={formData.clientName} onChange={e => handleChange('clientName', e.target.value)} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
-              </div>
-              <div>
-                <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>الرقم القومي للعميل</label>
-                <input value={formData.clientNationalId} placeholder="2900101..." onChange={e => handleChange('clientNationalId', e.target.value)} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
-              </div>
-              <div>
-                <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>هاتف العميل</label>
-                <input value={formData.clientPhone} placeholder="010..." onChange={e => handleChange('clientPhone', e.target.value)} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)' }} />
+            </div>
+
+            {/* Second Party (Client) */}
+            <div style={{ padding: 14, background: 'var(--card)', borderRadius: 10, border: '1px solid var(--border)' }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#3B82F6', marginBottom: 10 }}>👤 الطرف الثاني (العميل / المالك):</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3, fontWeight: 700 }}>اسم العميل / المالك *</label>
+                  <input value={formData.clientName} onChange={e => handleChange('clientName', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--ink)', fontWeight: 700 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3, fontWeight: 700 }}>هاتف العميل *</label>
+                  <input value={formData.clientPhone} placeholder="010..." onChange={e => handleChange('clientPhone', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--ink)' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3 }}>الرقم القومي للعميل</label>
+                  <input value={formData.clientNationalId} placeholder="2900101..." onChange={e => handleChange('clientNationalId', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--ink)' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3 }}>عنوان وسكن العميل</label>
+                  <input value={formData.clientAddress} onChange={e => handleChange('clientAddress', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--ink)' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3 }}>رقم العقد</label>
+                  <input value={formData.contractNumber} onChange={e => handleChange('contractNumber', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--ink)' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 3 }}>تاريخ تحرير العقد</label>
+                  <input type="date" value={formData.contractDate} onChange={e => handleChange('contractDate', e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--ink)' }} />
+                </div>
               </div>
             </div>
           </div>
