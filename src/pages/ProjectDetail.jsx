@@ -21,6 +21,7 @@ import ClientReportModal from '../components/ClientReportModal';
 import ContractGeneratorModal from '../components/ContractGeneratorModal';
 import CraftsmanContractModal from '../components/CraftsmanContractModal';
 import ProjectCraftsmen from '../components/ProjectCraftsmen';
+import ContractsHubPanel from '../components/ContractsHubPanel';
 import ProjectDrawings from '../components/ProjectDrawings';
 import confetti from 'canvas-confetti';
 import { can } from '../utils/permissions';
@@ -45,6 +46,7 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
     { key: "supply",    label: "التوريدات",     icon: Package,     perm: 'project_tab_supply', count: project.resources?.materials?.filter(m => m.status !== 'تم التوريد')?.length || (project.resources?.materials?.length ? project.resources.materials.length : undefined) },
     { key: "finance",   label: "المالية",        icon: Wallet,      perm: 'project_tab_finance' },
     { key: "overview",  label: "البيانات",       icon: Building2,   perm: null },
+    { key: "contracts", label: "العقود والعميل", icon: FileText,    perm: null, count: 4 },
   ].filter(t => !t.perm || can(currentUser || userRole, t.perm));
 
   // التبويب الافتراضي: أول تبويب متاح
@@ -109,39 +111,12 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
         {/* ── Action Toolbar (Contracts, Portal, Report, Manage) ── */}
         <div className="project-action-toolbar">
           <div className="primary-action-group">
-            {(can(currentUser || userRole, 'projects_edit') || can(currentUser || userRole, 'craftsman_contract_manage') || userRole === 'engineer') && (
-              <button 
-                className="contract-action-btn btn-craftsman-contract" 
-                onClick={() => { setSelectedWorkerForContract(null); setShowCraftsmanContract(true); }}
-                title="إبرام وتعديل عقود صنايعية ومقاولي هذا الموقع"
-              >
-                <Wrench size={16} /> <span>عقد صنايعي / باطن 📜</span>
-              </button>
-            )}
-
-            {can(currentUser || userRole, 'projects_edit') && (
-              <button 
-                className="contract-action-btn btn-client-contract" 
-                onClick={() => setShowContract(true)}
-              >
-                <FileText size={16} /> <span>عقد العميل 📜</span>
-              </button>
-            )}
-
             <button 
-              className="contract-action-btn btn-portal" 
-              onClick={() => onOpenClientPortal && onOpenClientPortal(project.id)} 
-              title="فتح بوابة العميل التفاعلية والتوقيع الإلكتروني"
+              className={`contract-action-btn btn-portal ${sub === 'contracts' ? 'active' : ''}`}
+              onClick={() => setSub('contracts')}
+              title="فتح مركز العقود وبوابة العميل والتقارير"
             >
-              <Sparkles size={16} /> <span>بوابة العميل 🌐</span>
-            </button>
-
-            <button 
-              className="contract-action-btn btn-whatsapp" 
-              onClick={() => setShowClientReport(true)} 
-              title="تقرير العميل عبر واتساب"
-            >
-              <MessageCircle size={16} /> <span>تقرير العميل 📱</span>
+              <FileText size={16} /> <span>العقود والعميل 📜</span>
             </button>
           </div>
 
@@ -244,6 +219,20 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
         {sub === "supply"   && <ProjectSupply project={project} currentUser={currentUser} userRole={userRole} onUpdate={onUpdate} />}
         {sub === "finance"  && can(currentUser || userRole, 'project_tab_finance') && <ProjectFinance project={project} onUpdate={onUpdate} />}
         {sub === "overview" && <OverviewPanel project={project} onUpdate={onUpdate} />}
+        {sub === "contracts" && (
+          <ContractsHubPanel 
+            project={project} 
+            currentUser={currentUser} 
+            userRole={userRole} 
+            onOpenCraftsmanContract={(worker = null) => {
+              setSelectedWorkerForContract(worker);
+              setShowCraftsmanContract(true);
+            }}
+            onOpenClientContract={() => setShowContract(true)}
+            onOpenClientPortal={() => onOpenClientPortal && onOpenClientPortal(project.id)}
+            onOpenClientReport={() => setShowClientReport(true)}
+          />
+        )}
       </div>
     </div>
   );
