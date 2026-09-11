@@ -3,11 +3,14 @@
  * الإصدار الأول المطور لتطبيقات الهواتف والويب التقدمية
  */
 
-const CACHE_NAME = 'tashteeb-pro-v1.1';
+const CACHE_NAME = 'tashteeb-pro-v1.2';
 const PRECACHE_ASSETS = [
   './',
   './index.html',
-  './favicon.svg',
+  './pwa-192x192.png',
+  './pwa-512x512.png',
+  './apple-touch-icon.png',
+  './app-icon.png',
   './manifest.json'
 ];
 
