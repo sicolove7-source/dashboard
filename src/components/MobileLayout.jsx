@@ -85,15 +85,22 @@ export default function MobileLayout({
         {/* Logo & Company Name */}
         <div className="mobile-logo">
           {companyLogo ? (
-            <img src={companyLogo} alt={companyName} />
+            <div className="mobile-logo-badge">
+              <img src={companyLogo} alt={companyName} />
+            </div>
           ) : (
-            <div style={{
-              width: 34, height: 34, borderRadius: 10,
-              background: primaryColor || '#0F172A',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0,
-            }}>
-              <Icons.Building2 size={18} color="#fff" />
+            <div className="mobile-logo-badge app-icon-badge">
+              <img
+                src="/app-icon.png"
+                alt="Tashteeb Pro"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex';
+                }}
+              />
+              <div style={{ display: 'none', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', background: '#1877F2' }}>
+                <Icons.Building2 size={20} color="#fff" />
+              </div>
             </div>
           )}
           <span style={{ fontSize: 15, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 170 }}>

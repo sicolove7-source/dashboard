@@ -158,25 +158,44 @@ export default function ClientPortal({
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {companyLogo ? (
-            <img
-              src={companyLogo}
-              alt={companyName}
-              style={{ width: 40, height: 40, borderRadius: 10, objectFit: "contain", background: "#fff" }}
-            />
+            <div style={{
+              width: 48,
+              height: 48,
+              borderRadius: 12,
+              background: "#FFFFFF",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.05)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              overflow: "hidden",
+              padding: 3,
+              flexShrink: 0
+            }}>
+              <img
+                src={companyLogo}
+                alt={companyName}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  imageRendering: "-webkit-optimize-contrast"
+                }}
+              />
+            </div>
           ) : (
-            <div
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 10,
-                background: primaryColor || '#0F172A',
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#fff",
-              }}
-            >
-              <Building2 size={22} />
+            <div style={{
+              width: 48,
+              height: 48,
+              borderRadius: 12,
+              background: '#0F172A',
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              overflow: "hidden",
+              flexShrink: 0,
+              boxShadow: "0 2px 8px rgba(0,0,0,0.15)"
+            }}>
+              <img src="/app-icon.png" alt="Tashteeb Pro" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             </div>
           )}
           <div>

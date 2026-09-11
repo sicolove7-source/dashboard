@@ -890,10 +890,48 @@ export default function App() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', minWidth: 0 }}>
-            <span style={{ whiteSpace: 'nowrap', color: 'rgba(255,255,255,0.9)', fontWeight: 700 }}>👑 وضع المالك:</span>
-            <span style={{ background: 'rgba(255,255,255,0.2)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.35)', padding: '3px 12px', borderRadius: 20, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 700 }}>
-              {companySettings?.companyName || 'الشركة المحددة'}
-            </span>
+            <span style={{ whiteSpace: 'nowrap', color: 'rgba(255,255,255,0.95)', fontWeight: 700 }}>👑 وضع المالك:</span>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              background: 'rgba(255,255,255,0.2)',
+              border: '1px solid rgba(255,255,255,0.35)',
+              padding: '3px 12px 3px 6px',
+              borderRadius: 20
+            }}>
+              {companySettings?.companyLogo ? (
+                <img
+                  src={companySettings.companyLogo}
+                  alt="شعار الشركة"
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 6,
+                    objectFit: 'contain',
+                    background: '#FFFFFF',
+                    padding: 1.5,
+                    flexShrink: 0,
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                  }}
+                />
+              ) : (
+                <img
+                  src="/app-icon.png"
+                  alt="Tashteeb Pro"
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 6,
+                    objectFit: 'cover',
+                    flexShrink: 0
+                  }}
+                />
+              )}
+              <span style={{ color: '#FFFFFF', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 700, fontSize: 13 }}>
+                {companySettings?.companyName || 'الشركة المحددة'}
+              </span>
+            </div>
           </div>
           <button
             onClick={() => setTab('tenants')}

@@ -17,10 +17,11 @@ export default function Login({
   onStartLiveDemo,
   initialMode = 'login'
 }) {
-  const companyName = 'Tashteeb Pro | تشطيب برو';
-  const companySubtitle = 'المنصة الذكية لإدارة التشطيبات والمقاولات والمشاريع';
-  const primaryColor = '#1877F2';
-  const accentColor = '#166FE5';
+  const companyName = companySettings?.companyName || 'Tashteeb Pro | تشطيب برو';
+  const companySubtitle = companySettings?.companySubtitle || 'المنصة الذكية لإدارة التشطيبات والمقاولات والمشاريع';
+  const companyLogo = companySettings?.companyLogo || null;
+  const primaryColor = companySettings?.primaryColor || '#1877F2';
+  const accentColor = companySettings?.accentColor || '#166FE5';
 
   // Mode: 'login' | 'register'
   const [mode, setMode] = useState(initialMode);
@@ -129,15 +130,43 @@ export default function Login({
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 74,
-              height: 74,
-              borderRadius: 20,
-              background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})`,
-              boxShadow: `0 8px 30px ${primaryColor}45`,
+              width: 82,
+              height: 82,
+              borderRadius: 22,
+              background: companyLogo ? "#FFFFFF" : "#0F172A",
+              boxShadow: companyLogo
+                ? "0 10px 30px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06)"
+                : "0 12px 35px rgba(24, 119, 242, 0.35), 0 0 0 1px rgba(255,255,255,0.1)",
               marginBottom: 14,
+              overflow: "hidden",
+              padding: companyLogo ? 6 : 0,
             }}
           >
-            <Building2 size={36} color="#fff" />
+            {companyLogo ? (
+              <img
+                src={companyLogo}
+                alt={companyName}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  imageRendering: "-webkit-optimize-contrast"
+                }}
+              />
+            ) : (
+              <img
+                src="/app-icon.png"
+                alt="Tashteeb Pro"
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex';
+                }}
+              />
+            )}
+            <div style={{ display: 'none', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', background: '#1877F2' }}>
+              <Building2 size={40} color="#fff" />
+            </div>
           </div>
           <h1
             style={{

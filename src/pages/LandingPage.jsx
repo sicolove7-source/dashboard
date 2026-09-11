@@ -285,17 +285,18 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
           {/* Logo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{
-              width: 42,
-              height: 42,
+              width: 44,
+              height: 44,
               borderRadius: 12,
-              background: 'linear-gradient(135deg, #D97706, #B45309)',
+              background: '#0F172A',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#fff',
-              boxShadow: '0 4px 14px rgba(217, 119, 6, 0.35)'
+              boxShadow: '0 6px 18px rgba(24, 119, 242, 0.35)',
+              overflow: 'hidden',
+              flexShrink: 0
             }}>
-              <Building2 size={24} />
+              <img src="/app-icon.png" alt="Tashteeb Pro" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </div>
             <div>
               <div style={{ fontWeight: 900, fontSize: 18, color: 'var(--ink, #0F172A)', lineHeight: 1.2 }}>
@@ -872,10 +873,12 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{
               width: 36, height: 36, borderRadius: 10,
-              background: 'linear-gradient(135deg, #D97706, #B45309)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff'
+              background: '#0F172A',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              overflow: 'hidden', flexShrink: 0,
+              boxShadow: '0 3px 10px rgba(0,0,0,0.3)'
             }}>
-              <Building2 size={20} />
+              <img src="/app-icon.png" alt="Tashteeb Pro" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </div>
             <span style={{ fontWeight: 800, fontSize: 16, color: '#fff' }}>منصة تشطيب برو — Tashteeb Pro</span>
           </div>

@@ -85,15 +85,17 @@ function LogoUploader({ logo, onChange }) {
         onClick={() => inputRef.current?.click()}
         style={{
           width: '100%',
-          maxWidth: 160,
-          height: 140,
+          maxWidth: 180,
+          height: 150,
           borderRadius: 18,
           border: drag ? '2px dashed var(--brand-primary, #6366F1)' : '2px dashed var(--border)',
-          background: drag ? 'rgba(99,102,241,0.07)' : 'rgba(0,0,0,0.02)',
+          background: drag ? 'rgba(99,102,241,0.07)' : '#FFFFFF',
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', transition: 'all 0.2s', position: 'relative', overflow: 'hidden',
-          boxShadow: drag ? '0 0 0 3px rgba(99,102,241,0.15)' : 'none',
+          boxShadow: drag ? '0 0 0 3px rgba(99,102,241,0.15)' : '0 2px 10px rgba(0,0,0,0.05)',
           margin: '0 auto',
+          padding: 6,
+          boxSizing: 'border-box'
         }}
       >
         {processing ? (
@@ -107,12 +109,22 @@ function LogoUploader({ logo, onChange }) {
             <span style={{ fontSize: 10.5, color: '#6366F1', fontWeight: 600 }}>جاري معالجة الشعار...</span>
           </div>
         ) : logo ? (
-          <img src={logo} alt="شعار الشركة" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16 }} />
+          <img
+            src={logo}
+            alt="شعار الشركة"
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              borderRadius: 12,
+              imageRendering: '-webkit-optimize-contrast'
+            }}
+          />
         ) : (
           <>
-            <Image size={30} style={{ color: 'var(--muted)', marginBottom: 6 }} />
-            <span style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', padding: '0 8px', lineHeight: 1.5 }}>
-              اضغط أو اسحب<br />الشعار هنا
+            <Image size={32} style={{ color: 'var(--muted)', marginBottom: 6 }} />
+            <span style={{ fontSize: 11.5, color: 'var(--muted)', textAlign: 'center', padding: '0 8px', lineHeight: 1.5, fontWeight: 600 }}>
+              اضغط أو اسحب<br />الشعار هنا (PNG / JPG)
             </span>
           </>
         )}
@@ -462,17 +474,51 @@ export default function CompanySettings({
                 {/* Live Preview Card */}
                 <div className="cs-live-preview-card" style={{
                   marginTop: 2,
-                  padding: '12px 16px',
-                  borderRadius: 12,
+                  padding: '14px 18px',
+                  borderRadius: 14,
                   background: 'linear-gradient(135deg, #1e293b, #0f172a)',
-                  display: 'flex', alignItems: 'center', gap: 12,
+                  display: 'flex', alignItems: 'center', gap: 14,
                   flexWrap: 'wrap',
                 }}>
                   {settings.companyLogo ? (
-                    <img src={settings.companyLogo} alt="preview" style={{ width: 38, height: 38, borderRadius: 10, objectFit: 'contain', background: '#fff', padding: 2, flexShrink: 0 }} />
+                    <div style={{
+                      width: 50,
+                      height: 50,
+                      borderRadius: 12,
+                      background: '#FFFFFF',
+                      padding: 3,
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.25)'
+                    }}>
+                      <img
+                        src={settings.companyLogo}
+                        alt="preview"
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          borderRadius: 10,
+                          objectFit: 'contain',
+                          imageRendering: '-webkit-optimize-contrast'
+                        }}
+                      />
+                    </div>
                   ) : (
-                    <div style={{ width: 38, height: 38, borderRadius: 10, background: settings.primaryColor || '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Building2 size={20} color="#fff" />
+                    <div style={{
+                      width: 50,
+                      height: 50,
+                      borderRadius: 12,
+                      background: '#0F172A',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      overflow: 'hidden',
+                      boxShadow: '0 4px 12px rgba(24,119,242,0.3)'
+                    }}>
+                      <img src="/app-icon.png" alt="Tashteeb Pro" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     </div>
                   )}
                   <div style={{ minWidth: 0, flex: 1 }}>

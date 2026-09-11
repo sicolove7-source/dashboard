@@ -11,7 +11,7 @@ export const COMPANY_SETTINGS_KEY = 'company-settings-v1';
  * ضغط وتحجيم شعار الشركة للحجم المثالي (أقصى بُعد 400 بكسل) وبحجم خفيف جداً (~15-35KB)
  * يضمن حفظه الفوري في LocalStorage و Firestore دون تجاوز أي حدود حجم
  */
-export function compressLogoImage(fileOrBlob, maxDim = 400, quality = 0.88) {
+export function compressLogoImage(fileOrBlob, maxDim = 512, quality = 0.92) {
   return new Promise((resolve, reject) => {
     if (!fileOrBlob) {
       resolve(null);

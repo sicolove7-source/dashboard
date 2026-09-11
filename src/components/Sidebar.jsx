@@ -132,8 +132,14 @@ export default function Sidebar({
 
   const isSuperAdmin = userRole === 'super_admin';
   const roleInfo = ROLES[userRole] || ROLES['owner'];
-  const companyName = isSuperAdmin ? 'إدارة منصة Tashteeb Pro' : (companySettings?.companyName || 'Tashteeb Pro');
-  const companyLogo = isSuperAdmin ? null : (companySettings?.companyLogo || null);
+  const isPlatformHubTab = isSuperAdmin && tab === 'tenants';
+
+  // In Platform Hub tab: show platform branding. Otherwise, show active tenant company branding if available.
+  const companyName = isPlatformHubTab
+    ? 'إدارة منصة Tashteeb Pro'
+    : (companySettings?.companyName || (isSuperAdmin ? 'إدارة منصة Tashteeb Pro' : 'منصة تشطيب برو'));
+
+  const companyLogo = isPlatformHubTab ? null : (companySettings?.companyLogo || null);
 
   return (
     <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
@@ -152,26 +158,119 @@ export default function Sidebar({
         <Icons.X size={16} />
       </button>
 
-      {/* ─── الشعار ─── */}
-      <div className="sidebar-brand" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '18px 20px 14px' }}>
+      {/* ─── الشعار والهوية ─── */}
+      <div className="sidebar-brand" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '18px 18px 14px' }}>
         {companyLogo ? (
-          <img
-            src={companyLogo}
-            alt="شعار الشركة"
-            style={{ width: 36, height: 36, borderRadius: 10, objectFit: 'contain', background: '#fff', padding: 2, flexShrink: 0 }}
-          />
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 12,
+              background: '#FFFFFF',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              padding: 3,
+              flexShrink: 0,
+              position: 'relative'
+            }}
+          >
+            <img
+              src={companyLogo}
+              alt={companyName}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+                imageRendering: '-webkit-optimize-contrast'
+              }}
+            />
+            {isSuperAdmin && !isPlatformHubTab && (
+              <span
+                title="إشراف المالك الرئيسي"
+                style={{
+                  position: 'absolute',
+                  bottom: -2,
+                  left: -2,
+                  background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+                  color: '#fff',
+                  borderRadius: '50%',
+                  width: 17,
+                  height: 17,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 9,
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.25)',
+                  border: '1.5px solid #fff'
+                }}
+              >
+                👑
+              </span>
+            )}
+          </div>
         ) : (
-          <div style={{
-            width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-            background: '#1877F2',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            {isSuperAdmin ? <Icons.Crown size={20} color="#fff" /> : <Icons.Building2 size={20} color="#fff" />}
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 12,
+              background: '#0F172A',
+              boxShadow: '0 4px 14px rgba(24,119,242,0.3), 0 0 0 1px rgba(255,255,255,0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              flexShrink: 0,
+              position: 'relative'
+            }}
+          >
+            <img
+              src="/app-icon.png"
+              alt="Tashteeb Pro"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover'
+              }}
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex';
+              }}
+            />
+            <div style={{ display: 'none', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', background: '#1877F2' }}>
+              {isSuperAdmin ? <Icons.Crown size={22} color="#fff" /> : <Icons.Building2 size={22} color="#fff" />}
+            </div>
+            {isSuperAdmin && (
+              <span
+                title="المدير العام للمنصة"
+                style={{
+                  position: 'absolute',
+                  bottom: -2,
+                  left: -2,
+                  background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+                  color: '#fff',
+                  borderRadius: '50%',
+                  width: 17,
+                  height: 17,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 9,
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.25)',
+                  border: '1.5px solid #fff'
+                }}
+              >
+                👑
+              </span>
+            )}
           </div>
         )}
-        <div style={{ minWidth: 0 }}>
-          <div className="title" style={{ fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{companyName}</div>
-          <div className="sub">{isSuperAdmin ? 'لوحة المالك والاشتراكات' : `المشاريع: ${projectCount}`}</div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="title" style={{ fontSize: 14, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{companyName}</div>
+          <div className="sub" style={{ fontSize: 11.5, marginTop: 2 }}>{isPlatformHubTab ? 'لوحة المالك والاشتراكات' : (isSuperAdmin ? 'إشراف المالك • ' + (companySettings?.companySubtitle || `المشاريع: ${projectCount}`) : `المشاريع: ${projectCount}`)}</div>
         </div>
       </div>
 
