@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, CalendarDays, Pencil, Trash2, ArrowRight, Plus, X, AlertTriangle, Paperclip, CheckSquare, MessageCircle, FileText, Map, MapPin, Clock, Wallet, Package, Home, Wrench, Sparkles, Target, MessageSquare, Share2, Printer, Camera, Video, Play } from 'lucide-react';
+import { Building2, CalendarDays, Pencil, Trash2, ArrowRight, Plus, X, AlertTriangle, Paperclip, CheckSquare, MessageCircle, FileText, Map, MapPin, Clock, Wallet, Package, Home, Wrench, Sparkles, Target, MessageSquare, Share2, Printer, Camera, Video, Play, HardHat } from 'lucide-react';
 import StatusBadge from '../components/StatusBadge';
 
 import StampRing from '../components/StampRing';
@@ -20,6 +20,7 @@ import ProjectRooms from '../components/ProjectRooms';
 import ClientReportModal from '../components/ClientReportModal';
 import ContractGeneratorModal from '../components/ContractGeneratorModal';
 import CraftsmanContractModal from '../components/CraftsmanContractModal';
+import ProjectCraftsmen from '../components/ProjectCraftsmen';
 import ProjectDrawings from '../components/ProjectDrawings';
 import confetti from 'canvas-confetti';
 import { can } from '../utils/permissions';
@@ -29,17 +30,21 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
   const [showClientReport, setShowClientReport] = useState(false);
   const [showContract, setShowContract] = useState(false);
   const [showCraftsmanContract, setShowCraftsmanContract] = useState(false);
+  const [selectedWorkerForContract, setSelectedWorkerForContract] = useState(null);
+
+  const craftsmenCount = (project.craftsmen?.length || (project.craftsmanContracts ? Object.keys(project.craftsmanContracts).length : 5));
 
   const SUBTABS = [
-    { key: "diary",    label: "اليوميات",       icon: CalendarDays, perm: 'project_tab_diary', count: project.dailyLogs?.length },
-    { key: "snags",    label: "الاستلامات",     icon: CheckSquare, perm: 'project_tab_snags', count: project.snags?.length },
-    { key: "schedule", label: "الجدول الزمني",  icon: Clock,       perm: 'project_tab_gantt' },
-    { key: "workplan", label: "خطة العمل",     icon: Target,      perm: 'project_tab_diary' },
-    { key: "drawings", label: "الرسومات 3D",    icon: Sparkles,    perm: 'project_tab_drawings' },
-    { key: "rooms",    label: "الغرف",         icon: Home,        perm: 'project_tab_rooms', count: project.rooms?.length },
-    { key: "supply",   label: "التوريدات",     icon: Package,     perm: 'project_tab_supply', count: project.resources?.materials?.filter(m => m.status !== 'تم التوريد')?.length || (project.resources?.materials?.length ? project.resources.materials.length : undefined) },
-    { key: "finance",  label: "المالية",        icon: Wallet,      perm: 'project_tab_finance' },
-    { key: "overview", label: "البيانات",       icon: Building2,   perm: null },
+    { key: "diary",     label: "اليوميات",       icon: CalendarDays, perm: 'project_tab_diary', count: project.dailyLogs?.length },
+    { key: "craftsmen", label: "صنايعية الموقع", icon: HardHat,      perm: 'project_tab_craftsmen', count: craftsmenCount },
+    { key: "snags",     label: "الاستلامات",     icon: CheckSquare, perm: 'project_tab_snags', count: project.snags?.length },
+    { key: "schedule",  label: "الجدول الزمني",  icon: Clock,       perm: 'project_tab_gantt' },
+    { key: "workplan",  label: "خطة العمل",     icon: Target,      perm: 'project_tab_diary' },
+    { key: "drawings",  label: "الرسومات 3D",    icon: Sparkles,    perm: 'project_tab_drawings' },
+    { key: "rooms",     label: "الغرف",         icon: Home,        perm: 'project_tab_rooms', count: project.rooms?.length },
+    { key: "supply",    label: "التوريدات",     icon: Package,     perm: 'project_tab_supply', count: project.resources?.materials?.filter(m => m.status !== 'تم التوريد')?.length || (project.resources?.materials?.length ? project.resources.materials.length : undefined) },
+    { key: "finance",   label: "المالية",        icon: Wallet,      perm: 'project_tab_finance' },
+    { key: "overview",  label: "البيانات",       icon: Building2,   perm: null },
   ].filter(t => !t.perm || can(currentUser || userRole, t.perm));
 
   // التبويب الافتراضي: أول تبويب متاح
@@ -104,10 +109,11 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
         {/* ── Action Toolbar (Contracts, Portal, Report, Manage) ── */}
         <div className="project-action-toolbar">
           <div className="primary-action-group">
-            {can(currentUser || userRole, 'projects_edit') && (
+            {(can(currentUser || userRole, 'projects_edit') || can(currentUser || userRole, 'craftsman_contract_manage') || userRole === 'engineer') && (
               <button 
                 className="contract-action-btn btn-craftsman-contract" 
-                onClick={() => setShowCraftsmanContract(true)}
+                onClick={() => { setSelectedWorkerForContract(null); setShowCraftsmanContract(true); }}
+                title="إبرام وتعديل عقود صنايعية ومقاولي هذا الموقع"
               >
                 <Wrench size={16} /> <span>عقد صنايعي / باطن 📜</span>
               </button>
@@ -169,8 +175,9 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
       {showCraftsmanContract && (
         <CraftsmanContractModal 
           project={project} 
+          initialWorker={selectedWorkerForContract}
           onUpdate={onUpdate} 
-          onClose={() => setShowCraftsmanContract(false)} 
+          onClose={() => { setShowCraftsmanContract(false); setSelectedWorkerForContract(null); }} 
         />
       )}
 
@@ -216,6 +223,18 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
       </div>
 
       <div className="tab-fade">
+        {sub === "craftsmen" && (
+          <ProjectCraftsmen 
+            project={project} 
+            onUpdate={onUpdate} 
+            currentUser={currentUser} 
+            userRole={userRole} 
+            onOpenContractModal={(worker) => {
+              setSelectedWorkerForContract(worker);
+              setShowCraftsmanContract(true);
+            }} 
+          />
+        )}
         {sub === "snags"    && <SnagsPanel project={project} onUpdate={onUpdate} />}
         {sub === "drawings" && <ProjectDrawings project={project} onUpdate={onUpdate} />}
         {sub === "diary"    && <DiaryPanel project={project} team={team} onUpdate={onUpdate} />}

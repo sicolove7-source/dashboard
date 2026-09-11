@@ -96,6 +96,8 @@ export const PERMISSIONS = {
   project_tab_snags:      ['owner', 'engineer', 'tech_office', 'customer_service'],
   project_tab_supply:     ['owner', 'accountant', 'engineer', 'tech_office', 'procurement'],
   project_tab_rooms:      ['owner', 'engineer', 'tech_office'],
+  project_tab_craftsmen:  ['owner', 'engineer', 'tech_office', 'procurement', 'accountant'],
+  craftsman_contract_manage: ['owner', 'engineer', 'tech_office'],
 
   // ── إجراءات التوريدات والخامات ──
   supply_request_create:  ['owner', 'accountant', 'engineer', 'tech_office', 'procurement'],

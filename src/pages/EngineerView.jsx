@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   CalendarDays, Plus, Trash2, AlertTriangle, Camera, Image, Clock,
-  FileText, ArrowRight, BarChart3, X, Save, Target, ClipboardList, Package
+  FileText, ArrowRight, BarChart3, X, Save, Target, ClipboardList, Package, HardHat
 } from 'lucide-react';
 import { STAGES } from '../utils/constants';
 import { fmtDate, todayISO, compressImageFile } from '../utils/helpers';
@@ -11,16 +11,19 @@ import MediaThumbnail from '../components/MediaThumbnail';
 import VoiceInput from '../components/VoiceInput';
 import InteractiveGantt from '../components/InteractiveGantt';
 import ProjectSupply from '../components/ProjectSupply';
+import ProjectCraftsmen from '../components/ProjectCraftsmen';
+import CraftsmanContractModal from '../components/CraftsmanContractModal';
 
 /* helpers */
 const SUBTABS = [
-  { key: 'today',    label: 'يومية اليوم',    icon: ClipboardList },
-  { key: 'plan',     label: 'خطة العمل',      icon: Target },
-  { key: 'diary',    label: 'سجل اليوميات',   icon: CalendarDays },
-  { key: 'supply',   label: 'التوريدات والخامات', icon: Package },
-  { key: 'photos',   label: 'صور الموقع',     icon: Image },
-  { key: 'schedule', label: 'الجدول الزمني',  icon: BarChart3 },
-  { key: 'overview', label: 'بيانات المشروع', icon: FileText },
+  { key: 'today',     label: 'يومية اليوم',    icon: ClipboardList },
+  { key: 'craftsmen', label: 'صنايعية الموقع', icon: HardHat },
+  { key: 'plan',      label: 'خطة العمل',      icon: Target },
+  { key: 'diary',     label: 'سجل اليوميات',   icon: CalendarDays },
+  { key: 'supply',    label: 'التوريدات والخامات', icon: Package },
+  { key: 'photos',    label: 'صور الموقع',     icon: Image },
+  { key: 'schedule',  label: 'الجدول الزمني',  icon: BarChart3 },
+  { key: 'overview',  label: 'بيانات المشروع', icon: FileText },
 ];
 const STATUS_META = {
   on_track: { label: 'على المسار',    color: '#10B981', bg: 'rgba(16,185,129,0.12)' },
@@ -42,6 +45,8 @@ async function readImg(file, cb) {
 /* ═══════════ MAIN ═══════════ */
 export default function EngineerView({ project, currentUser, onUpdate, onBack }) {
   const [sub, setSub] = useState('today');
+  const [showCraftsmanContract, setShowCraftsmanContract] = useState(false);
+  const [selectedWorkerForContract, setSelectedWorkerForContract] = useState(null);
   const sm = STATUS_META[project.status] || STATUS_META.on_track;
 
   return (
@@ -107,14 +112,35 @@ export default function EngineerView({ project, currentUser, onUpdate, onBack })
       </div>
 
       <div className="tab-fade">
-        {sub === 'today'    && <TodayPanel    project={project} currentUser={currentUser} onUpdate={onUpdate} />}
-        {sub === 'plan'     && <PlanPanel     project={project} onUpdate={onUpdate} />}
-        {sub === 'diary'    && <DiaryPanel    project={project} />}
-        {sub === 'supply'   && <ProjectSupply project={project} currentUser={currentUser} onUpdate={onUpdate} />}
-        {sub === 'photos'   && <PhotosPanel   project={project} onUpdate={onUpdate} />}
-        {sub === 'schedule' && <SchedulePanel project={project} onUpdate={onUpdate} />}
-        {sub === 'overview' && <OverviewPanel project={project} />}
+        {sub === 'today'     && <TodayPanel    project={project} currentUser={currentUser} onUpdate={onUpdate} />}
+        {sub === 'craftsmen' && (
+          <ProjectCraftsmen 
+            project={project} 
+            currentUser={currentUser} 
+            userRole="engineer" 
+            onUpdate={onUpdate}
+            onOpenContractModal={(worker) => {
+              setSelectedWorkerForContract(worker);
+              setShowCraftsmanContract(true);
+            }} 
+          />
+        )}
+        {sub === 'plan'      && <PlanPanel     project={project} onUpdate={onUpdate} />}
+        {sub === 'diary'     && <DiaryPanel    project={project} />}
+        {sub === 'supply'    && <ProjectSupply project={project} currentUser={currentUser} onUpdate={onUpdate} />}
+        {sub === 'photos'    && <PhotosPanel   project={project} onUpdate={onUpdate} />}
+        {sub === 'schedule'  && <SchedulePanel project={project} onUpdate={onUpdate} />}
+        {sub === 'overview'  && <OverviewPanel project={project} />}
       </div>
+
+      {showCraftsmanContract && (
+        <CraftsmanContractModal 
+          project={project} 
+          initialWorker={selectedWorkerForContract}
+          onUpdate={onUpdate} 
+          onClose={() => { setShowCraftsmanContract(false); setSelectedWorkerForContract(null); }} 
+        />
+      )}
     </div>
   );
 }

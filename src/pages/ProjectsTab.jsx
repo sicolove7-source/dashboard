@@ -187,6 +187,60 @@ export default function ProjectsTab({ projects, onOpenDetail, onOpenEdit, onDele
                   </div>
                 )}
               </div>
+
+              {/* Site Craftsmen Bar on Every Project Card */}
+              <div 
+                style={{ 
+                  marginTop: 10, 
+                  paddingTop: 8, 
+                  borderTop: '1px dashed var(--border)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between', 
+                  gap: 6 
+                }}
+                onClick={e => e.stopPropagation()}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)' }}>
+                  <span style={{ fontSize: 13 }}>👷</span>
+                  <span style={{ fontWeight: 600, color: 'var(--ink)' }}>صنايعية الموقع:</span>
+                  <span style={{
+                    background: '#EFF6FF',
+                    color: '#1D4ED8',
+                    padding: '2px 8px',
+                    borderRadius: 99,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    border: '1px solid #BFDBFE'
+                  }}>
+                    {((p.craftsmen?.length) || (p.craftsmanContracts ? Object.keys(p.craftsmanContracts).length : 5))} معلم
+                  </span>
+                </div>
+                <button
+                  className="btn-card-craftsmen"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenDetail(p.id, 'craftsmen');
+                  }}
+                  title="فتح وإدارة طاقم صنايعية وعقود هذا الموقع"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '5px 12px',
+                    borderRadius: 6,
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    background: '#0F172A',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <span>إدارة الصنايعية 👷</span>
+                </button>
+              </div>
             </div>
           );
         })}
