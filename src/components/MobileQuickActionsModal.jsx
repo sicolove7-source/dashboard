@@ -45,27 +45,25 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
     setTimeout(() => setToast(''), 3200);
   }
 
-  // Handle Photo or Video Capture with auto compression and IndexedDB safe storage
+  // Handle Photo Capture with auto compression and IndexedDB safe storage
   async function handleCaptureMedia(e, target = 'log') {
     const file = e.target.files?.[0];
     if (!file) return;
-    const isVideo = file.type.startsWith('video');
-    const maxSize = isVideo ? 50 * 1024 * 1024 : 25 * 1024 * 1024;
-    if (file.size > maxSize) {
-      alert(`حجم الملف كبير (أقصى حد ${isVideo ? '50' : '25'} ميجابايت)`);
+    if (file.size > 25 * 1024 * 1024) {
+      alert('حجم الصورة كبير (أقصى حد 25 ميجابايت)');
       return;
     }
 
-    const mediaId = (isVideo ? 'vid_' : 'ph_') + Date.now();
+    const mediaId = 'ph_' + Date.now();
 
     try {
       // 1. توليد رابط معاينة فوري وعرضه على الشاشة بدون أي تأخير
       const instantPreviewUrl = URL.createObjectURL(file);
       
       // 2. توليد مصغرة صغيرة جداً (15KB) للحفظ الآمن في السحابة وLocalStorage
-      const thumb = await createMicroThumbnail(file, isVideo);
+      const thumb = await createMicroThumbnail(file, false);
 
-      // 3. حفظ الملف الثنائي الكامل فوراً في IndexedDB المحلي غير المحدود
+      // 3. حفظ الملف الثنائي الكامل فوراً في IndexedDB المحلي
       await saveMediaBlob(mediaId, file, { type: file.type, name: file.name });
 
       const mediaObj = {
@@ -73,7 +71,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
         src: instantPreviewUrl,
         rawSrc: `idb://${mediaId}`,
         thumbnail: thumb,
-        type: isVideo ? 'video' : 'image',
+        type: 'image',
         name: file.name,
         isUploading: true
       };
@@ -467,7 +465,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                       اليوميات 📝
                     </span>
                     <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748B' }}>
-                      أعمال، عمالة، صورة أو فيديو 🎥
+                      أعمال، عمالة، صور توثيق الموقع 📸
                     </span>
                   </div>
                 </button>
@@ -609,7 +607,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                       </div>
                     </div>
 
-                    {/* 📸🎥 حقل تصوير صورة أو تسجيل فيديو حي */}
+                    {/* 📸 حقل تصوير صورة للموقع */}
                     <div style={{
                       background: 'var(--bg-color, #F8FAFC)',
                       padding: 12,
@@ -618,41 +616,23 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                     }}>
                       <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 8, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 6 }}>
                         <Camera size={16} color="#10B981" />
-                        <span>توثيق الموقع (تصوير صورة أو تسجيل فيديو):</span>
+                        <span>توثيق الموقع بالصور الفوتوغرافية 📸:</span>
                       </div>
 
                       {!logMedia ? (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                          {/* Photo Button */}
+                        <div>
                           <label style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                            padding: '12px 8px', borderRadius: 10, border: '1.5px solid #10B981',
-                            background: 'rgba(16,185,129,0.06)', color: '#059669',
-                            fontSize: 13, fontWeight: 800, cursor: 'pointer', textAlign: 'center'
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                            padding: '12px 14px', borderRadius: 10, border: '1.5px solid #10B981',
+                            background: 'rgba(16,185,129,0.08)', color: '#059669',
+                            fontSize: 13.5, fontWeight: 800, cursor: 'pointer', textAlign: 'center',
+                            boxShadow: '0 2px 6px rgba(16,185,129,0.12)'
                           }}>
                             <Camera size={18} />
-                            <span>تصوير صورة 📸</span>
+                            <span>التقاط / رفع صورة توثيق 📸</span>
                             <input
                               type="file"
                               accept="image/*"
-                              capture="environment"
-                              onChange={e => handleCaptureMedia(e, 'log')}
-                              style={{ display: 'none' }}
-                            />
-                          </label>
-
-                          {/* Video Button */}
-                          <label style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                            padding: '12px 8px', borderRadius: 10, border: '1.5px solid #6366F1',
-                            background: 'rgba(99,102,241,0.06)', color: '#4F46E5',
-                            fontSize: 13, fontWeight: 800, cursor: 'pointer', textAlign: 'center'
-                          }}>
-                            <Video size={18} />
-                            <span>تصوير فيديو 🎥</span>
-                            <input
-                              type="file"
-                              accept="video/*"
                               capture="environment"
                               onChange={e => handleCaptureMedia(e, 'log')}
                               style={{ display: 'none' }}
@@ -969,7 +949,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                       </div>
                     </div>
 
-                    {/* توثيق الفحص بصورة أو فيديو */}
+                    {/* توثيق الفحص بصورة */}
                     <div style={{
                       background: 'var(--bg-color, #F8FAFC)',
                       padding: 10,
@@ -977,39 +957,23 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                       border: '1.5px dashed var(--border)',
                     }}>
                       <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: 'var(--ink)' }}>
-                        إرفاق توثيق فحص (صورة أو فيديو):
+                        إرفاق صورة فحص الموقع 📸:
                       </div>
 
                       {!snagMedia ? (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <div>
                           <label style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                            padding: '9px 6px', borderRadius: 8, border: '1.5px solid #1877F2',
-                            background: 'rgba(24,119,242,0.06)', color: '#1877F2',
-                            fontSize: 12, fontWeight: 800, cursor: 'pointer', textAlign: 'center'
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                            padding: '10px 14px', borderRadius: 8, border: '1.5px solid #1877F2',
+                            background: 'rgba(24,119,242,0.08)', color: '#1877F2',
+                            fontSize: 12.5, fontWeight: 800, cursor: 'pointer', textAlign: 'center',
+                            boxShadow: '0 2px 6px rgba(24,119,242,0.1)'
                           }}>
                             <Camera size={16} />
-                            <span>صورة الفحص 📸</span>
+                            <span>التقاط / رفع صورة الفحص 📸</span>
                             <input
                               type="file"
                               accept="image/*"
-                              capture="environment"
-                              onChange={e => handleCaptureMedia(e, 'snag')}
-                              style={{ display: 'none' }}
-                            />
-                          </label>
-
-                          <label style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                            padding: '9px 6px', borderRadius: 8, border: '1.5px solid #6366F1',
-                            background: 'rgba(99,102,241,0.06)', color: '#4F46E5',
-                            fontSize: 12, fontWeight: 800, cursor: 'pointer', textAlign: 'center'
-                          }}>
-                            <Video size={16} />
-                            <span>فيديو الفحص 🎥</span>
-                            <input
-                              type="file"
-                              accept="video/*"
                               capture="environment"
                               onChange={e => handleCaptureMedia(e, 'snag')}
                               style={{ display: 'none' }}

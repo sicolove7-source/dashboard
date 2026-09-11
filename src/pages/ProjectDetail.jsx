@@ -754,22 +754,20 @@ function DiaryPanel({ project, team, onUpdate }) {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     for (const file of files) {
-      const isVideo = file.type.startsWith('video');
-      const maxSize = isVideo ? 50 * 1024 * 1024 : 25 * 1024 * 1024;
-      if (file.size > maxSize) {
-        alert(`حجم الملف كبير (أقصى حد ${isVideo ? '50' : '25'} ميجابايت)`);
+      if (file.size > 25 * 1024 * 1024) {
+        alert('حجم الصورة كبير (أقصى حد 25 ميجابايت)');
         continue;
       }
       try {
-        const mediaId = (isVideo ? 'vid_' : 'ph_') + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+        const mediaId = 'ph_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
         
         // 1. رابط معاينة فوري وعرضه على الشاشة
         const instantUrl = URL.createObjectURL(file);
         
         // 2. توليد مصغرة صغيرة جداً (~15KB) آمنة لسحابة فايربيس والذاكرة
-        const thumb = await createMicroThumbnail(file, isVideo);
+        const thumb = await createMicroThumbnail(file, false);
         
-        // 3. حفظ الملف الثنائي الكامل فوراً في IndexedDB المحلي غير المحدود
+        // 3. حفظ الملف الثنائي الكامل فوراً في IndexedDB المحلي
         await saveMediaBlob(mediaId, file, { type: file.type, name: file.name });
 
         const mediaItem = {
@@ -777,7 +775,7 @@ function DiaryPanel({ project, team, onUpdate }) {
           src: instantUrl,
           rawSrc: `idb://${mediaId}`,
           thumbnail: thumb,
-          type: isVideo ? 'video' : 'image',
+          type: 'image',
           name: file.name,
           isUploading: true
         };
@@ -989,28 +987,19 @@ function DiaryPanel({ project, team, onUpdate }) {
 
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <label style={{
-                display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 16px',
-                borderRadius: 10, border: '1.5px dashed #1877F2', background: 'rgba(24,119,242,0.06)',
-                color: '#1877F2', cursor: 'pointer', fontSize: 13, fontWeight: 700
+                display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px',
+                borderRadius: 10, border: '1.5px dashed #10B981', background: 'rgba(16,185,129,0.08)',
+                color: '#059669', cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                transition: 'all 0.15s ease'
               }}>
-                <Camera size={16} />
-                <span>التقاط / رفع صورة 📸</span>
+                <Camera size={18} />
+                <span>التقاط / رفع صور للموقع 📸</span>
                 <input type="file" accept="image/*" capture="environment" multiple onChange={handleMediaUpload} style={{ display: 'none' }} />
               </label>
 
-              <label style={{
-                display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 16px',
-                borderRadius: 10, border: '1.5px dashed #6366F1', background: 'rgba(99,102,241,0.06)',
-                color: '#4F46E5', cursor: 'pointer', fontSize: 13, fontWeight: 700
-              }}>
-                <Video size={16} />
-                <span>تسجيل / رفع فيديو 🎥</span>
-                <input type="file" accept="video/*" capture="environment" onChange={handleMediaUpload} style={{ display: 'none' }} />
-              </label>
-
               {mediaList.length > 0 && (
-                <span style={{ fontSize: 12, color: '#10B981', fontWeight: 700 }}>
-                  ({mediaList.length} ملفات جاهزة للحفظ)
+                <span style={{ fontSize: 12.5, color: '#10B981', fontWeight: 700 }}>
+                  ({mediaList.length} صور جاهزة للحفظ)
                 </span>
               )}
             </div>
@@ -1020,14 +1009,7 @@ function DiaryPanel({ project, team, onUpdate }) {
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
                 {mediaList.map((m, idx) => (
                   <div key={idx} style={{ position: 'relative', width: 85, height: 85, borderRadius: 10, overflow: 'hidden', border: '1.5px solid var(--border)', background: '#0F172A' }}>
-                    {m.type === 'image' ? (
-                      <img src={m.src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#fff' }}>
-                        <Video size={24} color="#6366F1" />
-                        <span style={{ fontSize: 9, fontWeight: 700 }}>فيديو</span>
-                      </div>
-                    )}
+                    <img src={m.src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     <button
                       type="button"
                       onClick={() => setMediaList(prev => prev.filter((_, i) => i !== idx))}
