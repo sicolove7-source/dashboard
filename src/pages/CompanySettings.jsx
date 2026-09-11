@@ -183,7 +183,7 @@ export default function CompanySettings({
   }
 
   return (
-    <div className="grid tab-fade cs-root" style={{ gap: 20 }} dir="rtl">
+    <div className="tab-fade cs-root" style={{ display: 'flex', flexDirection: 'column', gap: 20, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }} dir="rtl">
 
       {/* ─── Header ─── */}
       <div className="panel cs-header" style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px 20px' }}>
@@ -224,16 +224,18 @@ export default function CompanySettings({
 
       {/* ─── Fully Responsive Navigation Subtabs Switcher ─── */}
       <div className="cs-tabs-nav" style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: 4,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
         background: 'var(--card)',
-        padding: '4px',
-        borderRadius: 10,
+        padding: '5px',
+        borderRadius: 12,
         border: '1px solid var(--border)',
         width: '100%',
         boxSizing: 'border-box',
         overflowX: 'auto',
+        WebkitOverflowScrolling: 'touch',
+        scrollbarWidth: 'none',
       }}>
         {/* Tab 1: Branding & Profile */}
         <button
@@ -245,7 +247,7 @@ export default function CompanySettings({
             alignItems: 'center',
             justifyContent: 'center',
             gap: 6,
-            padding: '9px 12px',
+            padding: '9px 14px',
             borderRadius: 8,
             border: activeTab === 'branding' ? '1px solid #0F172A' : '1px solid transparent',
             background: activeTab === 'branding' ? '#0F172A' : 'transparent',
@@ -256,7 +258,8 @@ export default function CompanySettings({
             cursor: 'pointer',
             transition: 'all 0.15s',
             whiteSpace: 'nowrap',
-            minWidth: 0,
+            flex: '1 1 0',
+            minWidth: 'max-content',
           }}
         >
           <Building2 size={15} color={activeTab === 'branding' ? '#FFFFFF' : 'currentColor'} />
@@ -273,7 +276,7 @@ export default function CompanySettings({
             alignItems: 'center',
             justifyContent: 'center',
             gap: 6,
-            padding: '9px 12px',
+            padding: '9px 14px',
             borderRadius: 8,
             border: activeTab === 'automations' ? '1px solid #0F172A' : '1px solid transparent',
             background: activeTab === 'automations' ? '#0F172A' : 'transparent',
@@ -284,7 +287,8 @@ export default function CompanySettings({
             cursor: 'pointer',
             transition: 'all 0.15s',
             whiteSpace: 'nowrap',
-            minWidth: 0,
+            flex: '1 1 0',
+            minWidth: 'max-content',
           }}
         >
           <Zap size={15} color={activeTab === 'automations' ? '#FFFFFF' : 'currentColor'} />
@@ -301,7 +305,7 @@ export default function CompanySettings({
             alignItems: 'center',
             justifyContent: 'center',
             gap: 6,
-            padding: '9px 12px',
+            padding: '9px 14px',
             borderRadius: 8,
             border: activeTab === 'team_users' ? '1px solid #0F172A' : '1px solid transparent',
             background: activeTab === 'team_users' ? '#0F172A' : 'transparent',
@@ -312,7 +316,8 @@ export default function CompanySettings({
             cursor: 'pointer',
             transition: 'all 0.15s',
             whiteSpace: 'nowrap',
-            minWidth: 0,
+            flex: '1 1 0',
+            minWidth: 'max-content',
           }}
         >
           <Users size={15} color={activeTab === 'team_users' ? '#FFFFFF' : 'currentColor'} />
@@ -323,19 +328,19 @@ export default function CompanySettings({
 
       {/* ─── TAB 1: Branding & Company Info ─── */}
       {activeTab === 'branding' && (
-        <div className="grid tab-fade cs-branding-section" style={{ gap: 20 }}>
+        <div className="tab-fade cs-branding-section" style={{ display: 'flex', flexDirection: 'column', gap: 20, width: '100%', boxSizing: 'border-box' }}>
           {/* Section 1: Logo & Company Name */}
-          <div className="cs-logo-info-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
+          <div className="cs-logo-info-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 20 }}>
 
             {/* Logo Panel */}
-            <div className="panel cs-logo-panel">
+            <div className="panel cs-logo-panel" style={{ maxWidth: '100%', boxSizing: 'border-box' }}>
               <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Image size={16} style={{ color: 'var(--brand-primary, #6366F1)' }} />
                 شعار الشركة الرسمي
               </h3>
-              <div className="cs-logo-panel-body" style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              <div className="cs-logo-panel-body" style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
                 <LogoUploader logo={settings.companyLogo} onChange={(val) => updateSetting('companyLogo', val)} />
-                <div className="cs-logo-guidelines" style={{ flex: '1 1 200px', minWidth: 180 }}>
+                <div className="cs-logo-guidelines" style={{ flex: '1 1 200px', minWidth: 0, width: '100%' }}>
                   <div style={{
                     padding: '12px 14px',
                     background: 'rgba(99,102,241,0.06)',
@@ -514,11 +519,10 @@ export default function CompanySettings({
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 5 }}>
                   <MapPin size={12} style={{ display: 'inline', marginLeft: 4 }} /> المدينة والدولة
                 </label>
-                <div className="cs-city-country-row" style={{ display: 'flex', gap: 8 }}>
+                <div className="cs-city-country-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
                   <input
                     type="text"
                     className="filter-input"
-                    style={{ flex: 1 }}
                     value={settings.city || ''}
                     onChange={(e) => updateSetting('city', e.target.value)}
                     placeholder="المدينة (مثال: أبوظبي)"
@@ -526,7 +530,6 @@ export default function CompanySettings({
                   <input
                     type="text"
                     className="filter-input"
-                    style={{ flex: 1 }}
                     value={settings.country || ''}
                     onChange={(e) => updateSetting('country', e.target.value)}
                     placeholder="الدولة (مثال: الإمارات)"
@@ -561,7 +564,7 @@ export default function CompanySettings({
               {/* Preset Palettes */}
               <div>
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 10 }}>ألوان جاهزة — اختر بنقرة:</div>
-                <div className="cs-palette-presets-wrap" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <div className="cs-palette-presets-wrap" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
                   {PALETTES.map((p) => {
                     const isSelected = settings.primaryColor === p.primary;
                     return (
@@ -578,6 +581,9 @@ export default function CompanySettings({
                           fontFamily: 'Cairo', fontSize: 12, fontWeight: isSelected ? 800 : 500,
                           color: isSelected ? p.primary : 'var(--text)',
                           transition: 'all 0.2s',
+                          width: '100%',
+                          justifyContent: 'center',
+                          boxSizing: 'border-box',
                         }}
                       >
                         <div style={{ display: 'flex', gap: 2 }}>
@@ -592,41 +598,41 @@ export default function CompanySettings({
               </div>
 
               {/* Custom Color Pickers */}
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                <div style={{ flex: '1 1 120px' }}>
+              <div className="cs-custom-colors-row" style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 120px', minWidth: 0 }}>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6 }}>اللون الرئيسي</label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <input
                       type="color"
                       value={settings.primaryColor || '#6366F1'}
                       onChange={(e) => updateSetting('primaryColor', e.target.value)}
-                      style={{ width: 40, height: 40, border: 'none', borderRadius: 8, cursor: 'pointer', padding: 2, background: 'var(--surface)' }}
+                      style={{ width: 40, height: 40, border: 'none', borderRadius: 8, cursor: 'pointer', padding: 2, background: 'var(--surface)', flexShrink: 0 }}
                     />
                     <input
                       type="text"
                       className="filter-input"
                       value={settings.primaryColor || '#6366F1'}
                       onChange={(e) => updateSetting('primaryColor', e.target.value)}
-                      style={{ width: 90, fontFamily: 'monospace', fontSize: 12 }}
+                      style={{ width: 90, flex: 1, minWidth: 0, fontFamily: 'monospace', fontSize: 12 }}
                       maxLength={7}
                     />
                   </div>
                 </div>
-                <div style={{ flex: '1 1 120px' }}>
+                <div style={{ flex: '1 1 120px', minWidth: 0 }}>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6 }}>اللون الثانوي</label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <input
                       type="color"
                       value={settings.accentColor || '#3B82F6'}
                       onChange={(e) => updateSetting('accentColor', e.target.value)}
-                      style={{ width: 40, height: 40, border: 'none', borderRadius: 8, cursor: 'pointer', padding: 2, background: 'var(--surface)' }}
+                      style={{ width: 40, height: 40, border: 'none', borderRadius: 8, cursor: 'pointer', padding: 2, background: 'var(--surface)', flexShrink: 0 }}
                     />
                     <input
                       type="text"
                       className="filter-input"
                       value={settings.accentColor || '#3B82F6'}
                       onChange={(e) => updateSetting('accentColor', e.target.value)}
-                      style={{ width: 90, fontFamily: 'monospace', fontSize: 12 }}
+                      style={{ width: 90, flex: 1, minWidth: 0, fontFamily: 'monospace', fontSize: 12 }}
                       maxLength={7}
                     />
                   </div>
@@ -670,22 +676,22 @@ export default function CompanySettings({
               </span>
             </div>
 
-            <div className="cs-domain-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 16 }}>
+            <div className="cs-domain-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: 16, marginBottom: 16 }}>
               {/* Subdomain */}
-              <div className="cs-domain-card" style={{ background: 'var(--bg)', padding: 16, borderRadius: 14, border: '1px solid var(--border)' }}>
+              <div className="cs-domain-card" style={{ background: 'var(--bg)', padding: 16, borderRadius: 14, border: '1px solid var(--border)', maxWidth: '100%', boxSizing: 'border-box' }}>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>
                   1. الدومين الفرعي السريع (Subdomain)
                 </label>
-                <div className="cs-subdomain-row" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
+                <div className="cs-subdomain-row" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, width: '100%', boxSizing: 'border-box' }}>
                   <input
                     type="text"
                     className="filter-input"
-                    style={{ flex: '1 1 120px', fontWeight: 700, fontSize: 13, direction: 'ltr', textAlign: 'left' }}
+                    style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 13, direction: 'ltr', textAlign: 'left' }}
                     value={settings.subdomain || 'daraldhabi'}
                     onChange={(e) => updateSetting('subdomain', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                     placeholder="company-name"
                   />
-                  <span className="cs-domain-suffix" style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, direction: 'ltr' }}>.platform.com</span>
+                  <span className="cs-domain-suffix" style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, direction: 'ltr', flexShrink: 0 }}>.platform.com</span>
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>
                   رابط وصول فوري وسريع بدون الحاجة لأي إعدادات DNS.
@@ -693,7 +699,7 @@ export default function CompanySettings({
               </div>
 
               {/* Custom Domain (White-Label) */}
-              <div className="cs-domain-card" style={{ background: 'var(--bg)', padding: 16, borderRadius: 14, border: '1px solid var(--border)' }}>
+              <div className="cs-domain-card" style={{ background: 'var(--bg)', padding: 16, borderRadius: 14, border: '1px solid var(--border)', maxWidth: '100%', boxSizing: 'border-box' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                   <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)' }}>
                     2. الدومين الخاص الكامل (Custom Domain)
@@ -702,11 +708,11 @@ export default function CompanySettings({
                     White-Label
                   </span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, width: '100%', boxSizing: 'border-box' }}>
                   <input
                     type="text"
                     className="filter-input"
-                    style={{ flex: 1, fontWeight: 700, fontSize: 13, direction: 'ltr', textAlign: 'left' }}
+                    style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 13, direction: 'ltr', textAlign: 'left' }}
                     value={settings.customDomain || ''}
                     onChange={(e) => updateSetting('customDomain', e.target.value.toLowerCase().trim())}
                     placeholder="portal.yourcompany.com"
@@ -721,17 +727,19 @@ export default function CompanySettings({
             {/* DNS CNAME Configuration Guide with Horizontal Scroll Container */}
             <div className="cs-dns-table-wrap" style={{
               background: 'var(--bg-color)',
-              padding: '14px 18px', borderRadius: 12, border: '1px solid var(--border)'
+              padding: '14px 18px', borderRadius: 12, border: '1px solid var(--border)',
+              maxWidth: '100%', boxSizing: 'border-box', overflow: 'hidden'
             }}>
-              <div style={{ fontWeight: 700, fontSize: 12.5, color: 'var(--ink)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Server size={15} color="#0F172A" /> كيفية ربط الدومين في لوحة تحكم نطاقك (GoDaddy / Cloudflare / Namecheap):
+              <div style={{ fontWeight: 700, fontSize: 12.5, color: 'var(--ink)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <Server size={15} color="#0F172A" style={{ flexShrink: 0 }} />
+                <span>كيفية ربط الدومين في لوحة تحكم نطاقك (GoDaddy / Cloudflare / Namecheap):</span>
               </div>
               <p style={{ fontSize: 11.5, color: 'var(--muted)', margin: '0 0 10px', lineHeight: 1.6 }}>
                 توجه إلى إعدادات الـ <strong>DNS</strong> في موقع النطاق الخاص بك وأضف السجل التالي:
               </p>
 
-              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                <table className="data-table" style={{ width: '100%', minWidth: 500, fontSize: 12 }}>
+              <div className="cs-dns-scroll-box" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', maxWidth: '100%' }}>
+                <table className="data-table" style={{ width: '100%', minWidth: 460, fontSize: 12 }}>
                   <thead>
                     <tr>
                       <th>نوع السجل (Type)</th>
@@ -753,6 +761,9 @@ export default function CompanySettings({
                     </tr>
                   </tbody>
                 </table>
+              </div>
+              <div className="cs-dns-mobile-hint" style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 8, display: 'none' }}>
+                💡 يمكنك سحب الجدول أفقياً لعرض كامل بيانات الربط
               </div>
             </div>
           </div>
