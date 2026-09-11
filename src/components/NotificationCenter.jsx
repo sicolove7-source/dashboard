@@ -159,9 +159,10 @@ export default function NotificationCenter({
 
   return (
     <div className="notif-center-wrapper" ref={panelRef}>
-      {/* Bell Trigger Button */}
+      {/* Bell Trigger Button — Hidden on mobile because mobile topbar has its own bell */}
       <button
         type="button"
+        className="desktop-only-action notif-trigger-btn"
         onClick={() => setIsOpen(!isOpen)}
         title="مركز الإشعارات والتنبيهات الذكية"
         style={{

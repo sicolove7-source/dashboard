@@ -321,7 +321,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
       {/* ─── FLOATING ACTION BUTTON (Visible on Mobile only via CSS) ─── */}
       <div className="mobile-fab-container" style={{
         position: 'fixed',
-        bottom: 68,
+        bottom: 'calc(82px + env(safe-area-inset-bottom, 0px))',
         left: 14,
         zIndex: 9997,
         direction: 'rtl',
@@ -337,16 +337,16 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            boxShadow: '0 4px 18px rgba(24,119,242,0.45)',
+            boxShadow: '0 6px 20px rgba(24,119,242,0.45)',
             cursor: 'pointer',
             fontFamily: "'Cairo', sans-serif",
-            fontSize: 13,
+            fontSize: 12.5,
             fontWeight: 800,
-            border: '2px solid rgba(255,255,255,0.3)',
+            border: '2px solid rgba(255,255,255,0.35)',
           }}
           title="إجراءات الموقع السريعة للمهندس"
         >
-          <HardHat size={18} />
+          <HardHat size={17} />
           <span>إجراء موقع سريع ⚡</span>
         </button>
       </div>

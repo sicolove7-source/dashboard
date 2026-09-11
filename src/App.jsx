@@ -805,77 +805,7 @@ export default function App() {
   return (
     <div dir="rtl" className="app-root" style={{ display: 'flex', flexDirection: 'column' }}>
 
-      {/* ─── Demo Mode Minimal Calm Top Banner ─── */}
-      {isDemoUser && (
-        <div
-          style={{
-            background: '#F1F5F9',
-            color: '#334155',
-            padding: '5px 16px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            fontSize: 12,
-            fontWeight: 500,
-            borderBottom: '1px solid #E2E8F0',
-            zIndex: 9999,
-            flexWrap: 'wrap',
-            flexShrink: 0,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{
-              background: '#E2E8F0',
-              color: '#475569',
-              fontSize: 10,
-              fontWeight: 700,
-              padding: '1px 6px',
-              borderRadius: 4,
-            }}>
-              DEMO
-            </span>
-            <span>أنت الآن في <strong>النسخة التجريبية</strong> — هل ترغب في تفعيل مساحة عمل خاصة بشركتك؟</span>
-          </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button
-              onClick={() => window.open(`https://wa.me/${(companySettings?.supportPhone || companySettings?.phone || '201018160582').replace(/[^0-9]/g, '')}?text=${encodeURIComponent('مرحباً، جربت النسخة الحية لمنصة Tashteeb Pro وأرغب في الاشتراك وتفعيل مساحة عمل خاصة بشركتي')}`, '_blank')}
-              style={{
-                padding: '4px 10px',
-                fontSize: 11.5,
-                fontWeight: 600,
-                background: '#1877F2',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 6,
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4
-              }}
-            >
-              <span>تفعيل الاشتراك 💬</span>
-            </button>
-
-            <button
-              onClick={() => { setIsAuthenticated(false); setIsDemoUser(false); setIsLoginMode(false); }}
-              style={{
-                padding: '4px 8px',
-                fontSize: 11,
-                fontWeight: 500,
-                background: '#FFFFFF',
-                color: '#64748B',
-                border: '1px solid #CBD5E1',
-                borderRadius: 6,
-                cursor: 'pointer'
-              }}
-            >
-              الخروج
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ─── Super Admin Impersonation Top Bar (Calm & Professional) ─── */}
       {currentUser?.role === 'super_admin' && tab !== 'tenants' && !isDemoUser && (

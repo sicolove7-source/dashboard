@@ -189,13 +189,18 @@ export default function QuickWinChecklist({ onNavigate }) {
           onClick={handleDismiss}
           style={{
             position: 'absolute', top: 12, left: 12,
-            background: 'none', border: 'none',
-            cursor: 'pointer', padding: 4, borderRadius: 6,
-            color: '#94A3B8', transition: 'color 0.2s',
+            background: 'rgba(148,163,184,0.12)',
+            border: 'none',
+            cursor: 'pointer', padding: '4px 8px', borderRadius: 8,
+            color: '#64748B', transition: 'all 0.2s',
+            fontSize: 11, fontWeight: 600,
+            display: 'flex', alignItems: 'center', gap: 4,
+            zIndex: 2,
           }}
-          title="إغلاق"
+          title="إغلاق البطاقة"
         >
-          <X size={15} />
+          <X size={12} />
+          <span>تخطي</span>
         </button>
 
         {/* Header */}
@@ -205,29 +210,31 @@ export default function QuickWinChecklist({ onNavigate }) {
             background: 'linear-gradient(135deg, #1877F2, #0EA5E9)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             boxShadow: '0 4px 12px rgba(24,119,242,0.3)',
+            flexShrink: 0,
           }}>
             <Sparkles size={18} color="#fff" />
           </div>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: '#0F172A' }}>
-              ابدأ بـ 3 خطوات سريعة ✨
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 14, fontWeight: 800, color: '#0F172A' }}>
+                ابدأ بـ 3 خطوات سريعة ✨
+              </span>
+              <span style={{
+                fontSize: 11, fontWeight: 800,
+                color: completedCount === 3 ? '#16A34A' : '#1877F2',
+                background: completedCount === 3 ? 'rgba(34,197,94,0.12)' : 'rgba(24,119,242,0.1)',
+                padding: '2px 8px',
+                borderRadius: 20,
+              }}>
+                {Math.round(progress)}%
+              </span>
             </div>
-            <div style={{ fontSize: 12, color: '#64748B' }}>
+            <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
               {completedCount === 0
                 ? 'أكمل الخطوات لتبدأ في جني الأرباح'
                 : completedCount === 3
                 ? '🎉 ممتاز! أكملت كل الخطوات!'
-                : `${completedCount}/3 خطوات مكتملة — استمر!`}
-            </div>
-          </div>
-
-          {/* Progress pill */}
-          <div style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              fontSize: 13, fontWeight: 800,
-              color: completedCount === 3 ? '#16A34A' : '#1877F2',
-            }}>
-              {Math.round(progress)}%
+                : `تقدم رائع — ${completedCount}/3 خطوات مكتملة`}
             </div>
           </div>
         </div>

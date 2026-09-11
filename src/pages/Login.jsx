@@ -17,9 +17,12 @@ export default function Login({
   onStartLiveDemo,
   initialMode = 'login'
 }) {
-  const companyName = companySettings?.companyName || 'Tashteeb Pro | تشطيب برو';
-  const companySubtitle = companySettings?.companySubtitle || 'المنصة الذكية لإدارة التشطيبات والمقاولات والمشاريع';
-  const companyLogo = companySettings?.companyLogo || null;
+  // Always use the real platform branding for the main login portal
+  // Only override if explicitly an enterprise tenant with verified custom white-label branding
+  const isWhiteLabel = !!companySettings?.isCustomBranding && !!companySettings?.companyLogo;
+  const companyName = isWhiteLabel ? companySettings.companyName : 'Tashteeb Pro | تشطيب برو';
+  const companySubtitle = isWhiteLabel ? companySettings.companySubtitle : 'المنصة الذكية لإدارة التشطيبات والمقاولات والمشاريع';
+  const companyLogo = isWhiteLabel ? companySettings.companyLogo : null;
   const primaryColor = companySettings?.primaryColor || '#1877F2';
   const accentColor = companySettings?.accentColor || '#166FE5';
 
@@ -130,13 +133,13 @@ export default function Login({
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 82,
-              height: 82,
-              borderRadius: 22,
-              background: companyLogo ? "#FFFFFF" : "#0F172A",
+              width: 88,
+              height: 88,
+              borderRadius: 24,
+              background: companyLogo ? "#FFFFFF" : "#0A0F1D",
               boxShadow: companyLogo
                 ? "0 10px 30px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06)"
-                : "0 12px 35px rgba(24, 119, 242, 0.35), 0 0 0 1px rgba(255,255,255,0.1)",
+                : "0 16px 40px rgba(0, 0, 0, 0.35), 0 0 0 1.5px rgba(56, 189, 248, 0.35)",
               marginBottom: 14,
               overflow: "hidden",
               padding: companyLogo ? 6 : 0,
@@ -170,16 +173,17 @@ export default function Login({
           </div>
           <h1
             style={{
-              fontSize: 23,
-              fontWeight: 800,
+              fontSize: 24,
+              fontWeight: 900,
               color: "var(--ink, #0F172A)",
               margin: 0,
-              lineHeight: 1.2,
+              lineHeight: 1.25,
+              letterSpacing: '-0.02em',
             }}
           >
             {companyName}
           </h1>
-          <p style={{ color: "var(--muted, #64748B)", marginTop: 6, fontSize: 13 }}>
+          <p style={{ color: "var(--muted, #64748B)", marginTop: 6, fontSize: 13, fontWeight: 500 }}>
             {companySubtitle}
           </p>
         </div>
