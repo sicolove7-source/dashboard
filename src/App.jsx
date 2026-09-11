@@ -33,6 +33,8 @@ const CrmPipeline = React.lazy(() => import('./pages/CrmPipeline'));
 const ClientPortal = React.lazy(() => import('./pages/ClientPortal'));
 const SuperAdminDashboard = React.lazy(() => import('./pages/SuperAdminDashboard'));
 const OnboardingTourModal = React.lazy(() => import('./components/OnboardingTourModal'));
+const QuickWinChecklist = React.lazy(() => import('./components/QuickWinChecklist'));
+import { isFirstLogin, markFirstLoginDone, seedDemoData } from './utils/seedDemoData';
 
 import { loadCompanySettings, applyCompanyBranding, COMPANY_SETTINGS_KEY } from './utils/branding';
 import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, loadAllTenants, loadAllTenantsAsync, isSubAccountsLoginAllowed } from './services/tenantsManager';
@@ -245,6 +247,16 @@ export default function App() {
 
   // Onboarding Tour state
   const [showTour, setShowTour] = useState(false);
+
+  // أول دخول: بذار بيانات تجريبية وفتح الجولة الاستكشافية
+  useEffect(() => {
+    if (isFirstLogin()) {
+      seedDemoData(STORAGE_KEY, TEAM_KEY);
+      markFirstLoginDone();
+      const timer = setTimeout(() => setShowTour(true), 1200);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   // Theme State (Default to Clean Calm Light Mode for daily work)
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -1063,7 +1075,14 @@ export default function App() {
             )}
 
 
-            {tab === "overview" && <Overview projects={displayedProjects} />}
+            {tab === "overview" && (
+              <div>
+                <React.Suspense fallback={null}>
+                  <QuickWinChecklist onNavigate={(t) => setTab(t)} />
+                </React.Suspense>
+                <Overview projects={displayedProjects} />
+              </div>
+            )}
 
             {tab === "crm" && (
 
