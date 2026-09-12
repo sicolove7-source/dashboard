@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   X, Printer, Copy, Check, FileText, Building2, Calendar,
   DollarSign, ShieldCheck, User, MapPin, Edit3, Eye, Save, Lock, FileDown, Download,
-  PenTool, MessageCircle, Phone
+  PenTool, MessageCircle, Phone, ChevronLeft
 } from 'lucide-react';
 import { PROJECT_PHASES } from '../utils/constants';
 import { fmtDate, todayISO, getGlobalCurrency } from '../utils/helpers';
@@ -11,7 +11,7 @@ import { loadCompanySettings } from '../utils/branding';
 import SignaturePad from './SignaturePad';
 import StampRing from './StampRing';
 
-export default function ContractGeneratorModal({ project, onUpdate, onClose, companySettings: propCompanySettings }) {
+export default function ContractGeneratorModal({ project, onUpdate, onClose, companySettings: propCompanySettings, isInline = false }) {
   const activeCompanySettings = propCompanySettings || loadCompanySettings();
   const savedContract = project.contractData || {};
 
@@ -226,16 +226,21 @@ export default function ContractGeneratorModal({ project, onUpdate, onClose, com
     }
   }
 
-  return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1000, background: 'rgba(15, 23, 42, 0.8)', backdropFilter: 'blur(6px)' }}>
-      <div
-        className="modal-content"
-        onClick={e => e.stopPropagation()}
-        style={{
-          maxWidth: 920, width: '96%', maxHeight: '94vh', overflowY: 'auto',
-          borderRadius: 20, border: '1px solid var(--border)', background: 'var(--card)', padding: 0
-        }}
-      >
+  const modalBody = (
+    <div
+      className={isInline ? "contract-inline-card" : "modal-content"}
+      onClick={e => e.stopPropagation()}
+      style={{
+        maxWidth: isInline ? '100%' : 920,
+        width: isInline ? '100%' : '96%',
+        maxHeight: isInline ? 'none' : '94vh',
+        overflowY: isInline ? 'visible' : 'auto',
+        borderRadius: 20,
+        border: '1px solid var(--border)',
+        background: 'var(--card)',
+        padding: 0
+      }}
+    >
         {/* Top Header / Actions Bar (No-Print) */}
         <div className="no-print" style={{
           padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -713,6 +718,40 @@ export default function ContractGeneratorModal({ project, onUpdate, onClose, com
         </div>
 
       </div>
+  );
+
+  if (isInline) {
+    return (
+      <div className="contract-inline-wrapper tab-fade">
+        <div className="no-print" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <button
+            onClick={onClose}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 16px',
+              borderRadius: 10,
+              background: 'var(--card)',
+              color: 'var(--ink)',
+              border: '1px solid var(--border)',
+              fontWeight: 800,
+              fontSize: 13,
+              cursor: 'pointer',
+              boxShadow: 'var(--shadow-sm)'
+            }}
+          >
+            <ChevronLeft size={16} /> <span>← العودة إلى مركز العقود والعميل</span>
+          </button>
+        </div>
+        {modalBody}
+      </div>
+    );
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 99999, background: 'rgba(15, 23, 42, 0.8)', backdropFilter: 'blur(6px)' }}>
+      {modalBody}
     </div>
   );
 }

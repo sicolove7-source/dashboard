@@ -29,8 +29,7 @@ import { can } from '../utils/permissions';
 export default function ProjectDetail({ project, team, userRole, onBack, onEdit, onDelete, onUpdate, initialSub, currentUser, onOpenClientPortal }) {
   const [confirming, setConfirming] = useState(false);
   const [showClientReport, setShowClientReport] = useState(false);
-  const [showContract, setShowContract] = useState(false);
-  const [showCraftsmanContract, setShowCraftsmanContract] = useState(false);
+  const [activeContractView, setActiveContractView] = useState(null); // 'craftsman' | 'client' | null
   const [selectedWorkerForContract, setSelectedWorkerForContract] = useState(null);
 
   const craftsmenCount = (project.craftsmen?.length || (project.craftsmanContracts ? Object.keys(project.craftsmanContracts).length : 5));
@@ -113,7 +112,7 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
           <div className="primary-action-group">
             <button 
               className={`contract-action-btn btn-portal ${sub === 'contracts' ? 'active' : ''}`}
-              onClick={() => setSub('contracts')}
+              onClick={() => { setSub('contracts'); setActiveContractView(null); }}
               title="فتح مركز العقود وبوابة العميل والتقارير"
             >
               <FileText size={16} /> <span>العقود والعميل 📜</span>
@@ -139,23 +138,6 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
         <ClientReportModal project={project} onClose={() => setShowClientReport(false)} />
       )}
 
-      {showContract && (
-        <ContractGeneratorModal 
-          project={project} 
-          onUpdate={onUpdate} 
-          onClose={() => setShowContract(false)} 
-        />
-      )}
-
-      {showCraftsmanContract && (
-        <CraftsmanContractModal 
-          project={project} 
-          initialWorker={selectedWorkerForContract}
-          onUpdate={onUpdate} 
-          onClose={() => { setShowCraftsmanContract(false); setSelectedWorkerForContract(null); }} 
-        />
-      )}
-
       {/* ── Mobile Tab Navigation Grid (3 Columns) ── */}
       <div className="mobile-subtabs-grid">
         {SUBTABS.map((t) => {
@@ -164,7 +146,7 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
           return (
             <button
               key={t.key}
-              onClick={() => setSub(t.key)}
+              onClick={() => { setSub(t.key); setActiveContractView(null); }}
               className={`mobile-tab-btn ${isActive ? 'active' : ''}`}
             >
               <Icon size={20} />
@@ -180,7 +162,7 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
       {/* ── Desktop/Tablet Horizontal Subtabs Strip ── */}
       <div className="subtabs desktop-subtabs">
         {SUBTABS.map((t) => (
-          <div key={t.key} className={`subtab ${sub === t.key ? "active" : ""}`} onClick={() => setSub(t.key)}>
+          <div key={t.key} className={`subtab ${sub === t.key ? "active" : ""}`} onClick={() => { setSub(t.key); setActiveContractView(null); }}>
             <t.icon size={16} /> {t.label}
             {t.count !== undefined && t.count > 0 && (
               <span style={{
@@ -206,7 +188,8 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
             userRole={userRole} 
             onOpenContractModal={(worker) => {
               setSelectedWorkerForContract(worker);
-              setShowCraftsmanContract(true);
+              setSub('contracts');
+              setActiveContractView('craftsman');
             }} 
           />
         )}
@@ -220,18 +203,35 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
         {sub === "finance"  && can(currentUser || userRole, 'project_tab_finance') && <ProjectFinance project={project} onUpdate={onUpdate} />}
         {sub === "overview" && <OverviewPanel project={project} onUpdate={onUpdate} />}
         {sub === "contracts" && (
-          <ContractsHubPanel 
-            project={project} 
-            currentUser={currentUser} 
-            userRole={userRole} 
-            onOpenCraftsmanContract={(worker = null) => {
-              setSelectedWorkerForContract(worker);
-              setShowCraftsmanContract(true);
-            }}
-            onOpenClientContract={() => setShowContract(true)}
-            onOpenClientPortal={() => onOpenClientPortal && onOpenClientPortal(project.id)}
-            onOpenClientReport={() => setShowClientReport(true)}
-          />
+          activeContractView === 'craftsman' ? (
+            <CraftsmanContractModal 
+              project={project} 
+              initialWorker={selectedWorkerForContract}
+              onUpdate={onUpdate} 
+              isInline={true}
+              onClose={() => { setActiveContractView(null); setSelectedWorkerForContract(null); }} 
+            />
+          ) : activeContractView === 'client' ? (
+            <ContractGeneratorModal 
+              project={project} 
+              onUpdate={onUpdate} 
+              isInline={true}
+              onClose={() => setActiveContractView(null)} 
+            />
+          ) : (
+            <ContractsHubPanel 
+              project={project} 
+              currentUser={currentUser} 
+              userRole={userRole} 
+              onOpenCraftsmanContract={(worker = null) => {
+                setSelectedWorkerForContract(worker);
+                setActiveContractView('craftsman');
+              }}
+              onOpenClientContract={() => setActiveContractView('client')}
+              onOpenClientPortal={() => onOpenClientPortal && onOpenClientPortal(project.id)}
+              onOpenClientReport={() => setShowClientReport(true)}
+            />
+          )
         )}
       </div>
     </div>

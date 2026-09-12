@@ -10,12 +10,8 @@ import {
   Briefcase, Wrench, BookOpen, Crown, ChevronLeft
 } from 'lucide-react';
 
-let confettiFn = null;
-try { import('canvas-confetti').then(m => { confettiFn = m.default; }); } catch {}
 function fireConfetti() {
-  try {
-    if (confettiFn) confettiFn({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#1877F2', '#22C55E', '#F59E0B', '#EC4899'] });
-  } catch {}
+  // lightweight no-op
 }
 
 /* ─── خطوات حسب الدور ─── */
