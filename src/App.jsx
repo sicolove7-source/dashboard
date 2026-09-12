@@ -37,7 +37,7 @@ const QuickWinChecklist = React.lazy(() => import('./components/QuickWinChecklis
 import { isFirstLogin, markFirstLoginDone, seedDemoData } from './utils/seedDemoData';
 
 import { loadCompanySettings, applyCompanyBranding, COMPANY_SETTINGS_KEY } from './utils/branding';
-import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, loadAllTenants, loadAllTenantsAsync, isSubAccountsLoginAllowed } from './services/tenantsManager';
+import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed } from './services/tenantsManager';
 import { syncProjectsToCloud, syncSingleProjectToCloud, deleteSingleProjectFromCloud, syncTeamToCloud, syncLeadsToCloud, subscribeToCloudProjects, cleanUpInvalidDocs, sanitizeProjectForCloud, mergeProjectsPreservingLocal, syncSettingsToCloud } from './services/cloudSync';
 import { parseClientPortalFromUrl, resolveClientPortalProject } from './services/portalResolver';
 
