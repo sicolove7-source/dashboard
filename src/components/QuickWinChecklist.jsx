@@ -1,4 +1,4 @@
-﻿/**
+/**
  * QuickWinChecklist — بطاقة الخطوات الثلاث (نسخة خفيفة)
  */
 import React, { useState, useEffect } from 'react';
@@ -7,7 +7,6 @@ import {
   getQuickWinState,
   markQuickWinStep,
   dismissQuickWin,
-  isQuickWinComplete
 } from '../utils/seedDemoData';
 
 const STEPS = [
