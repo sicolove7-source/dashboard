@@ -689,7 +689,8 @@
   }
 
   /* Mobile Tab Navigation Grid (3 columns on mobile) */
-  .desktop-subtabs {
+  .desktop-subtabs,
+  .desktop-subtabs-container {
     display: none !important;
   }
   .mobile-subtabs-grid {

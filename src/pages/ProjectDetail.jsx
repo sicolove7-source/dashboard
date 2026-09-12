@@ -159,24 +159,31 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
         })}
       </div>
 
-      {/* ── Desktop/Tablet Horizontal Subtabs Strip ── */}
-      <div className="subtabs desktop-subtabs">
-        {SUBTABS.map((t) => (
-          <div key={t.key} className={`subtab ${sub === t.key ? "active" : ""}`} onClick={() => { setSub(t.key); setActiveContractView(null); }}>
-            <t.icon size={16} /> {t.label}
-            {t.count !== undefined && t.count > 0 && (
-              <span style={{
-                background: sub === t.key ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)',
-                fontSize: 11,
-                padding: '2px 7px',
-                borderRadius: 99,
-                marginRight: 6
-              }}>
-                {t.count}
-              </span>
-            )}
-          </div>
-        ))}
+      {/* ── Desktop/Tablet Modern Subtabs Grid ── */}
+      <div className="desktop-subtabs-container">
+        <div className="desktop-subtabs-grid">
+          {SUBTABS.map((t) => {
+            const isActive = sub === t.key;
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => { setSub(t.key); setActiveContractView(null); }}
+                className={`desktop-subtab-card ${isActive ? 'active' : ''}`}
+                title={t.label}
+              >
+                <div className="desktop-subtab-icon-box">
+                  <Icon size={20} />
+                  {t.count !== undefined && t.count > 0 && (
+                    <span className="desktop-subtab-badge">{t.count}</span>
+                  )}
+                </div>
+                <span className="desktop-subtab-label">{t.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="tab-fade">

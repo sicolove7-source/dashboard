@@ -377,11 +377,11 @@ select.filter-select:focus, input.filter-input:focus { border-color: #1877F2; bo
 }
 .form-field input:focus, .form-field select:focus { border-color: #1877F2; box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.15); background: var(--card); }
 
-/* Subtabs */
-.subtabs { display:flex; gap:12px; margin-bottom:32px; border-bottom:1px solid var(--border); overflow-x: auto; padding-bottom: 8px;}
+/* Subtabs (Generic fallback) */
+.subtabs { display:flex; gap:12px; margin-bottom:28px; border-bottom:1px solid var(--border); overflow-x: auto; padding-bottom: 8px;}
 .subtab { 
-  display:flex; align-items:center; gap:10px; font-size:15px; font-weight:700; 
-  color:var(--muted); padding:12px 22px; cursor:pointer; border-radius: var(--radius);
+  display:flex; align-items:center; gap:10px; font-size:14px; font-weight:700; 
+  color:var(--muted); padding:10px 20px; cursor:pointer; border-radius: var(--radius);
   transition: all 0.2s ease; white-space: nowrap; background: transparent;
 }
 .subtab:hover { color: #1877F2; background: #E7F3FF; }
@@ -396,6 +396,132 @@ select.filter-select:focus, input.filter-input:focus { border-color: #1877F2; bo
   background: #1877F2; 
   border-bottom: 3px solid #60A5FA;
 }
+
+/* ─── Desktop Project Subtabs (Luxury Card Grid) ─── */
+.desktop-subtabs-container {
+  margin-bottom: 24px;
+}
+
+.desktop-subtabs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+  gap: 10px;
+}
+
+.desktop-subtab-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 13px 8px 11px;
+  background: var(--card, #FFFFFF);
+  border: 1.5px solid var(--border, #E2E8F0);
+  border-radius: 14px;
+  color: var(--muted, #64748B);
+  cursor: pointer;
+  font-family: 'Cairo', sans-serif;
+  text-decoration: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
+  position: relative;
+  outline: none;
+  user-select: none;
+}
+
+.desktop-subtab-card:hover {
+  border-color: #1877F2;
+  color: #1877F2;
+  background: rgba(24, 119, 242, 0.04);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(24, 119, 242, 0.12);
+}
+
+.desktop-subtab-card.active {
+  background: linear-gradient(135deg, #1877F2 0%, #0D65D9 100%);
+  border-color: #1877F2;
+  color: #FFFFFF !important;
+  font-weight: 800;
+  box-shadow: 0 6px 20px rgba(24, 119, 242, 0.32);
+  transform: translateY(-2px);
+}
+
+.desktop-subtab-icon-box {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface, #F8FAFC);
+  color: var(--ink, #0F172A);
+  position: relative;
+  transition: all 0.2s ease;
+  border: 1px solid var(--border, #E2E8F0);
+}
+
+.desktop-subtab-card:hover .desktop-subtab-icon-box {
+  background: rgba(24, 119, 242, 0.1);
+  color: #1877F2;
+  border-color: rgba(24, 119, 242, 0.25);
+  transform: scale(1.06);
+}
+
+.desktop-subtab-card.active .desktop-subtab-icon-box {
+  background: rgba(255, 255, 255, 0.2);
+  color: #FFFFFF;
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.desktop-subtab-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+  letter-spacing: -0.2px;
+}
+
+.desktop-subtab-badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  background: #F59E0B;
+  color: #000000;
+  font-size: 10px;
+  font-weight: 800;
+  border-radius: 10px;
+  padding: 1px 6px;
+  line-height: 1.2;
+  border: 1.5px solid var(--card, #FFFFFF);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.desktop-subtab-card.active .desktop-subtab-badge {
+  background: #FFFFFF;
+  color: #1877F2;
+  border-color: #1877F2;
+}
+
+/* Dark theme overrides for desktop subtab cards */
+[data-theme="dark"] .desktop-subtab-card {
+  background: var(--card, #1E293B);
+  border-color: var(--border, #334155);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .desktop-subtab-icon-box {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #E2E8F0;
+}
+
+[data-theme="dark"] .desktop-subtab-card.active {
+  background: linear-gradient(135deg, #1877F2 0%, #1D4ED8 100%);
+  border-color: #60A5FA;
+  box-shadow: 0 6px 20px rgba(24, 119, 242, 0.45);
+}
+
 
 /* Filter Pills */
 .filter-pill {
