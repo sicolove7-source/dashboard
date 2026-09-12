@@ -117,6 +117,15 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
             >
               <FileText size={16} /> <span>العقود والعميل 📜</span>
             </button>
+
+            <button 
+              className="contract-action-btn"
+              style={{ background: '#10B981', color: '#fff', border: 'none', fontWeight: 800 }}
+              onClick={() => setShowClientReport(true)}
+              title="تخصيص وتوليد تقرير العميل وإرساله عبر واتساب أو PDF"
+            >
+              <MessageCircle size={16} /> <span>تقرير واتساب 📱</span>
+            </button>
           </div>
 
           <div className="secondary-action-group">
