@@ -107,40 +107,23 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
           </div>
         </div>
 
-        {/* ── Action Toolbar (Contracts, Portal, Report, Manage) ── */}
-        <div className="project-action-toolbar">
-          <div className="primary-action-group">
-            <button 
-              className={`contract-action-btn btn-portal ${sub === 'contracts' ? 'active' : ''}`}
-              onClick={() => { setSub('contracts'); setActiveContractView(null); }}
-              title="فتح مركز العقود وبوابة العميل والتقارير"
-            >
-              <FileText size={16} /> <span>العقود والعميل 📜</span>
-            </button>
-
-            <button 
-              className="contract-action-btn"
-              style={{ background: '#10B981', color: '#fff', border: 'none', fontWeight: 800 }}
-              onClick={() => setShowClientReport(true)}
-              title="تخصيص وتوليد تقرير العميل وإرساله عبر واتساب أو PDF"
-            >
-              <MessageCircle size={16} /> <span>تقرير واتساب 📱</span>
-            </button>
+        {/* ── Action Toolbar (Manage) ── */}
+        {(can(currentUser || userRole, 'projects_edit') || can(currentUser || userRole, 'projects_delete')) && (
+          <div className="project-action-toolbar" style={{ justifyContent: 'flex-end' }}>
+            <div className="secondary-action-group">
+              {can(currentUser || userRole, 'projects_edit') && (
+                <button className="btn btn-edit-proj" onClick={onEdit}>
+                  <Pencil size={15} /> <span>تعديل</span>
+                </button>
+              )}
+              {can(currentUser || userRole, 'projects_delete') && (
+                <button className="btn btn-ghost btn-delete-proj" onClick={() => setConfirming(true)}>
+                  <Trash2 size={15} /> <span>حذف</span>
+                </button>
+              )}
+            </div>
           </div>
-
-          <div className="secondary-action-group">
-            {can(currentUser || userRole, 'projects_edit') && (
-              <button className="btn btn-edit-proj" onClick={onEdit}>
-                <Pencil size={15} /> <span>تعديل</span>
-              </button>
-            )}
-            {can(currentUser || userRole, 'projects_delete') && (
-              <button className="btn btn-ghost btn-delete-proj" onClick={() => setConfirming(true)}>
-                <Trash2 size={15} /> <span>حذف</span>
-              </button>
-            )}
-          </div>
-        </div>
+        )}
       </div>
 
       {showClientReport && (
