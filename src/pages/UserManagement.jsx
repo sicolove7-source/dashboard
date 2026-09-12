@@ -9,6 +9,7 @@ import {
   CUSTOMIZABLE_NAV_TABS, CUSTOMIZABLE_ACTIONS
 } from '../utils/permissions';
 import { getActiveTenantId } from '../services/tenantsManager';
+import { syncCompanyUsersToCloud } from '../services/cloudSync';
 
 // أدوار الشركة المشتركة فقط (استبعاد Super Admin الخاص بالمنصة)
 const COMPANY_ROLES = Object.fromEntries(
@@ -137,13 +138,14 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = 'بريد إلكتروني غير صحيح';
     else if (!isEdit && existingEmails.includes(form.email.toLowerCase().trim())) e.email = 'هذا البريد مستخدم بالفعل';
     if (!form.password || form.password.length < 4) e.password = 'كلمة المرور 4 أحرف على الأقل';
-    if (form.role === 'engineer' && !form.engineerName.trim()) e.engineerName = 'اسم المهندس مطلوب لربطه بالمشاريع';
+    const effectiveEngName = (form.engineerName || form.name).trim();
+    if (form.role === 'engineer' && !effectiveEngName) e.engineerName = 'اسم المهندس مطلوب لربطه بالمشاريع';
     setErrors(e);
     return Object.keys(e).length === 0;
   }
 
   function handleRoleChange(newRole) {
-    setForm(f => ({ ...f, role: newRole, engineerName: '' }));
+    setForm(f => ({ ...f, role: newRole, engineerName: f.engineerName || f.name }));
     if (!isCustom) {
       setCustomNav(NAV_PERMISSIONS[newRole] || []);
       setCustomPermissions({});
@@ -189,6 +191,7 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
 
   function handleSave() {
     if (!validate()) return;
+    const effectiveEngName = form.role === 'engineer' ? ((form.engineerName || form.name).trim()) : null;
     onSave({
       ...(user || {}),
       id: user?.id || 'u_' + Date.now(),
@@ -196,7 +199,7 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
       email: form.email.toLowerCase().trim(),
       password: form.password,
       role: form.role,
-      engineerName: form.role === 'engineer' ? form.engineerName.trim() : null,
+      engineerName: effectiveEngName,
       hasCustomPermissions: isCustom,
       customNav: isCustom ? customNav : null,
       customPermissions: isCustom ? customPermissions : null,
@@ -625,6 +628,9 @@ export default function UserManagement({ currentUser, companyId }) {
   function persist(next) {
     setUsers(next);
     saveUsers(next, activeCompId);
+    try {
+      syncCompanyUsersToCloud(activeCompId, next).catch(e => console.warn("Cloud sync users error:", e));
+    } catch (e) {}
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }

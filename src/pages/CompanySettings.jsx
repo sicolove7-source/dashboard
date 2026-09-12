@@ -169,6 +169,7 @@ export default function CompanySettings({
     engineers: '', accountants: '', techOffice: '', customerService: ''
   });
   const [teamErrors, setTeamErrors] = useState({});
+  const [teamSuccess, setTeamSuccess] = useState({});
 
   // Sync state if external companySettings changes without wiping current logo
   useEffect(() => {
@@ -217,9 +218,12 @@ export default function CompanySettings({
     if (!name) { setTeamErrors(e => ({ ...e, [groupKey]: 'الرجاء إدخال اسم' })); return; }
     const current = team?.[groupKey] || [];
     if (current.includes(name)) { setTeamErrors(e => ({ ...e, [groupKey]: 'هذا الاسم موجود مسبقاً' })); return; }
-    onTeamChange?.({ ...team, [groupKey]: [...current, name] });
+    const nextTeam = { ...team, [groupKey]: [name, ...current] };
+    onTeamChange?.(nextTeam);
     setTeamInputs(prev => ({ ...prev, [groupKey]: '' }));
     setTeamErrors(e => ({ ...e, [groupKey]: '' }));
+    setTeamSuccess(s => ({ ...s, [groupKey]: `✓ تم إضافة ${name} بنجاح!` }));
+    setTimeout(() => setTeamSuccess(s => ({ ...s, [groupKey]: '' })), 2500);
   }
 
   function handleRemoveMember(groupKey, name) {
@@ -781,10 +785,15 @@ export default function CompanySettings({
         <div className="grid tab-fade cs-team-section" style={{ gap: 24 }}>
           {/* Team Management */}
           <div className="panel">
-            <h3 style={{ margin: '0 0 4px', fontSize: 15.5, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Building2 size={17} style={{ color: 'var(--brand-primary, #6366F1)' }} />
-              إدارة أقسام وأعضاء فريق العمل
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, flexWrap: 'wrap', gap: 8 }}>
+              <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Building2 size={17} style={{ color: 'var(--brand-primary, #6366F1)' }} />
+                إدارة أقسام وأعضاء فريق العمل
+              </h3>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#10B981', fontSize: 11.5, background: 'rgba(16,185,129,0.1)', padding: '3px 10px', borderRadius: 20, fontWeight: 700 }}>
+                <CheckCircle2 size={13} /> الحفظ فوري وتلقائي في السحابة
+              </span>
+            </div>
             <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--muted)' }}>
               أضف أو احذف أعضاء الفريق الميداني والمكتبي — ستظهر أسماؤهم تلقائياً في قوائم إسناد المشاريع والمستخلصات
             </p>
@@ -850,9 +859,14 @@ export default function CompanySettings({
                         <AlertTriangle size={12} /> {teamErrors[g.key]}
                       </div>
                     )}
+                    {teamSuccess[g.key] && (
+                      <div style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.1)', color: '#10B981', fontSize: 11.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <CheckCircle2 size={12} /> {teamSuccess[g.key]}
+                      </div>
+                    )}
 
                     {/* Members List */}
-                    <div style={{ padding: '6px 0', maxHeight: 200, overflowY: 'auto' }}>
+                    <div style={{ padding: '6px 0', maxHeight: 320, overflowY: 'auto' }}>
                       {members.length === 0 ? (
                         <div style={{ padding: '14px', textAlign: 'center', color: 'var(--muted)', fontSize: 12 }}>
                           لا يوجد أعضاء في هذا القسم
