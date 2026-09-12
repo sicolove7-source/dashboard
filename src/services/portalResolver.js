@@ -121,60 +121,54 @@ export async function resolveClientPortalProject(projectId, companyIdHint = null
     }
   } catch (e) {}
 
-  // 3. فحص المشاريع الافتراضية المضمنة في النظام (للمتصفحات الجديدة والنوافذ الخفية)
+  // 3. فحص المشاريع المضمنة وكافة مشاريع الشركات (فحص فوري بـ 0ms)
   const allTenants = loadAllTenants();
   for (const t of allTenants) {
     const tData = getTenantData(t.id);
     if (tData?.projects && Array.isArray(tData.projects)) {
-      const match = tData.projects.find(p => String(p.id) === pIdStr || p.clientPortalToken === pIdStr);
+      const match = tData.projects.find((p, idx) => 
+        String(p.id) === pIdStr || 
+        p.clientPortalToken === pIdStr ||
+        String(idx + 1) === pIdStr ||
+        String(p.id).endsWith(`_${pIdStr}`)
+      );
       if (match) {
         return { project: match, companyId: t.id, companySettings: tData.settings };
       }
     }
   }
 
-  // 4. جلب المشروع سحابياً من Firebase Firestore
+  // 4. جلب المشروع سحابياً من Firebase Firestore مع مهلة قصيرة لمنع أي تعليق
   try {
     const companiesToCheck = companyIdHint
       ? [companyIdHint, 'comp_alain', 'comp_dhabi', 'comp_cairo']
-      : ['comp_alain', 'comp_dhabi', 'comp_cairo', ...allTenants.map(t => t.id)];
+      : ['comp_alain', 'comp_dhabi', 'comp_cairo'];
 
-    for (const cId of companiesToCheck) {
-      if (!cId) continue;
-      try {
-        // فحص الـ subcollection المستقلة
-        const projectRef = doc(db, 'companies', cId, 'projects', pIdStr);
-        const snap = await getDoc(projectRef);
-        if (snap.exists()) {
-          const pData = snap.data();
-          // جلب إعدادات الشركة
-          let cSettings = null;
-          try {
-            const companyDocRef = doc(db, 'companies', cId);
-            const cSnap = await getDoc(companyDocRef);
-            if (cSnap.exists()) {
-              cSettings = cSnap.data()?.settings || null;
-            }
-          } catch (err) {}
-          return { project: pData, companyId: cId, companySettings: cSettings || loadCompanySettings(cId) };
-        }
-
-        // فحص في الوثيقة الرئيسية للشركة (توافق مع الإصدارات السابقة)
-        const companyDocRef = doc(db, 'companies', cId);
-        const cSnap = await getDoc(companyDocRef);
-        if (cSnap.exists()) {
-          const cData = cSnap.data();
-          if (Array.isArray(cData?.projects)) {
-            const match = cData.projects.find(p => String(p.id) === pIdStr || p.clientPortalToken === pIdStr);
-            if (match) {
-              return { project: match, companyId: cId, companySettings: cData?.settings || loadCompanySettings(cId) };
-            }
+    const cloudFetchPromise = async () => {
+      for (const cId of companiesToCheck) {
+        if (!cId) continue;
+        try {
+          const projectRef = doc(db, 'companies', cId, 'projects', pIdStr);
+          const snap = await getDoc(projectRef);
+          if (snap.exists()) {
+            const pData = snap.data();
+            let cSettings = null;
+            try {
+              const companyDocRef = doc(db, 'companies', cId);
+              const cSnap = await getDoc(companyDocRef);
+              if (cSnap.exists()) cSettings = cSnap.data()?.settings || null;
+            } catch (err) {}
+            return { project: pData, companyId: cId, companySettings: cSettings || loadCompanySettings(cId) };
           }
-        }
-      } catch (err) {
-        // متابعة الفحص
+        } catch (err) {}
       }
-    }
+      return null;
+    };
+
+    // مهلة لا تتعدى 1.5 ثانية للبحث السحابي
+    const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 1500));
+    const cloudResult = await Promise.race([cloudFetchPromise(), timeoutPromise]);
+    if (cloudResult) return cloudResult;
   } catch (e) {
     console.warn('[PortalResolver] Cloud lookup error:', e);
   }
