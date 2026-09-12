@@ -122,10 +122,54 @@ export default function Login({
           maxWidth: mode === 'register' ? 480 : 420,
           display: "flex",
           flexDirection: "column",
-          gap: 20,
+          gap: 16,
           transition: "max-width 0.3s ease",
         }}
       >
+        {onBackToLanding && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <button
+              onClick={onBackToLanding}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                borderRadius: 8,
+                background: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+                color: '#475569',
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+              }}
+            >
+              <ArrowRight size={14} /> <span>العودة للموقع التعريفي</span>
+            </button>
+            {onStartLiveDemo && (
+              <button
+                onClick={onStartLiveDemo}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '6px 12px',
+                  borderRadius: 8,
+                  background: 'rgba(217, 119, 6, 0.1)',
+                  border: '1px solid rgba(217, 119, 6, 0.25)',
+                  color: '#B45309',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                <Sparkles size={13} /> <span>تجربة حية (Demo)</span>
+              </button>
+            )}
+          </div>
+        )}
+
         {/* ─── الشعار والهوية ─── */}
         <div style={{ textAlign: "center" }}>
           <div

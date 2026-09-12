@@ -410,7 +410,18 @@ export default function Sidebar({
         </div>
       )}
 
-      <div className="sidebar-foot">v2.0 · Tashteeb Pro</div>
+      <div className="sidebar-foot" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', fontSize: 11.5 }}>
+        <span>v2.0 · Tashteeb Pro</span>
+        <a
+          href="/landing"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: '#D97706', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+          title="فتح صفحة المنصة التسويقية"
+        >
+          <span>الموقع التعريفي</span> ↗
+        </a>
+      </div>
     </aside>
   );
 }
