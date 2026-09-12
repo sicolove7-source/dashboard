@@ -81,6 +81,22 @@ function RoleBadge({ role }) {
   );
 }
 
+function Field({ label, error, children }) {
+  return (
+    <div>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>
+        {label}
+      </label>
+      {children}
+      {error && (
+        <div style={{ fontSize: 11, color: '#EF4444', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <AlertTriangle size={10} /> {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ────────────────────────────────────────────────────────────
    Add / Edit User Modal with Custom Permissions Support
 ──────────────────────────────────────────────────────────── */
@@ -194,20 +210,6 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
       setTimeout(() => setCopied(false), 2000);
     });
   }
-
-  const Field = ({ label, error, children }) => (
-    <div>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>
-        {label}
-      </label>
-      {children}
-      {error && (
-        <div style={{ fontSize: 11, color: '#EF4444', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-          <AlertTriangle size={10} /> {error}
-        </div>
-      )}
-    </div>
-  );
 
   return (
     <div style={{

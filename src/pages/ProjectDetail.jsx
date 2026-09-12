@@ -1198,11 +1198,11 @@ function WorkPlanPanel({ project, onUpdate }) {
     onUpdate({ workPlan: updated });
   }
 
-  const Col = ({ listKey, label, color, emoji, val, setVal }) => {
+  const renderCol = (listKey, label, color, emoji, val, setVal) => {
     const items = plan[listKey] || [];
     const doneCount = items.filter(i => i.done).length;
     return (
-      <div className="panel">
+      <div className="panel" key={listKey}>
         <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, color }}>
           <Target size={18} /> {emoji} {label}
           <span style={{ marginRight: 'auto', fontSize: 12, background: color + '18', color, padding: '2px 10px', borderRadius: 99, fontWeight: 700 }}>
@@ -1271,8 +1271,8 @@ function WorkPlanPanel({ project, onUpdate }) {
 
   return (
     <div className="workplan-grid">
-      <Col listKey="tomorrow" label="مهام بكرة" color="#F59E0B" emoji="⚡" val={tmrInput} setVal={setTmrInput} />
-      <Col listKey="thisWeek" label="مهام الأسبوع" color="#3B82F6" emoji="📅" val={weekInput} setVal={setWeekInput} />
+      {renderCol("tomorrow", "مهام بكرة", "#F59E0B", "⚡", tmrInput, setTmrInput)}
+      {renderCol("thisWeek", "مهام الأسبوع", "#3B82F6", "📅", weekInput, setWeekInput)}
     </div>
   );
 }

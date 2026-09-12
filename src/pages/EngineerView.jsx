@@ -360,8 +360,8 @@ function PlanPanel({ project, onUpdate }) {
     onUpdate({ workPlan: updated });
   }
 
-  const Col = ({ listKey, label, color, emoji, val, setVal }) => (
-    <div className="panel">
+  const renderCol = (listKey, label, color, emoji, val, setVal) => (
+    <div className="panel" key={listKey}>
       <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, color }}>
         <Target size={18} /> {emoji} {label}
         <span style={{ marginRight: 'auto', fontSize: 12, background: color + '18', color, padding: '2px 8px', borderRadius: 99 }}>
@@ -400,8 +400,8 @@ function PlanPanel({ project, onUpdate }) {
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-      <Col listKey="tomorrow" label="مهام بكرة" emoji="🌅" color="#6366F1" val={tmrInput} setVal={setTmrInput} />
-      <Col listKey="thisWeek" label="مهام الاسبوع" emoji="📅" color="#F59E0B" val={weekInput} setVal={setWeekInput} />
+      {renderCol("tomorrow", "مهام بكرة", "#6366F1", "🌅", tmrInput, setTmrInput)}
+      {renderCol("thisWeek", "مهام الاسبوع", "#F59E0B", "📅", weekInput, setWeekInput)}
     </div>
   );
 }
