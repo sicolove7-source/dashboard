@@ -37,7 +37,7 @@ const NAV_LABELS_SHORT = {
 export default function MobileLayout({
   tab, setTab, setView, userRole, currentUser, companySettings,
   isDarkMode, setIsDarkMode,
-  sidebarOpen, setSidebarOpen, onOpenTour
+  sidebarOpen, setSidebarOpen, onOpenTour, onLogout
 }) {
   const [unreadNotifsCount, setUnreadNotifsCount] = React.useState(0);
 
@@ -260,17 +260,42 @@ export default function MobileLayout({
               borderRadius: 10,
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'space-between',
               gap: 10,
             }}>
-              <span style={{ fontSize: 20 }}>{roleInfo.badge}</span>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: isDarkMode ? roleInfo.color : 'var(--ink, #0F172A)' }}>
-                  {roleInfo.label}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--muted, #64748B)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {currentUser?.name || 'مستخدم النظام'}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+                <span style={{ fontSize: 20 }}>{roleInfo.badge}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: isDarkMode ? roleInfo.color : 'var(--ink, #0F172A)' }}>
+                    {roleInfo.label}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--muted, #64748B)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {currentUser?.name || 'مستخدم النظام'}
+                  </div>
                 </div>
               </div>
+              <button
+                onClick={() => { setSidebarOpen(false); onLogout?.(); }}
+                title="تسجيل الخروج"
+                style={{
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                  borderRadius: 8,
+                  color: '#EF4444',
+                  cursor: 'pointer',
+                  padding: '5px 9px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  fontFamily: 'Cairo',
+                  flexShrink: 0
+                }}
+              >
+                <Icons.LogOut size={13} />
+                <span>خروج</span>
+              </button>
             </div>
 
             {/* Menu Items List */}
@@ -365,6 +390,20 @@ export default function MobileLayout({
               >
                 {isDarkMode ? <Icons.Sun size={16} /> : <Icons.Moon size={16} />}
                 <span>{isDarkMode ? 'التبديل للوضع الفاتح' : 'التبديل للوضع الليلي'}</span>
+              </button>
+
+              <button
+                onClick={() => { setSidebarOpen(false); onLogout?.(); }}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  width: '100%', padding: '11px',
+                  background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)',
+                  borderRadius: 10, color: '#DC2626', cursor: 'pointer', fontFamily: 'Cairo', fontSize: 13, fontWeight: 700,
+                  transition: 'background 0.15s'
+                }}
+              >
+                <Icons.LogOut size={16} />
+                <span>تسجيل الخروج من الحساب</span>
               </button>
             </div>
           </div>

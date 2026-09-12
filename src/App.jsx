@@ -912,6 +912,7 @@ export default function App() {
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
         onOpenTour={() => setShowTour(true)}
+        onLogout={handleLogout}
       />
 
       {/* ─── Mobile Site Engineer Quick Actions FAB ─── */}
@@ -940,6 +941,7 @@ export default function App() {
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
         onOpenTour={() => setShowTour(true)}
+        onLogout={handleLogout}
       />
 
       <div className="main" style={{ paddingTop: (currentUser?.role === 'super_admin' && tab !== 'tenants') ? 50 : undefined }}>

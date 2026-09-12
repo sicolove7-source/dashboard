@@ -114,7 +114,7 @@ function importData(file, onDone) {
 export default function Sidebar({ 
   tab, setTab, setView, view, projectCount, 
   isDarkMode, setIsDarkMode, userRole, currentUser, 
-  companySettings, sidebarOpen, setSidebarOpen, onOpenTour 
+  companySettings, sidebarOpen, setSidebarOpen, onOpenTour, onLogout 
 }) {
   const fileRef = useRef(null);
   const [importMsg, setImportMsg] = useState(null); // null | 'ok' | 'err'
@@ -283,17 +283,42 @@ export default function Sidebar({
         borderRadius: 10,
         display: "flex",
         alignItems: "center",
+        justifyContent: "space-between",
         gap: 10,
       }}>
-        <span style={{ fontSize: 22 }}>{roleInfo.badge}</span>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: isDarkMode ? roleInfo.color : "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {roleInfo.label}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {currentUser?.name || ""}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <span style={{ fontSize: 22 }}>{roleInfo.badge}</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: isDarkMode ? roleInfo.color : "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {roleInfo.label}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {currentUser?.name || ""}
+            </div>
           </div>
         </div>
+        {onLogout && (
+          <button
+            onClick={onLogout}
+            title="تسجيل الخروج"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "var(--muted)",
+              cursor: "pointer",
+              padding: 5,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 6,
+              transition: "all 0.15s"
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = '#EF4444'; e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent'; }}
+          >
+            <Icons.LogOut size={16} />
+          </button>
+        )}
       </div>
 
       {/* ─── التنقل ─── */}
@@ -407,6 +432,28 @@ export default function Sidebar({
               ❌ فشل استيراد الملف
             </div>
           )}
+        </div>
+      )}
+
+      {/* زر تسجيل الخروج */}
+      {onLogout && (
+        <div style={{ padding: "0 12px 10px" }}>
+          <button
+            onClick={onLogout}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              width: "100%", padding: "8px 12px",
+              background: "rgba(239, 68, 68, 0.06)", border: "1px solid rgba(239, 68, 68, 0.2)",
+              borderRadius: "8px", color: "#DC2626", cursor: "pointer",
+              fontFamily: "Cairo", fontSize: 12.5, fontWeight: 700,
+              transition: "all 0.15s"
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.06)'; }}
+          >
+            <Icons.LogOut size={14} />
+            <span>تسجيل الخروج</span>
+          </button>
         </div>
       )}
 
