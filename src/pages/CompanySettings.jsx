@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  Building2, Upload, Palette, Save, CheckCircle2, Image, Trash2,
+  Building2, Upload, Save, CheckCircle2, Image, Trash2,
   RefreshCw, AlertTriangle, Headphones, Hammer, Wallet, ClipboardList, X,
   Globe, ShieldCheck, Server, CheckCircle, Zap, Users, Phone, Mail,
   FileText, MapPin, Hash, Check
@@ -27,17 +27,7 @@ export {
   applyCompanyBranding
 } from '../utils/branding';
 
-/* ────────────────────────────────────────────────────────────
-   PRESET PALETTES
-──────────────────────────────────────────────────────────── */
-const PALETTES = [
-  { name: 'أزرق فيسبوك الرسمي (موصى به)', primary: '#1877F2', accent: '#166FE5' },
-  { name: 'كحلي رزين ومريح', primary: '#1E293B', accent: '#0F172A' },
-  { name: 'زيتي هندسي هادئ', primary: '#059669', accent: '#047857' },
-  { name: 'رمادي ورشة احترافي', primary: '#475569', accent: '#334155' },
-  { name: 'عنبري هادئ متوازن', primary: '#D97706', accent: '#B45309' },
-  { name: 'نيلي معاصر', primary: '#4F46E5', accent: '#4338CA' },
-];
+
 
 /* ────────────────────────────────────────────────────────────
    TEAM GROUPS CONFIG
@@ -641,109 +631,7 @@ export default function CompanySettings({
             </div>
           </div>
 
-          {/* Section 3: Color Palette */}
-          <div className="panel">
-            <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Palette size={16} style={{ color: 'var(--brand-primary, #6366F1)' }} />
-              هوية الألوان والتخصيص البصري
-            </h3>
-            <div className="cs-palette-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
 
-              {/* Preset Palettes */}
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 10 }}>ألوان جاهزة — اختر بنقرة:</div>
-                <div className="cs-palette-presets-wrap" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
-                  {PALETTES.map((p) => {
-                    const isSelected = settings.primaryColor === p.primary;
-                    return (
-                      <button
-                        type="button"
-                        key={p.name}
-                        onClick={() => { updateSetting('primaryColor', p.primary); updateSetting('accentColor', p.accent); }}
-                        title={p.name}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 7,
-                          padding: '7px 12px', borderRadius: 10, cursor: 'pointer',
-                          border: isSelected ? `2px solid ${p.primary}` : '2px solid var(--border)',
-                          background: isSelected ? `${p.primary}15` : 'transparent',
-                          fontFamily: 'Cairo', fontSize: 12, fontWeight: isSelected ? 800 : 500,
-                          color: isSelected ? p.primary : 'var(--text)',
-                          transition: 'all 0.2s',
-                          width: '100%',
-                          justifyContent: 'center',
-                          boxSizing: 'border-box',
-                        }}
-                      >
-                        <div style={{ display: 'flex', gap: 2 }}>
-                          <div style={{ width: 12, height: 12, borderRadius: 3, background: p.primary }} />
-                          <div style={{ width: 12, height: 12, borderRadius: 3, background: p.accent }} />
-                        </div>
-                        {p.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Custom Color Pickers */}
-              <div className="cs-custom-colors-row" style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                <div style={{ flex: '1 1 120px', minWidth: 0 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6 }}>اللون الرئيسي</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <input
-                      type="color"
-                      value={settings.primaryColor || '#6366F1'}
-                      onChange={(e) => updateSetting('primaryColor', e.target.value)}
-                      style={{ width: 40, height: 40, border: 'none', borderRadius: 8, cursor: 'pointer', padding: 2, background: 'var(--surface)', flexShrink: 0 }}
-                    />
-                    <input
-                      type="text"
-                      className="filter-input"
-                      value={settings.primaryColor || '#6366F1'}
-                      onChange={(e) => updateSetting('primaryColor', e.target.value)}
-                      style={{ width: 90, flex: 1, minWidth: 0, fontFamily: 'monospace', fontSize: 12 }}
-                      maxLength={7}
-                    />
-                  </div>
-                </div>
-                <div style={{ flex: '1 1 120px', minWidth: 0 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6 }}>اللون الثانوي</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <input
-                      type="color"
-                      value={settings.accentColor || '#3B82F6'}
-                      onChange={(e) => updateSetting('accentColor', e.target.value)}
-                      style={{ width: 40, height: 40, border: 'none', borderRadius: 8, cursor: 'pointer', padding: 2, background: 'var(--surface)', flexShrink: 0 }}
-                    />
-                    <input
-                      type="text"
-                      className="filter-input"
-                      value={settings.accentColor || '#3B82F6'}
-                      onChange={(e) => updateSetting('accentColor', e.target.value)}
-                      style={{ width: 90, flex: 1, minWidth: 0, fontFamily: 'monospace', fontSize: 12 }}
-                      maxLength={7}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Live preview bar */}
-            <div style={{ marginTop: 16, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>معاينة الأزرار والشارات:</div>
-              <button type="button" style={{
-                padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'default',
-                background: settings.primaryColor || '#1877F2',
-                color: '#fff', fontFamily: 'Cairo', fontWeight: 700, fontSize: 12,
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-              }}>
-                زر تجريبي
-              </button>
-              <div style={{ padding: '3px 10px', borderRadius: 16, background: '#F1F5F9', color: '#0F172A', fontSize: 11, fontWeight: 700, border: '1px solid #E2E8F0' }}>
-                شارة حالة نشطة
-              </div>
-            </div>
-          </div>
 
           {/* Section 4: Custom Domain & DNS Settings */}
           <div className="panel">
