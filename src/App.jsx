@@ -39,6 +39,7 @@ import { isFirstLogin, markFirstLoginDone, seedDemoData } from './utils/seedDemo
 import { loadCompanySettings, applyCompanyBranding, COMPANY_SETTINGS_KEY } from './utils/branding';
 import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, loadAllTenants, loadAllTenantsAsync, isSubAccountsLoginAllowed } from './services/tenantsManager';
 import { syncProjectsToCloud, syncSingleProjectToCloud, deleteSingleProjectFromCloud, syncTeamToCloud, syncLeadsToCloud, subscribeToCloudProjects, cleanUpInvalidDocs, sanitizeProjectForCloud, mergeProjectsPreservingLocal, syncSettingsToCloud } from './services/cloudSync';
+import { parseClientPortalFromUrl, resolveClientPortalProject } from './services/portalResolver';
 
 function PageLoadingFallback() {
   return (
@@ -213,6 +214,12 @@ export default function App() {
   const [view, setView] = useState("list"); // list | detail | form
   const [activeId, setActiveId] = useState(null);
   const [activeClientPortalProjectId, setActiveClientPortalProjectId] = useState(null);
+
+  // Public Client Portal Route State (Accessible without login from any browser/device)
+  const [portalRouteInfo, setPortalRouteInfo] = useState(() => parseClientPortalFromUrl());
+  const [publicPortalProject, setPublicPortalProject] = useState(null);
+  const [publicPortalCompanySettings, setPublicPortalCompanySettings] = useState(null);
+  const [portalLoading, setPortalLoading] = useState(() => !!parseClientPortalFromUrl());
   const [formInitial, setFormInitial] = useState(null); // null=new, object=edit
   const [initialProjectSub, setInitialProjectSub] = useState(null);
   const [saveState, setSaveState] = useState(null); // null | 'saved' | 'offline'
@@ -333,6 +340,50 @@ export default function App() {
         setTimeout(preload, 250);
       }
     }
+  }, []);
+
+  // التحميل الفوري لبوابة العميل العامة عند فتح رابط /portal/:id
+  useEffect(() => {
+    if (!portalRouteInfo) {
+      setPortalLoading(false);
+      return;
+    }
+    let isCancelled = false;
+
+    async function loadPortal() {
+      setPortalLoading(true);
+      try {
+        const resolved = await resolveClientPortalProject(
+          portalRouteInfo.projectId,
+          portalRouteInfo.companyId
+        );
+        if (!isCancelled && resolved?.project) {
+          setPublicPortalProject(resolved.project);
+          if (resolved.companySettings) {
+            setPublicPortalCompanySettings(resolved.companySettings);
+            applyCompanyBranding(resolved.companySettings);
+          }
+        }
+      } catch (err) {
+        console.warn('[App] Failed to load public portal project:', err);
+      } finally {
+        if (!isCancelled) {
+          setPortalLoading(false);
+        }
+      }
+    }
+
+    loadPortal();
+    return () => { isCancelled = true; };
+  }, [portalRouteInfo]);
+
+  // الاستماع لتغيير الروابط وأزرار الرجوع/التقدم بالمتصفح
+  useEffect(() => {
+    const handlePopState = () => {
+      setPortalRouteInfo(parseClientPortalFromUrl());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   // Company Tenant Scoped ID
@@ -741,6 +792,47 @@ export default function App() {
     }
     return projects;
   }, [projects, userRole, currentUser]);
+
+  // ─── 0. PUBLIC CLIENT PORTAL VIEW (Bypasses Login and Landing Page!) ───
+  if (portalRouteInfo) {
+    if (portalLoading) {
+      return (
+        <div className="app-root" style={{ alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#0F172A" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+            <div style={{ width: 44, height: 44, borderRadius: "50%", border: "3px solid rgba(255,255,255,0.15)", borderTopColor: "#10B981", animation: "spin 0.8s linear infinite" }}></div>
+            <div style={{ color: "#F8FAFC", fontFamily: "Cairo", fontSize: 16, fontWeight: 700 }}>
+              جاري فتح بوابة العميل والمتابعة الحية للموقع... 🏛️
+            </div>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        </div>
+      );
+    }
+
+    if (publicPortalProject) {
+      return (
+        <React.Suspense fallback={<PageLoadingFallback />}>
+          <ClientPortal
+            project={publicPortalProject}
+            companySettings={publicPortalCompanySettings || companySettings}
+            userRole="client"
+            currentUser={{ role: 'client', name: publicPortalProject.client || 'العميل' }}
+            onBack={() => {
+              setPortalRouteInfo(null);
+              window.history.pushState(null, '', '/');
+            }}
+            onUpdateProject={async (id, patch) => {
+              setPublicPortalProject(prev => prev ? { ...prev, ...patch } : prev);
+              const cId = portalRouteInfo.companyId || publicPortalProject.companyId || activeCompanyId;
+              try {
+                await syncSingleProjectToCloud(cId, id, patch);
+              } catch (e) {}
+            }}
+          />
+        </React.Suspense>
+      );
+    }
+  }
 
   if (!isAuthenticated) {
     if (!isLoginMode) {

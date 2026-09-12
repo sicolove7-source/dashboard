@@ -18,9 +18,10 @@ export default function ClientPortal({
   userRole = 'engineer',
   currentUser = null,
 }) {
-  // فحص صلاحية المستخدم: إذا كان مهندساً أو لا يملك صلاحية المالية، يتم تقييده حصرياً للمراحل والصور والتقارير فقط
-  const isEngineerUser = isEngineer(currentUser || userRole) || userRole === 'engineer' || !can(currentUser || userRole, 'finance_view');
-  const isOwnerUser = isOwner(currentUser || userRole) || can(currentUser || userRole, 'finance_view');
+  // فحص صفة المستخدم: العميل يرى كافة تفاصيل مشروعه بما فيها الحسابات والدفعات والعقد للتوقيع
+  const isClientRole = userRole === 'client' || (!currentUser && !userRole);
+  const isEngineerUser = !isClientRole && (isEngineer(currentUser || userRole) || userRole === 'engineer' || !can(currentUser || userRole, 'finance_view'));
+  const isOwnerUser = !isClientRole && (isOwner(currentUser || userRole) || can(currentUser || userRole, 'finance_view'));
   const [ownerPreviewEngineer, setOwnerPreviewEngineer] = useState(false);
 
   // وضع العرض المقيد للمهندس (مراحل التنفيذ + صور وتقارير الموقع فقط)
@@ -239,7 +240,7 @@ export default function ClientPortal({
               className="btn"
               style={{ padding: "8px 14px", fontSize: 13, gap: 6, background: "rgba(0,0,0,0.05)" }}
             >
-              <ArrowRight size={15} /> العودة للإدارة
+              <ArrowRight size={15} /> {isClientRole ? "الرئيسية" : "العودة للإدارة"}
             </button>
           )}
 

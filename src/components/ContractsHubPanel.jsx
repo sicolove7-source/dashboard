@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { getGlobalCurrency } from '../utils/helpers';
 import { openWhatsApp } from '../utils/whatsappTemplates';
+import { syncSingleProjectToCloud } from '../services/cloudSync';
 
 export default function ContractsHubPanel({
   project,
@@ -19,11 +20,13 @@ export default function ContractsHubPanel({
   const currency = getGlobalCurrency();
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // Generate public client portal URL
-  const portalUrl = `${window.location.origin}/portal/${project.id}`;
+  // Generate public client portal URL with company hint for instant lookup on any device
+  const companyId = project.companyId || currentUser?.companyId || 'comp_alain';
+  const portalUrl = `${window.location.origin}/portal/${project.id}?c=${companyId}`;
 
   const handleCopyLink = () => {
     try {
+      syncSingleProjectToCloud(companyId, project.id, project).catch(() => {});
       navigator.clipboard.writeText(portalUrl);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2500);
@@ -33,6 +36,7 @@ export default function ContractsHubPanel({
   };
 
   const handleSharePortalWhatsApp = () => {
+    syncSingleProjectToCloud(companyId, project.id, project).catch(() => {});
     const cleanPhone = (project.clientPhone || '').replace(/\D/g, '');
     const clientName = project.client || 'عميلنا العزيز';
     const msg = `السلام عليكم ورحمة الله وبركاته أ. *${clientName}* 🌸\n` +
