@@ -737,7 +737,7 @@ function DiaryPanel({ project, team, onUpdate }) {
   const authorOptions = Array.from(new Set([...engineerList, ...techOfficeList, project.engineer].filter(Boolean)));
   
   const defaultAuthor = project.engineer || authorOptions[0] || "";
-  const [form, setForm] = useState({ date: todayISO(), time: nowTimeISO(), author: defaultAuthor, work: "", issues: "", workers: 5 });
+  const [form, setForm] = useState({ date: todayISO(), author: defaultAuthor, work: "", issues: "", workers: 5 });
   const [mediaList, setMediaList] = useState([]); // [{ src, type: 'image' | 'video', name }]
   const [previewModal, setPreviewModal] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
@@ -828,7 +828,7 @@ function DiaryPanel({ project, team, onUpdate }) {
         type: 'image'
       }));
 
-    const logTime = form.time || nowTimeISO();
+    const logTime = nowTimeISO();
     const newLog = {
       ...form,
       time: logTime,
@@ -862,7 +862,7 @@ function DiaryPanel({ project, team, onUpdate }) {
 
     onUpdate(patch);
     const currentDefault = project.engineer || authorOptions[0] || "";
-    setForm({ date: todayISO(), time: nowTimeISO(), author: currentDefault, work: "", issues: "", workers: 5 });
+    setForm({ date: todayISO(), author: currentDefault, work: "", issues: "", workers: 5 });
     setMediaList([]);
   }
 
@@ -951,10 +951,6 @@ function DiaryPanel({ project, team, onUpdate }) {
           <div className="form-field">
             <label>التاريخ</label>
             <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-          </div>
-          <div className="form-field">
-            <label>وقت التوثيق</label>
-            <input type="time" value={form.time || nowTimeISO()} onChange={(e) => setForm({ ...form, time: e.target.value })} />
           </div>
           <div className="form-field">
             <label>مُسجل اليومية</label>

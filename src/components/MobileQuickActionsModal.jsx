@@ -21,8 +21,6 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
 
   // ─── Daily Log State (اليوميات) ───
   const [logTab, setLogTab] = useState('add'); // 'add' | 'list'
-  const [logDate, setLogDate] = useState(todayISO());
-  const [logTime, setLogTime] = useState(nowTimeISO());
   const [logWork, setLogWork] = useState('');
   const [logWorkers, setLogWorkers] = useState(4);
   const [logIssues, setLogIssues] = useState('');
@@ -156,8 +154,8 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
     e.preventDefault();
     if (!activeProject || !logWork.trim()) return;
     setSaving(true);
-    const today = logDate || todayISO();
-    const timeVal = logTime || nowTimeISO();
+    const today = todayISO();
+    const timeVal = nowTimeISO();
 
     const mediaToSave = logMedia ? {
       id: logMedia.id,
@@ -208,8 +206,6 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
     setLogIssues('');
     setLogMedia(null);
     setLogMediaCaption('');
-    setLogDate(todayISO());
-    setLogTime(nowTimeISO());
     // Switch to list tab so user immediately sees their log with the photo/video!
     setLogTab('list');
     showToast('تم تسجيل اليومية الميدانية وحفظ التوثيق بنجاح! 📋');
@@ -579,36 +575,6 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                           fontFamily: "'Cairo'", fontSize: 13.5, resize: 'none', boxSizing: 'border-box'
                         }}
                       />
-                    </div>
-
-                    {/* تاريخ ووقت التوثيق */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 5 }}>تاريخ التوثيق:</label>
-                        <input
-                          type="date"
-                          value={logDate}
-                          onChange={e => setLogDate(e.target.value)}
-                          style={{
-                            width: '100%', minHeight: 42, padding: '8px 10px', borderRadius: 10,
-                            border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
-                            fontFamily: "'Cairo'", fontSize: 13, boxSizing: 'border-box'
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 5 }}>وقت التوثيق:</label>
-                        <input
-                          type="time"
-                          value={logTime}
-                          onChange={e => setLogTime(e.target.value)}
-                          style={{
-                            width: '100%', minHeight: 42, padding: '8px 10px', borderRadius: 10,
-                            border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
-                            fontFamily: "'Cairo'", fontSize: 13, boxSizing: 'border-box'
-                          }}
-                        />
-                      </div>
                     </div>
 
                     {/* عدد العمالة والمعوقات */}
