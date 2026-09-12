@@ -4,7 +4,7 @@ import {
   FileText, ArrowRight, BarChart3, X, Save, Target, ClipboardList, Package, HardHat
 } from 'lucide-react';
 import { STAGES } from '../utils/constants';
-import { fmtDate, todayISO, compressImageFile } from '../utils/helpers';
+import { fmtDate, todayISO, nowTimeISO, fmtTime, fmtDateTime, compressImageFile } from '../utils/helpers';
 import { saveMediaBlob, createMicroThumbnail } from '../utils/mediaStorage';
 import { uploadMediaToFirebaseStorage } from '../services/cloudSync';
 import MediaThumbnail from '../components/MediaThumbnail';
@@ -218,7 +218,14 @@ function TodayPanel({ project, currentUser, onUpdate }) {
       caption: p.caption || '',
       date: p.date || today
     }));
-    const newLog = { ...form, id: todayLog?.id || ('d' + Date.now()), workers: Number(form.workers), photos: safePhotos };
+    const newLog = { 
+      ...form, 
+      time: form.time || nowTimeISO(),
+      timestamp: new Date().toISOString(),
+      id: todayLog?.id || ('d' + Date.now()), 
+      workers: Number(form.workers), 
+      photos: safePhotos 
+    };
     onUpdate({ dailyLogs: [newLog, ...logs.filter(l => l.date !== today)] });
     setTimeout(() => { setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000); }, 400);
   }
@@ -416,8 +423,15 @@ function DiaryPanel({ project }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {logs.map(l => (
             <div key={l.id} style={{ border: '1px solid var(--border)', borderRadius: 14, padding: '18px 20px', background: 'var(--card)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                <div style={{ background: 'rgba(99,102,241,0.1)', color: '#6366F1', padding: '4px 12px', borderRadius: 8, fontWeight: 700, fontSize: 13 }}>{fmtDate(l.date)}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(99,102,241,0.1)', color: '#6366F1', padding: '4px 12px', borderRadius: 8, fontWeight: 700, fontSize: 13 }}>
+                  <span>📅 {fmtDate(l.date)}</span>
+                  {(l.time || l.timestamp) && (
+                    <span style={{ fontSize: 11.5, borderRight: '1px solid rgba(99,102,241,0.3)', paddingRight: 6, marginRight: 2 }}>
+                      ⏰ {fmtTime(l.time, l.timestamp)}
+                    </span>
+                  )}
+                </div>
                 <span style={{ fontSize: 13, color: 'var(--muted)' }}>{l.author} &bull; <span style={{ color: '#10B981', fontWeight: 700 }}>{l.workers} عامل</span></span>
               </div>
               <div style={{ fontSize: 15, color: 'var(--ink)', lineHeight: 1.7 }}>{l.work}</div>

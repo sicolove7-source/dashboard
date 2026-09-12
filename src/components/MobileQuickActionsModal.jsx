@@ -5,7 +5,7 @@ import {
   AlertCircle, AlertTriangle, Play, Eye
 } from 'lucide-react';
 import VoiceInput from './VoiceInput';
-import { todayISO, fmtDate, compressImageFile } from '../utils/helpers';
+import { todayISO, nowTimeISO, fmtDate, fmtTime, fmtDateTime, compressImageFile } from '../utils/helpers';
 import { uploadMediaToFirebaseStorage } from '../services/cloudSync';
 import { saveMediaBlob, createMicroThumbnail } from '../utils/mediaStorage';
 import MediaThumbnail from './MediaThumbnail';
@@ -21,6 +21,8 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
 
   // ─── Daily Log State (اليوميات) ───
   const [logTab, setLogTab] = useState('add'); // 'add' | 'list'
+  const [logDate, setLogDate] = useState(todayISO());
+  const [logTime, setLogTime] = useState(nowTimeISO());
   const [logWork, setLogWork] = useState('');
   const [logWorkers, setLogWorkers] = useState(4);
   const [logIssues, setLogIssues] = useState('');
@@ -154,7 +156,8 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
     e.preventDefault();
     if (!activeProject || !logWork.trim()) return;
     setSaving(true);
-    const today = todayISO();
+    const today = logDate || todayISO();
+    const timeVal = logTime || nowTimeISO();
 
     const mediaToSave = logMedia ? {
       id: logMedia.id,
@@ -168,6 +171,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
     const newLog = {
       id: 'd_' + Date.now(),
       date: today,
+      time: timeVal,
       author: 'مهندس الموقع (ميداني)',
       work: logWork.trim(),
       issues: logIssues.trim(),
@@ -204,6 +208,8 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
     setLogIssues('');
     setLogMedia(null);
     setLogMediaCaption('');
+    setLogDate(todayISO());
+    setLogTime(nowTimeISO());
     // Switch to list tab so user immediately sees their log with the photo/video!
     setLogTab('list');
     showToast('تم تسجيل اليومية الميدانية وحفظ التوثيق بنجاح! 📋');
@@ -575,6 +581,36 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                       />
                     </div>
 
+                    {/* تاريخ ووقت التوثيق */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 5 }}>تاريخ التوثيق:</label>
+                        <input
+                          type="date"
+                          value={logDate}
+                          onChange={e => setLogDate(e.target.value)}
+                          style={{
+                            width: '100%', minHeight: 42, padding: '8px 10px', borderRadius: 10,
+                            border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
+                            fontFamily: "'Cairo'", fontSize: 13, boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 5 }}>وقت التوثيق:</label>
+                        <input
+                          type="time"
+                          value={logTime}
+                          onChange={e => setLogTime(e.target.value)}
+                          style={{
+                            width: '100%', minHeight: 42, padding: '8px 10px', borderRadius: 10,
+                            border: '1.5px solid var(--border)', background: 'transparent', color: 'var(--ink)',
+                            fontFamily: "'Cairo'", fontSize: 13, boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+                    </div>
+
                     {/* عدد العمالة والمعوقات */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
                       <div>
@@ -739,9 +775,16 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                             }}
                           >
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                              <span style={{ fontWeight: 800, fontSize: 13, color: 'var(--ink)' }}>
-                                📅 {fmtDate(log.date)}
-                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <span style={{ fontWeight: 800, fontSize: 13, color: 'var(--ink)' }}>
+                                  📅 {fmtDate(log.date)}
+                                </span>
+                                {(log.time || log.timestamp) && (
+                                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#059669', background: 'rgba(5,150,105,0.1)', padding: '2px 7px', borderRadius: 6 }}>
+                                    ⏰ {fmtTime(log.time, log.timestamp)}
+                                  </span>
+                                )}
+                              </div>
                               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                                 <span style={{ fontSize: 11, color: '#10B981', fontWeight: 700, background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: 6 }}>
                                   👷 {log.workers || 1} عمال

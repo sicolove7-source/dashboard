@@ -41,6 +41,45 @@ export const fmtDate = (d) => {
 };
 export const todayISO = () => new Date().toISOString().slice(0, 10);
 
+export const nowTimeISO = () => {
+  const d = new Date();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
+export const fmtTime = (t, timestamp) => {
+  if (t) {
+    if (/^\d{1,2}:\d{2}/.test(t)) {
+      const [h, m] = t.split(':').map(Number);
+      const period = h >= 12 ? 'م' : 'ص';
+      const hour12 = h % 12 || 12;
+      const minStr = String(m).padStart(2, '0');
+      return `${hour12}:${minStr} ${period}`;
+    }
+    return t;
+  }
+  if (timestamp) {
+    const d = new Date(timestamp);
+    if (!isNaN(d.getTime())) {
+      const hours = d.getHours();
+      const minutes = d.getMinutes();
+      const period = hours >= 12 ? 'م' : 'ص';
+      const hour12 = hours % 12 || 12;
+      const minStr = String(minutes).padStart(2, '0');
+      return `${hour12}:${minStr} ${period}`;
+    }
+  }
+  return '';
+};
+
+export const fmtDateTime = (date, time, timestamp) => {
+  const datePart = fmtDate(date);
+  const timePart = fmtTime(time, timestamp);
+  if (timePart) return `${datePart} • ${timePart}`;
+  return datePart;
+};
+
 export function currentStageKey(progress) {
   let cum = 0;
   for (const s of STAGES) { 

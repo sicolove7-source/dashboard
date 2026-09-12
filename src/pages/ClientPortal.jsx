@@ -4,7 +4,7 @@ import {
   CreditCard, MessageCircle, Phone, Calendar, ArrowRight, Check, AlertTriangle,
   Award, Sparkles, Download, PenTool, Eye, X, ZoomIn, Camera, ClipboardList
 } from "lucide-react";
-import { getGlobalCurrency } from "../utils/helpers";
+import { getGlobalCurrency, fmtDate, fmtTime } from "../utils/helpers";
 import SignaturePad from "../components/SignaturePad";
 import MediaThumbnail from "../components/MediaThumbnail";
 import { openWhatsApp, WHATSAPP_TEMPLATES } from "../utils/whatsappTemplates";
@@ -571,8 +571,15 @@ export default function ClientPortal({
                               <Calendar size={16} />
                             </div>
                             <div>
-                              <span style={{ fontWeight: 800, fontSize: 14 }}>تقرير يوم: {log.date}</span>
-                              <div style={{ fontSize: 11, color: "var(--muted)" }}>المشرف: {log.author || project?.engineer}</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                <span style={{ fontWeight: 800, fontSize: 14 }}>تقرير يوم: {fmtDate(log.date)}</span>
+                                {(log.time || log.timestamp) && (
+                                  <span style={{ fontSize: 11.5, fontWeight: 700, color: "#1877F2", background: "rgba(24,119,242,0.08)", padding: "2px 7px", borderRadius: 6 }}>
+                                    ⏰ {fmtTime(log.time, log.timestamp)}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>المشرف: {log.author || project?.engineer}</div>
                             </div>
                           </div>
 

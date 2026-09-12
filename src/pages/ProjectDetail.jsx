@@ -4,7 +4,7 @@ import StatusBadge from '../components/StatusBadge';
 
 import StampRing from '../components/StampRing';
 import { STAGES, ENGINEERS, TECH_OFFICE } from '../utils/constants';
-import { fmtDate, todayISO, compressImageFile } from '../utils/helpers';
+import { fmtDate, todayISO, nowTimeISO, fmtTime, fmtDateTime, compressImageFile } from '../utils/helpers';
 import { uploadMediaToFirebaseStorage } from '../services/cloudSync';
 import { saveMediaBlob, createMicroThumbnail } from '../utils/mediaStorage';
 import MediaThumbnail from '../components/MediaThumbnail';
@@ -737,7 +737,7 @@ function DiaryPanel({ project, team, onUpdate }) {
   const authorOptions = Array.from(new Set([...engineerList, ...techOfficeList, project.engineer].filter(Boolean)));
   
   const defaultAuthor = project.engineer || authorOptions[0] || "";
-  const [form, setForm] = useState({ date: todayISO(), author: defaultAuthor, work: "", issues: "", workers: 5 });
+  const [form, setForm] = useState({ date: todayISO(), time: nowTimeISO(), author: defaultAuthor, work: "", issues: "", workers: 5 });
   const [mediaList, setMediaList] = useState([]); // [{ src, type: 'image' | 'video', name }]
   const [previewModal, setPreviewModal] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
@@ -828,8 +828,10 @@ function DiaryPanel({ project, team, onUpdate }) {
         type: 'image'
       }));
 
+    const logTime = form.time || nowTimeISO();
     const newLog = {
       ...form,
+      time: logTime,
       id: "d_" + Date.now() + "_" + Math.random().toString(36).substr(2, 4),
       workers: Number(form.workers) || 1,
       photos: safePhotos,
@@ -860,7 +862,7 @@ function DiaryPanel({ project, team, onUpdate }) {
 
     onUpdate(patch);
     const currentDefault = project.engineer || authorOptions[0] || "";
-    setForm({ date: todayISO(), author: currentDefault, work: "", issues: "", workers: 5 });
+    setForm({ date: todayISO(), time: nowTimeISO(), author: currentDefault, work: "", issues: "", workers: 5 });
     setMediaList([]);
   }
 
@@ -949,6 +951,10 @@ function DiaryPanel({ project, team, onUpdate }) {
           <div className="form-field">
             <label>التاريخ</label>
             <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+          </div>
+          <div className="form-field">
+            <label>وقت التوثيق</label>
+            <input type="time" value={form.time || nowTimeISO()} onChange={(e) => setForm({ ...form, time: e.target.value })} />
           </div>
           <div className="form-field">
             <label>مُسجل اليومية</label>
@@ -1047,7 +1053,14 @@ function DiaryPanel({ project, team, onUpdate }) {
                 <div key={l.id} className="diary-log-card">
                   <div className="diary-log-header">
                     <div className="diary-log-meta">
-                      <span className="diary-date-badge font-mono">{fmtDate(l.date)}</span>
+                      <span className="diary-date-badge font-mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <span>📅 {fmtDate(l.date)}</span>
+                        {(l.time || l.timestamp) && (
+                          <span style={{ opacity: 0.9, borderRight: '1px solid rgba(255,255,255,0.35)', paddingRight: 6, marginRight: 2 }}>
+                            ⏰ {fmtTime(l.time, l.timestamp)}
+                          </span>
+                        )}
+                      </span>
                       <span className="diary-author-text">{l.author}</span>
                       <span className="diary-workers-badge">{l.workers} عامل بالموقع</span>
                     </div>
