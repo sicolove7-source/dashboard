@@ -323,6 +323,83 @@ export function mergeProjectsPreservingLocal(localProjects, incomingProjects) {
 }
 
 /**
+ * دمج آمن لقوائم فريق العمل (مهندسون، محاسبون، مكتب فني، خدمة عملاء)
+ * يضمن عدم ضياع أي عضو أضيف محلياً أو سحابياً أو عبر إدارة المستخدمين
+ */
+export function mergeTeamsPreservingLocal(localTeam, cloudTeam, companyUsers = []) {
+  const groups = ['engineers', 'accountants', 'techOffice', 'customerService'];
+  const result = {
+    engineers: [],
+    accountants: [],
+    techOffice: [],
+    customerService: []
+  };
+
+  const extractName = (item) => {
+    if (typeof item === 'string') return item.trim();
+    if (item && typeof item === 'object' && item.name) return item.name.trim();
+    return '';
+  };
+
+  groups.forEach(g => {
+    const localList = Array.isArray(localTeam?.[g]) ? localTeam[g] : [];
+    const cloudList = Array.isArray(cloudTeam?.[g]) ? cloudTeam[g] : [];
+
+    const namesSet = new Set();
+    localList.forEach(item => {
+      const n = extractName(item);
+      if (n) namesSet.add(n);
+    });
+    cloudList.forEach(item => {
+      const n = extractName(item);
+      if (n) namesSet.add(n);
+    });
+
+    result[g] = Array.from(namesSet);
+  });
+
+  if (Array.isArray(companyUsers)) {
+    const roleMap = {
+      engineer: 'engineers',
+      accountant: 'accountants',
+      tech_office: 'techOffice',
+      customer_service: 'customerService'
+    };
+    companyUsers.forEach(u => {
+      const g = roleMap[u.role];
+      if (g) {
+        const name = (u.role === 'engineer' ? (u.engineerName || u.name) : u.name || '').trim();
+        if (name && !result[g].includes(name)) {
+          result[g].push(name);
+        }
+      }
+    });
+  }
+
+  return result;
+}
+
+/**
+ * دمج حسابات مستخدمي الشركة مع الحفاظ على التعديلات والمستخدمين الجدد
+ */
+export function mergeUsersPreservingLocal(localUsers, cloudUsers) {
+  const usersMap = new Map();
+  (Array.isArray(cloudUsers) ? cloudUsers : []).forEach(u => {
+    if (u && (u.id || u.email)) {
+      const key = (u.email || u.id).toLowerCase().trim();
+      usersMap.set(key, u);
+    }
+  });
+  (Array.isArray(localUsers) ? localUsers : []).forEach(u => {
+    if (u && (u.id || u.email)) {
+      const key = (u.email || u.id).toLowerCase().trim();
+      usersMap.set(key, { ...(usersMap.get(key) || {}), ...u });
+    }
+  });
+  return Array.from(usersMap.values());
+}
+
+/**
  * ترحيل تلقائي صامت للمشاريع القديمة المسجلة في وثيقة الشركة إلى الـ Sub-collection
  */
 export async function migrateLegacyProjectsToSubcollection(companyId, projects) {

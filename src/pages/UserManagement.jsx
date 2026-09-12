@@ -9,7 +9,7 @@ import {
   CUSTOMIZABLE_NAV_TABS, CUSTOMIZABLE_ACTIONS
 } from '../utils/permissions';
 import { getActiveTenantId } from '../services/tenantsManager';
-import { syncCompanyUsersToCloud } from '../services/cloudSync';
+import { syncCompanyUsersToCloud, syncTeamToCloud } from '../services/cloudSync';
 
 // أدوار الشركة المشتركة فقط (استبعاد Super Admin الخاص بالمنصة)
 const COMPANY_ROLES = Object.fromEntries(
@@ -65,6 +65,36 @@ export function saveUsers(users, companyId) {
   try { localStorage.setItem(key, JSON.stringify(users)); } catch (e) {}
 }
 
+export function mergeTeamWithUsers(teamObj, companyUsers) {
+  const base = teamObj || { engineers: [], accountants: [], techOffice: [], customerService: [] };
+  if (!Array.isArray(companyUsers)) return base;
+
+  const merged = {
+    engineers: [...(base.engineers || [])],
+    accountants: [...(base.accountants || [])],
+    techOffice: [...(base.techOffice || [])],
+    customerService: [...(base.customerService || [])]
+  };
+
+  companyUsers.forEach(u => {
+    if (u.role === 'engineer') {
+      const name = (u.engineerName || u.name || '').trim();
+      if (name && !merged.engineers.includes(name)) merged.engineers.push(name);
+    } else if (u.role === 'accountant') {
+      const name = (u.name || '').trim();
+      if (name && !merged.accountants.includes(name)) merged.accountants.push(name);
+    } else if (u.role === 'tech_office') {
+      const name = (u.name || '').trim();
+      if (name && !merged.techOffice.includes(name)) merged.techOffice.push(name);
+    } else if (u.role === 'customer_service') {
+      const name = (u.name || '').trim();
+      if (name && !merged.customerService.includes(name)) merged.customerService.push(name);
+    }
+  });
+
+  return merged;
+}
+
 /* ────────────────────────────────────────────────────────────
    Role Icon & Color Helper
 ──────────────────────────────────────────────────────────── */
@@ -108,7 +138,7 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
   const [form, setForm] = useState({
     name: user?.name || '',
     email: user?.email || '',
-    password: user?.password || '',
+    password: user?.password || '123456',
     role: initialRole,
     engineerName: user?.engineerName || '',
   });
@@ -134,12 +164,21 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
   function validate() {
     const e = {};
     if (!form.name.trim()) e.name = 'الاسم مطلوب';
-    if (!form.email.trim()) e.email = 'البريد مطلوب';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = 'بريد إلكتروني غير صحيح';
-    else if (!isEdit && existingEmails.includes(form.email.toLowerCase().trim())) e.email = 'هذا البريد مستخدم بالفعل';
-    if (!form.password || form.password.length < 4) e.password = 'كلمة المرور 4 أحرف على الأقل';
-    const effectiveEngName = (form.engineerName || form.name).trim();
-    if (form.role === 'engineer' && !effectiveEngName) e.engineerName = 'اسم المهندس مطلوب لربطه بالمشاريع';
+
+    let checkEmail = form.email.trim();
+    if (!checkEmail) {
+      const translit = form.name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || ('user' + Date.now().toString().slice(-4));
+      checkEmail = `${translit}@company.com`;
+    } else if (!checkEmail.includes('@')) {
+      checkEmail = `${checkEmail.toLowerCase()}@company.com`;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(checkEmail)) {
+      e.email = 'يرجى كتابة بريد إلكتروني صالح (مثال: name@company.com)';
+    } else if (!isEdit && existingEmails.includes(checkEmail.toLowerCase())) {
+      e.email = 'هذا البريد مستخدم بالفعل، يرجى كتابة بريد آخر';
+    }
+
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -191,13 +230,24 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
 
   function handleSave() {
     if (!validate()) return;
+    
+    let cleanEmail = form.email.trim().toLowerCase();
+    if (!cleanEmail) {
+      const translit = form.name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || ('user' + Date.now().toString().slice(-4));
+      cleanEmail = `${translit}@company.com`;
+    } else if (!cleanEmail.includes('@')) {
+      cleanEmail = `${cleanEmail}@company.com`;
+    }
+
+    const finalPassword = (form.password && form.password.trim().length >= 4) ? form.password.trim() : '123456';
     const effectiveEngName = form.role === 'engineer' ? ((form.engineerName || form.name).trim()) : null;
+
     onSave({
       ...(user || {}),
       id: user?.id || 'u_' + Date.now(),
       name: form.name.trim(),
-      email: form.email.toLowerCase().trim(),
-      password: form.password,
+      email: cleanEmail,
+      password: finalPassword,
       role: form.role,
       engineerName: effectiveEngName,
       hasCustomPermissions: isCustom,
@@ -251,6 +301,23 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
 
         {/* Fields */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {Object.keys(errors).length > 0 && (
+            <div style={{
+              background: 'rgba(239,68,68,0.1)',
+              color: '#EF4444',
+              border: '1px solid rgba(239,68,68,0.25)',
+              borderRadius: 10,
+              padding: '10px 14px',
+              fontSize: 12.5,
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}>
+              <AlertTriangle size={16} />
+              <span>يرجى استكمال البيانات المطلوبة: {Object.values(errors).join(' • ')}</span>
+            </div>
+          )}
 
           <Field label="الاسم الكامل *" error={errors.name}>
             <input
@@ -610,7 +677,7 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
 /* ────────────────────────────────────────────────────────────
    Main Component
 ──────────────────────────────────────────────────────────── */
-export default function UserManagement({ currentUser, companyId }) {
+export default function UserManagement({ currentUser, companyId, team, onTeamChange }) {
   const activeCompId = companyId || currentUser?.companyId || getActiveTenantId() || 'comp_alain';
   const [users, setUsers] = useState(() => loadUsers(activeCompId));
   const [modal, setModal] = useState(null); // null | 'add' | user object for edit
@@ -637,22 +704,86 @@ export default function UserManagement({ currentUser, companyId }) {
 
   function handleSaveUser(userData) {
     const userWithComp = { ...userData, companyId: activeCompId };
+    let nextUsers;
     if (userData.id && users.find(u => u.id === userData.id)) {
       // Edit
-      persist(users.map(u => u.id === userData.id ? userWithComp : u));
+      nextUsers = users.map(u => u.id === userData.id ? userWithComp : u);
     } else {
-      // Add
-      persist([...users, userWithComp]);
+      // Add (add to top of list for instant visibility)
+      nextUsers = [userWithComp, ...users];
+      setFilterRole('all');
     }
+    persist(nextUsers);
+
+    // ── مزامنة فورية وتلقائية مع فريق العمل (team) ──
+    try {
+      const roleToGroup = {
+        engineer: 'engineers',
+        accountant: 'accountants',
+        tech_office: 'techOffice',
+        customer_service: 'customerService',
+      };
+      const group = roleToGroup[userData.role];
+      if (group) {
+        const memberName = (userData.role === 'engineer' ? (userData.engineerName || userData.name) : userData.name).trim();
+        const teamKey = `tenant_${activeCompId}_team`;
+        const rawTeam = localStorage.getItem(teamKey);
+        const currentTeam = team || (rawTeam ? JSON.parse(rawTeam) : { engineers: [], accountants: [], techOffice: [], customerService: [] });
+        const list = currentTeam[group] || [];
+        if (memberName && !list.includes(memberName)) {
+          const updatedTeam = {
+            ...currentTeam,
+            [group]: [memberName, ...list]
+          };
+          localStorage.setItem(teamKey, JSON.stringify(updatedTeam));
+          try { syncTeamToCloud(activeCompId, updatedTeam).catch(() => {}); } catch (e) {}
+          onTeamChange?.(updatedTeam);
+        }
+      }
+    } catch (err) {
+      console.warn("Auto sync user to team error:", err);
+    }
+
     setModal(null);
   }
 
   function handleDelete(id) {
-    if (id === currentUser?.id || users.find(u => u.id === id)?.email === currentUser?.email) {
+    const target = users.find(u => u.id === id);
+    if (id === currentUser?.id || target?.email === currentUser?.email) {
       alert('لا يمكن حذف حسابك الخاص!');
       return;
     }
-    persist(users.filter(u => u.id !== id));
+    const nextUsers = users.filter(u => u.id !== id);
+    persist(nextUsers);
+
+    // أيضاً مزامنة الحذف من فريق العمل إذا وجد
+    if (target) {
+      try {
+        const roleToGroup = {
+          engineer: 'engineers',
+          accountant: 'accountants',
+          tech_office: 'techOffice',
+          customer_service: 'customerService',
+        };
+        const group = roleToGroup[target.role];
+        if (group) {
+          const memberName = (target.role === 'engineer' ? (target.engineerName || target.name) : target.name).trim();
+          const teamKey = `tenant_${activeCompId}_team`;
+          const rawTeam = localStorage.getItem(teamKey);
+          const currentTeam = team || (rawTeam ? JSON.parse(rawTeam) : {});
+          if (memberName && (currentTeam[group] || []).includes(memberName)) {
+            const updatedTeam = {
+              ...currentTeam,
+              [group]: currentTeam[group].filter(n => n !== memberName)
+            };
+            localStorage.setItem(teamKey, JSON.stringify(updatedTeam));
+            try { syncTeamToCloud(activeCompId, updatedTeam).catch(() => {}); } catch (e) {}
+            onTeamChange?.(updatedTeam);
+          }
+        }
+      } catch (err) {}
+    }
+
     setDeleteId(null);
   }
 

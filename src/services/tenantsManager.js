@@ -23,6 +23,8 @@ import {
   fetchSuperAdminFromCloud,
   syncSuperAdminToCloud,
   mergeProjectsPreservingLocal,
+  mergeTeamsPreservingLocal,
+  mergeUsersPreservingLocal,
   sanitizeProjectForCloud,
 } from './cloudSync';
 
@@ -538,6 +540,8 @@ export function getTenantData(companyId) {
     }
     try { localStorage.setItem(`tenant_${companyId}_team`, JSON.stringify(team)); } catch (e) {}
   }
+  // مزامنة ودمج حسابات المستخدمين مع فريق العمل تلقائياً
+  team = mergeTeamsPreservingLocal(team, null, users);
 
   // 4. الـ CRM Leads
   let leads = null;
@@ -616,8 +620,9 @@ export async function getTenantDataAsync(companyId) {
       if (localSettings?.companyLogo && !cloudSettings?.companyLogo) {
         try { syncSettingsToCloud(companyId, settings); } catch (e) {}
       }
-      const users = Array.isArray(cloud.users) && cloud.users.length > 0 ? cloud.users : null;
-      const team = cloud.team || null;
+      const rawUsers = Array.isArray(cloud.users) && cloud.users.length > 0 ? cloud.users : null;
+      const mergedUsers = mergeUsersPreservingLocal(localFallback.users, rawUsers);
+      const mergedTeam = mergeTeamsPreservingLocal(localFallback.team, cloud.team, mergedUsers);
       const leads = Array.isArray(cloud.leads) ? cloud.leads : null;
       const subProjects = await fetchProjectsFromCloud(companyId);
       const cloudProjects = (Array.isArray(subProjects) && subProjects.length > 0)
@@ -628,8 +633,8 @@ export async function getTenantDataAsync(companyId) {
 
       // تحديث الـ LocalStorage Cache
       if (settings) try { localStorage.setItem(`tenant_${companyId}_settings`, JSON.stringify(settings)); } catch (e) {}
-      if (users) try { localStorage.setItem(`tenant_${companyId}_users`, JSON.stringify(users)); } catch (e) {}
-      if (team) try { localStorage.setItem(`tenant_${companyId}_team`, JSON.stringify(team)); } catch (e) {}
+      if (mergedUsers) try { localStorage.setItem(`tenant_${companyId}_users`, JSON.stringify(mergedUsers)); } catch (e) {}
+      if (mergedTeam) try { localStorage.setItem(`tenant_${companyId}_team`, JSON.stringify(mergedTeam)); } catch (e) {}
       if (leads) try { localStorage.setItem(`tenant_${companyId}_leads`, JSON.stringify(leads)); } catch (e) {}
       if (projects) {
         try {
@@ -643,8 +648,8 @@ export async function getTenantDataAsync(companyId) {
       return {
         tenant,
         settings,
-        users: users || localFallback.users,
-        team: team || localFallback.team,
+        users: mergedUsers,
+        team: mergedTeam,
         leads: leads || localFallback.leads,
         projects: projects || localFallback.projects,
       };

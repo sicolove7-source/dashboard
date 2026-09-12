@@ -38,7 +38,7 @@ import { isFirstLogin, markFirstLoginDone, seedDemoData } from './utils/seedDemo
 
 import { loadCompanySettings, applyCompanyBranding, COMPANY_SETTINGS_KEY } from './utils/branding';
 import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed } from './services/tenantsManager';
-import { syncProjectsToCloud, syncSingleProjectToCloud, deleteSingleProjectFromCloud, syncTeamToCloud, syncLeadsToCloud, subscribeToCloudProjects, cleanUpInvalidDocs, sanitizeProjectForCloud, mergeProjectsPreservingLocal, syncSettingsToCloud } from './services/cloudSync';
+import { syncProjectsToCloud, syncSingleProjectToCloud, deleteSingleProjectFromCloud, syncTeamToCloud, syncLeadsToCloud, subscribeToCloudProjects, cleanUpInvalidDocs, sanitizeProjectForCloud, mergeProjectsPreservingLocal, mergeTeamsPreservingLocal, syncSettingsToCloud } from './services/cloudSync';
 import { parseClientPortalFromUrl, resolveClientPortalProject } from './services/portalResolver';
 
 function PageLoadingFallback() {
@@ -416,7 +416,9 @@ export default function App() {
             return merged;
           });
         }
-        if (cloudData.team) setTeam(cloudData.team);
+        if (cloudData.team) {
+          setTeam(prev => mergeTeamsPreservingLocal(prev || localData.team, cloudData.team, cloudData.users || localData.users));
+        }
         if (Array.isArray(cloudData.leads)) setLeads(cloudData.leads);
         if (cloudData.settings) {
           const mergedSettings = {

@@ -8,9 +8,9 @@ import {
 
 import { setGlobalCurrency } from '../utils/helpers';
 import { getActiveTenantId } from '../services/tenantsManager';
-import { syncSettingsToCloud } from '../services/cloudSync';
+import { syncSettingsToCloud, syncCompanyUsersToCloud } from '../services/cloudSync';
 import AutomationsCenter from './AutomationsCenter';
-import UserManagement from './UserManagement';
+import UserManagement, { loadUsers, saveUsers } from './UserManagement';
 import {
   DEFAULT_COMPANY_SETTINGS,
   loadCompanySettings,
@@ -224,6 +224,42 @@ export default function CompanySettings({
     setTeamErrors(e => ({ ...e, [groupKey]: '' }));
     setTeamSuccess(s => ({ ...s, [groupKey]: `✓ تم إضافة ${name} بنجاح!` }));
     setTimeout(() => setTeamSuccess(s => ({ ...s, [groupKey]: '' })), 2500);
+
+    // مزامنة تلقائية لإنشاء حساب مستخدم لهذا العضو إذا لم يكن موجوداً
+    try {
+      const roleMap = {
+        engineers: 'engineer',
+        accountants: 'accountant',
+        techOffice: 'tech_office',
+        customerService: 'customer_service'
+      };
+      const userRole = roleMap[groupKey];
+      if (userRole) {
+        const existingUsers = loadUsers(activeCompanyId);
+        const alreadyHasUser = existingUsers.some(u => 
+          (u.name && u.name.trim() === name) || (u.engineerName && u.engineerName.trim() === name)
+        );
+        if (!alreadyHasUser) {
+          const translit = name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || ('user' + Date.now().toString().slice(-4));
+          const domain = settings.customDomain || (settings.subdomain ? `${settings.subdomain}.com` : 'company.com');
+          const autoEmail = `${translit}_${Date.now().toString().slice(-3)}@${domain}`;
+          const newUser = {
+            id: 'u_' + Date.now(),
+            name: name,
+            email: autoEmail,
+            password: '123456',
+            role: userRole,
+            engineerName: userRole === 'engineer' ? name : null,
+            companyId: activeCompanyId,
+          };
+          const nextUsers = [newUser, ...existingUsers];
+          saveUsers(nextUsers, activeCompanyId);
+          try { syncCompanyUsersToCloud(activeCompanyId, nextUsers).catch(() => {}); } catch (e) {}
+        }
+      }
+    } catch (e) {
+      console.warn("Auto create user from team member error:", e);
+    }
   }
 
   function handleRemoveMember(groupKey, name) {
@@ -917,8 +953,13 @@ export default function CompanySettings({
             </div>
           </div>
 
-          {/* User Management */}
-          <UserManagement currentUser={currentUser} companyId={activeCompanyId} />
+          {/* User Management with Automatic Team Sync */}
+          <UserManagement
+            currentUser={currentUser}
+            companyId={activeCompanyId}
+            team={team}
+            onTeamChange={onTeamChange}
+          />
         </div>
       )}
 
