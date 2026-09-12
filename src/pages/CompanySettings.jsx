@@ -541,7 +541,7 @@ export default function CompanySettings({
                 <input
                   type="text"
                   className="filter-input"
-                  style={{ width: '100%', direction: 'ltr', textAlign: 'right' }}
+                  style={{ width: '100%', direction: 'ltr', textAlign: 'left' }}
                   value={settings.phone || settings.supportPhone || ''}
                   onChange={(e) => {
                     updateSetting('phone', e.target.value);
@@ -558,7 +558,7 @@ export default function CompanySettings({
                 <input
                   type="email"
                   className="filter-input"
-                  style={{ width: '100%', direction: 'ltr', textAlign: 'right' }}
+                  style={{ width: '100%', direction: 'ltr', textAlign: 'left' }}
                   value={settings.email || ''}
                   onChange={(e) => updateSetting('email', e.target.value)}
                   placeholder="info@yourcompany.com"
@@ -572,7 +572,7 @@ export default function CompanySettings({
                 <input
                   type="text"
                   className="filter-input"
-                  style={{ width: '100%', direction: 'ltr', textAlign: 'right' }}
+                  style={{ width: '100%', direction: 'ltr', textAlign: 'left' }}
                   value={settings.taxNumber || ''}
                   onChange={(e) => updateSetting('taxNumber', e.target.value)}
                   placeholder="100-245-890-0003"
@@ -586,7 +586,7 @@ export default function CompanySettings({
                 <input
                   type="text"
                   className="filter-input"
-                  style={{ width: '100%', direction: 'ltr', textAlign: 'right' }}
+                  style={{ width: '100%', direction: 'ltr', textAlign: 'left' }}
                   value={settings.commercialRegister || ''}
                   onChange={(e) => updateSetting('commercialRegister', e.target.value)}
                   placeholder="CN-1049281"

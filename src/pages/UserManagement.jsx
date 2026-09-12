@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   UserPlus, Trash2, KeyRound, Eye, EyeOff, CheckCircle2,
   AlertTriangle, X, Pencil, Shield, Users, Copy, Check,
-  ChevronDown, Sliders, CheckSquare, Square
+  ChevronDown, Sliders, CheckSquare, Square, Mail
 } from 'lucide-react';
 import {
   ROLES, NAV_PERMISSIONS, PERMISSIONS,
@@ -259,32 +259,91 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
           </Field>
 
           <Field label="البريد الإلكتروني للدخول *" error={errors.email}>
-            <input
-              type="email"
-              className="filter-input"
-              style={{ width: '100%', direction: 'ltr', textAlign: 'right' }}
-              placeholder="supply@company.com"
-              value={form.email}
-              onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-              disabled={isEdit}
-            />
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                type="email"
+                className="filter-input"
+                style={{
+                  width: '100%',
+                  direction: 'ltr',
+                  textAlign: 'left',
+                  paddingLeft: 38,
+                  paddingRight: 14,
+                  fontSize: 13.5
+                }}
+                placeholder="user@company.com"
+                value={form.email}
+                onChange={e => setForm(f => ({ ...f, email: e.target.value.trim() }))}
+                disabled={isEdit}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              <div style={{
+                position: 'absolute',
+                left: 12,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--muted)',
+                pointerEvents: 'none',
+                display: 'flex',
+                alignItems: 'center'
+              }}>
+                <Mail size={16} />
+              </div>
+            </div>
             {isEdit && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>⚠️ لا يمكن تغيير البريد بعد الإنشاء لربط البيانات</div>}
           </Field>
 
           <Field label="كلمة المرور *" error={errors.password}>
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <input
                 type={showPass ? 'text' : 'password'}
                 className="filter-input"
-                style={{ width: '100%', paddingLeft: 40, direction: 'ltr', textAlign: 'right' }}
+                style={{
+                  width: '100%',
+                  direction: 'ltr',
+                  textAlign: 'left',
+                  paddingLeft: 38,
+                  paddingRight: 40,
+                  fontSize: 13.5
+                }}
                 placeholder="••••••••"
                 value={form.password}
                 onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
               />
+              <div style={{
+                position: 'absolute',
+                left: 12,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--muted)',
+                pointerEvents: 'none',
+                display: 'flex',
+                alignItems: 'center'
+              }}>
+                <KeyRound size={16} />
+              </div>
               <button
                 type="button"
                 onClick={() => setShowPass(s => !s)}
-                style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer' }}
+                style={{
+                  position: 'absolute',
+                  right: 12,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--muted)',
+                  cursor: 'pointer',
+                  padding: 4,
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+                title={showPass ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
               >
                 {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
