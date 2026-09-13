@@ -1189,7 +1189,7 @@ export default function App() {
             )}
 
             {tab === "finance" && can(currentUser || userRole, 'finance_view') && (
-              <CompanyFinance projects={projects} />
+              <CompanyFinance projects={projects} activeCompanyId={activeCompanyId} />
             )}
 
             {tab === "team" && can(currentUser || userRole, 'team_view') && (

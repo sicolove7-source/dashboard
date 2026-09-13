@@ -173,12 +173,13 @@ function getProjectExpenses(p) {
   return [];
 }
 
-export default function CompanyFinance({ projects = [], onUpdateProject }) {
+export default function CompanyFinance({ projects = [], onUpdateProject, activeCompanyId }) {
   const [activeTab, setActiveTab] = useState('overview'); // overview | monthly | quarterly | expenses
   const [showAddExpense, setShowAddExpense] = useState(false);
+  const expenseStorageKey = `tenant_${activeCompanyId || 'comp_alain'}_company_expenses`;
   const [companyExpenses, setCompanyExpenses] = useState(() => {
     try {
-      const saved = localStorage.getItem('amlak_company_expenses');
+      const saved = localStorage.getItem(expenseStorageKey) || localStorage.getItem('amlak_company_expenses');
       return saved ? JSON.parse(saved) : [
         { id: 'exp-1', date: '2025-01-05', category: 'رواتب', amount: 35000, description: 'رواتب المهندسين والمشرفين' },
         { id: 'exp-2', date: '2025-01-10', category: 'إيجارات', amount: 8000, description: 'إيجار مقر الشركة' },
@@ -191,6 +192,13 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
       return [];
     }
   });
+
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem(expenseStorageKey);
+      if (saved) setCompanyExpenses(JSON.parse(saved));
+    } catch (e) {}
+  }, [expenseStorageKey]);
 
   const availableYears = useMemo(() => {
     const currentYr = new Date().getFullYear();
@@ -229,13 +237,13 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
   function saveExpense(form) {
     const next = [{ ...form, id: 'exp-' + Date.now() }, ...companyExpenses];
     setCompanyExpenses(next);
-    localStorage.setItem('amlak_company_expenses', JSON.stringify(next));
+    localStorage.setItem(expenseStorageKey, JSON.stringify(next));
   }
 
   function deleteExpense(id) {
     const next = companyExpenses.filter(e => e.id !== id);
     setCompanyExpenses(next);
-    localStorage.setItem('amlak_company_expenses', JSON.stringify(next));
+    localStorage.setItem(expenseStorageKey, JSON.stringify(next));
   }
 
   /* ── Computed KPIs ── */
