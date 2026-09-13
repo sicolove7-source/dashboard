@@ -26,7 +26,7 @@ import ProjectDrawings from '../components/ProjectDrawings';
 import confetti from 'canvas-confetti';
 import { can } from '../utils/permissions';
 
-export default function ProjectDetail({ project, team, userRole, onBack, onEdit, onDelete, onUpdate, initialSub, currentUser, onOpenClientPortal }) {
+export default function ProjectDetail({ project, team, userRole, onBack, onEdit, onDelete, onUpdate, initialSub, currentUser, activeCompanyId, onOpenClientPortal }) {
   const [confirming, setConfirming] = useState(false);
   const [showClientReport, setShowClientReport] = useState(false);
   const [activeContractView, setActiveContractView] = useState(null); // 'craftsman' | 'client' | null
@@ -222,6 +222,7 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
               project={project} 
               currentUser={currentUser} 
               userRole={userRole} 
+              activeCompanyId={activeCompanyId || project.companyId}
               onOpenCraftsmanContract={(worker = null) => {
                 setSelectedWorkerForContract(worker);
                 setActiveContractView('craftsman');

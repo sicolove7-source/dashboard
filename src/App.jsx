@@ -432,7 +432,11 @@ export default function App() {
   const loadTenantWorkspace = async (companyId) => {
     // 1. عرض فوري للكاش المحلي (0ms latency)
     const localData = getTenantData(companyId);
-    setProjects(localData.projects);
+    const scopedLocalProjects = (localData.projects || []).map(p => ({
+      ...p,
+      companyId: companyId
+    }));
+    setProjects(scopedLocalProjects);
     setTeam(localData.team);
     setLeads(localData.leads);
     setCompanySettings(localData.settings);
@@ -447,7 +451,10 @@ export default function App() {
       if (cloudData) {
         if (Array.isArray(cloudData.projects)) {
           setProjects((prev) => {
-            const merged = mergeProjectsPreservingLocal(prev || localData.projects, cloudData.projects);
+            const merged = mergeProjectsPreservingLocal(prev || scopedLocalProjects, cloudData.projects).map(p => ({
+              ...p,
+              companyId: companyId
+            }));
             try {
               const lean = merged.map(p => sanitizeProjectForCloud(p));
               localStorage.setItem(`tenant_${companyId}_projects`, JSON.stringify(lean));
@@ -640,12 +647,25 @@ export default function App() {
 
   function saveProject(data) {
     if (data.id) {
-      updateProject(data.id, data);
+      updateProject(data.id, { ...data, companyId: data.companyId || activeCompanyId });
       setActiveId(data.id);
       setView("detail");
     } else {
       const id = "p" + Date.now();
-      const newProject = { ...data, id, submittals: [], tasks: [], dailyLogs: [], resources: { labor: [], subcontractors: [], materials: [], equipment: [] }, files: [], snags: [], clientPayments: [], expenses: [], paymentMilestones: [] };
+      const newProject = {
+        ...data,
+        id,
+        companyId: activeCompanyId,
+        submittals: [],
+        tasks: [],
+        dailyLogs: [],
+        resources: { labor: [], subcontractors: [], materials: [], equipment: [] },
+        files: [],
+        snags: [],
+        clientPayments: [],
+        expenses: [],
+        paymentMilestones: []
+      };
       const updated = [newProject, ...(projects || [])];
       setProjects(updated);
       try {
@@ -821,6 +841,7 @@ export default function App() {
 
   const handleSwitchToCompany = (companyId) => {
     setActiveTenantId(companyId);
+    setCurrentUser(prev => prev ? { ...prev, companyId } : { role: 'owner', companyId });
     loadTenantWorkspace(companyId);
     setTab('overview');
     setView('list');
@@ -1246,6 +1267,7 @@ export default function App() {
                   onUpdate={(patch) => updateProject(activeProject.id, patch)}
                   initialSub={initialProjectSub}
                   currentUser={currentUser}
+                  activeCompanyId={activeCompanyId}
                   onOpenClientPortal={(projId) => setActiveClientPortalProjectId(projId)}
                 />
               ) : (

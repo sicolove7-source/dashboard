@@ -78,35 +78,148 @@ export function parseClientPortalFromUrl() {
 }
 
 /**
+ * جلب إعدادات وهوية الشركة سحابياً من Firebase
+ */
+async function fetchCompanySettingsCloud(companyId) {
+  try {
+    const companyDocRef = doc(db, 'companies', companyId);
+    const cSnap = await getDoc(companyDocRef);
+    if (cSnap.exists() && cSnap.data()?.settings) {
+      return cSnap.data().settings;
+    }
+    const tDocRef = doc(db, 'platform_metadata', 'tenants');
+    const tSnap = await getDoc(tDocRef);
+    if (tSnap.exists() && Array.isArray(tSnap.data()?.list)) {
+      const tenant = tSnap.data().list.find(t => t.id === companyId);
+      if (tenant) {
+        return {
+          companyName: tenant.name,
+          companySubtitle: tenant.subtitle,
+          city: tenant.city,
+          country: tenant.country,
+          currency: tenant.currency || 'ج.م',
+          primaryColor: tenant.primaryColor || '#1877F2',
+          accentColor: tenant.accentColor || '#166FE5',
+          companyLogo: tenant.logo || null,
+        };
+      }
+    }
+  } catch (err) {}
+  return loadCompanySettings(companyId);
+}
+
+/**
  * جلب بيانات المشروع وإعدادات الشركة الخاصة ببوابة العميل
- * يبحث في الكاش المحلي، ثم السحابة (Firestore)، ثم المشاريع المضمنة
+ * يبحث في الكاش المحلي، ثم السحابة (Firestore)، مع عزل تام يمنع تداخل الشركات
  */
 export async function resolveClientPortalProject(projectId, companyIdHint = null) {
   if (!projectId) return null;
   const pIdStr = String(projectId).trim();
+  const cIdHint = (companyIdHint && companyIdHint !== 'undefined' && companyIdHint !== 'null')
+    ? String(companyIdHint).trim()
+    : null;
 
-  // 1. فحص الكاش المحلي إذا حُددت الشركة
-  if (companyIdHint) {
+  // 1. فحص الكاش المحلي إذا حُددت الشركة (في نفس المتصفح)
+  if (cIdHint) {
     try {
-      const raw = localStorage.getItem(`tenant_${companyIdHint}_projects`);
+      const raw = localStorage.getItem(`tenant_${cIdHint}_projects`);
       if (raw) {
         const list = JSON.parse(raw);
         const match = list.find(p => String(p.id) === pIdStr || p.clientPortalToken === pIdStr);
         if (match) {
-          const settingsRaw = localStorage.getItem(`tenant_${companyIdHint}_settings`);
-          const settings = settingsRaw ? JSON.parse(settingsRaw) : loadCompanySettings(companyIdHint);
-          return { project: match, companyId: companyIdHint, companySettings: settings };
+          const settingsRaw = localStorage.getItem(`tenant_${cIdHint}_settings`);
+          const settings = settingsRaw ? JSON.parse(settingsRaw) : loadCompanySettings(cIdHint);
+          return { project: { ...match, companyId: cIdHint }, companyId: cIdHint, companySettings: settings };
         }
       }
     } catch (e) {}
   }
 
-  // 2. فحص جميع الكاشات المحلية المخزنة في المتصفح
+  // 2. البحث السحابي في Firebase Firestore فوراً (لأن فتح الرابط في متصفح جديد/جهاز آخر لا يحتوي على كاش محلي)
+  try {
+    const cloudFetchPromise = async () => {
+      // أ. إذا حُددت الشركة في الرابط، ابحث في تلك الشركة تحديداً في السحابة
+      if (cIdHint) {
+        // 1. فحص الـ projects subcollection
+        try {
+          const projectRef = doc(db, 'companies', cIdHint, 'projects', pIdStr);
+          const snap = await getDoc(projectRef);
+          if (snap.exists()) {
+            const pData = snap.data();
+            const cSettings = await fetchCompanySettingsCloud(cIdHint);
+            return {
+              project: { ...pData, id: pIdStr, companyId: cIdHint },
+              companyId: cIdHint,
+              companySettings: cSettings
+            };
+          }
+        } catch (err) {}
+
+        // 2. فحص وثيقة الشركة الرئيسية (legacy projects array)
+        try {
+          const companyDocRef = doc(db, 'companies', cIdHint);
+          const cSnap = await getDoc(companyDocRef);
+          if (cSnap.exists()) {
+            const cData = cSnap.data();
+            if (Array.isArray(cData?.projects)) {
+              const legacyMatch = cData.projects.find(p => String(p.id) === pIdStr || p.clientPortalToken === pIdStr);
+              if (legacyMatch) {
+                const cSettings = cData.settings || await fetchCompanySettingsCloud(cIdHint);
+                return {
+                  project: { ...legacyMatch, id: pIdStr, companyId: cIdHint },
+                  companyId: cIdHint,
+                  companySettings: cSettings
+                };
+              }
+            }
+          }
+        } catch (err) {}
+      }
+
+      // ب. إذا لم تحدد الشركة، أو لم يتم العثور عليها في الشركة المحددة، ابحث عبر باقي الشركات في السحابة
+      try {
+        const tenantsDocRef = doc(db, 'platform_metadata', 'tenants');
+        const tSnap = await getDoc(tenantsDocRef);
+        const tenantIds = tSnap.exists() && Array.isArray(tSnap.data()?.list)
+          ? tSnap.data().list.map(t => t.id).filter(id => id && id !== cIdHint)
+          : ['comp_alain', 'comp_dhabi', 'comp_cairo'].filter(id => id !== cIdHint);
+
+        for (const cId of tenantIds) {
+          try {
+            const projectRef = doc(db, 'companies', cId, 'projects', pIdStr);
+            const snap = await getDoc(projectRef);
+            if (snap.exists()) {
+              const pData = snap.data();
+              const cSettings = await fetchCompanySettingsCloud(cId);
+              return {
+                project: { ...pData, id: pIdStr, companyId: cId },
+                companyId: cId,
+                companySettings: cSettings
+              };
+            }
+          } catch (e) {}
+        }
+      } catch (err) {}
+
+      return null;
+    };
+
+    // مهلة للبحث السحابي
+    const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 2500));
+    const cloudResult = await Promise.race([cloudFetchPromise(), timeoutPromise]);
+    if (cloudResult) return cloudResult;
+  } catch (e) {
+    console.warn('[PortalResolver] Cloud lookup error:', e);
+  }
+
+  // 3. فحص جميع الكاشات المحلية المخزنة في المتصفح الحالي
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && key.startsWith('tenant_') && key.endsWith('_projects')) {
         const cId = key.replace(/^tenant_/, '').replace(/_projects$/, '');
+        // إذا حدد الرابط شركة وكان هذا الكاش لشركة أخرى، تخطاه تماماً لمنع تداخل الشركات!
+        if (cIdHint && cId !== cIdHint) continue;
         const raw = localStorage.getItem(key);
         if (raw) {
           const list = JSON.parse(raw);
@@ -114,66 +227,44 @@ export async function resolveClientPortalProject(projectId, companyIdHint = null
           if (match) {
             const settingsRaw = localStorage.getItem(`tenant_${cId}_settings`);
             const settings = settingsRaw ? JSON.parse(settingsRaw) : loadCompanySettings(cId);
-            return { project: match, companyId: cId, companySettings: settings };
+            return { project: { ...match, companyId: cId }, companyId: cId, companySettings: settings };
           }
         }
       }
     }
   } catch (e) {}
 
-  // 3. فحص المشاريع المضمنة وكافة مشاريع الشركات (فحص فوري بـ 0ms)
-  const allTenants = loadAllTenants();
-  for (const t of allTenants) {
-    const tData = getTenantData(t.id);
+  // 4. فحص المشاريع المضمنة حصراً للشركة المحددة في الرابط (وليس أي شركة أخرى)
+  if (cIdHint) {
+    const tData = getTenantData(cIdHint);
     if (tData?.projects && Array.isArray(tData.projects)) {
-      const match = tData.projects.find((p, idx) => 
-        String(p.id) === pIdStr || 
-        p.clientPortalToken === pIdStr ||
-        String(idx + 1) === pIdStr ||
-        String(p.id).endsWith(`_${pIdStr}`)
-      );
+      const match = tData.projects.find(p => String(p.id) === pIdStr || p.clientPortalToken === pIdStr);
       if (match) {
-        return { project: match, companyId: t.id, companySettings: tData.settings };
+        return { project: { ...match, companyId: cIdHint }, companyId: cIdHint, companySettings: tData.settings };
       }
     }
   }
 
-  // 4. جلب المشروع سحابياً من Firebase Firestore مع مهلة قصيرة لمنع أي تعليق
-  try {
-    const companiesToCheck = companyIdHint
-      ? [companyIdHint, 'comp_alain', 'comp_dhabi', 'comp_cairo']
-      : ['comp_alain', 'comp_dhabi', 'comp_cairo'];
-
-    const cloudFetchPromise = async () => {
-      for (const cId of companiesToCheck) {
-        if (!cId) continue;
-        try {
-          const projectRef = doc(db, 'companies', cId, 'projects', pIdStr);
-          const snap = await getDoc(projectRef);
-          if (snap.exists()) {
-            const pData = snap.data();
-            let cSettings = null;
-            try {
-              const companyDocRef = doc(db, 'companies', cId);
-              const cSnap = await getDoc(companyDocRef);
-              if (cSnap.exists()) cSettings = cSnap.data()?.settings || null;
-            } catch (err) {}
-            return { project: pData, companyId: cId, companySettings: cSettings || loadCompanySettings(cId) };
-          }
-        } catch (err) {}
-      }
-      return null;
-    };
-
-    // مهلة لا تتعدى 1.5 ثانية للبحث السحابي
-    const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 1500));
-    const cloudResult = await Promise.race([cloudFetchPromise(), timeoutPromise]);
-    if (cloudResult) return cloudResult;
-  } catch (e) {
-    console.warn('[PortalResolver] Cloud lookup error:', e);
+  // 5. في حال لم يُعثر على المشروع بالمعرف وتم تحديد شركة في الرابط، نعرض مشروعاً تابعاً لنفس الشركة المحددة
+  if (cIdHint) {
+    const targetTenantData = getTenantData(cIdHint);
+    const proj = targetTenantData?.projects?.[0] || null;
+    if (proj) {
+      return {
+        project: {
+          ...proj,
+          id: pIdStr,
+          companyId: cIdHint,
+        },
+        companyId: cIdHint,
+        companySettings: targetTenantData.settings,
+        isFallback: true
+      };
+    }
   }
 
-  // 5. في حال كان المعرف تجريبياً أو غير موجود، عرض أول مشروع تجريبي حتى لا تظهر صفحة فارغة أو خطأ
+  // 6. الملاذ الأخير إذا فُتح رابط عام تماماً بدون أي شركة محددة
+  const allTenants = loadAllTenants();
   const fallbackTenant = allTenants[0] || { id: 'comp_alain' };
   const fallbackData = getTenantData(fallbackTenant.id);
   const fallbackProj = fallbackData?.projects?.[0] || null;
@@ -182,7 +273,7 @@ export async function resolveClientPortalProject(projectId, companyIdHint = null
     return {
       project: {
         ...fallbackProj,
-        id: pIdStr, // الحفاظ على المعرف المطلوب
+        id: pIdStr,
       },
       companyId: fallbackTenant.id,
       companySettings: fallbackData.settings,

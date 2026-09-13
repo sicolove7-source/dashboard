@@ -7,11 +7,13 @@ import {
 import { getGlobalCurrency } from '../utils/helpers';
 import { openWhatsApp } from '../utils/whatsappTemplates';
 import { syncSingleProjectToCloud } from '../services/cloudSync';
+import { getActiveTenantId } from '../services/tenantsManager';
 
 export default function ContractsHubPanel({
   project,
   currentUser,
   userRole,
+  activeCompanyId,
   onOpenCraftsmanContract,
   onOpenClientContract,
   onOpenClientPortal,
@@ -21,12 +23,12 @@ export default function ContractsHubPanel({
   const [copiedLink, setCopiedLink] = useState(false);
 
   // Generate public client portal URL with company hint for instant lookup on any device
-  const companyId = project.companyId || currentUser?.companyId || 'comp_alain';
+  const companyId = activeCompanyId || project.companyId || currentUser?.companyId || getActiveTenantId() || 'comp_alain';
   const portalUrl = `${window.location.origin}/portal/${project.id}?c=${companyId}`;
 
   const handleCopyLink = () => {
     try {
-      syncSingleProjectToCloud(companyId, project.id, project).catch(() => {});
+      syncSingleProjectToCloud(companyId, project.id, { ...project, companyId }).catch(() => {});
       navigator.clipboard.writeText(portalUrl);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2500);
@@ -36,7 +38,7 @@ export default function ContractsHubPanel({
   };
 
   const handleSharePortalWhatsApp = () => {
-    syncSingleProjectToCloud(companyId, project.id, project).catch(() => {});
+    syncSingleProjectToCloud(companyId, project.id, { ...project, companyId }).catch(() => {});
     const cleanPhone = (project.clientPhone || '').replace(/\D/g, '');
     const clientName = project.client || 'عميلنا العزيز';
     const msg = `السلام عليكم ورحمة الله وبركاته أ. *${clientName}* 🌸\n` +

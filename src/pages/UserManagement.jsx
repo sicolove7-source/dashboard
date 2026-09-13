@@ -49,11 +49,18 @@ export function loadUsers(companyId) {
       { id: 'u_dhabi_2', email: 'eng@dar-dhabi.ae', password: '123456', role: 'engineer', name: 'م. ناصر الهاشمي', engineerName: 'م. ناصر الهاشمي', companyId: 'comp_dhabi' },
       { id: 'u_dhabi_3', email: 'supply@dar-dhabi.ae', password: '123456', role: 'procurement', name: 'أ. راشد الكعبي (مسؤول التوريدات)', engineerName: null, companyId: 'comp_dhabi' },
     ];
-  } else {
+  } else if (cId === 'comp_cairo') {
     defaults = [
       { id: 'u_cairo_1', email: 'admin@al-ofok.com', password: '123456', role: 'owner', name: 'م. شريف عزمي', engineerName: null, companyId: 'comp_cairo' },
       { id: 'u_cairo_2', email: 'eng@al-ofok.com', password: '123456', role: 'engineer', name: 'م. أحمد كامل', engineerName: 'م. أحمد كامل', companyId: 'comp_cairo' },
       { id: 'u_cairo_3', email: 'supply@al-ofok.com', password: '123456', role: 'procurement', name: 'أ. مصطفى ممدوح (مسؤول التوريدات)', engineerName: null, companyId: 'comp_cairo' },
+    ];
+  } else {
+    const cleanComp = cId.replace(/^comp_/, '');
+    defaults = [
+      { id: `u_${cId}_admin`, email: `admin@${cleanComp}.com`, password: '123456', role: 'owner', name: 'مدير الشركة', engineerName: null, companyId: cId },
+      { id: `u_${cId}_eng1`, email: `eng@${cleanComp}.com`, password: '123456', role: 'engineer', name: 'مهندس الموقع', engineerName: 'مهندس الموقع', companyId: cId },
+      { id: `u_${cId}_supply`, email: `supply@${cleanComp}.com`, password: '123456', role: 'procurement', name: 'مسؤول التوريدات', engineerName: null, companyId: cId },
     ];
   }
   try { localStorage.setItem(key, JSON.stringify(defaults)); } catch (e) {}

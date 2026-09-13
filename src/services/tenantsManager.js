@@ -580,6 +580,14 @@ export function getTenantData(companyId) {
     try { localStorage.setItem(`tenant_${companyId}_projects`, JSON.stringify(projects)); } catch (e) {}
   }
 
+  // التأكد من أن جميع المشاريع موسومة بمعرف هذه الشركة لحمايتها من التداخل
+  if (Array.isArray(projects)) {
+    projects = projects.map(p => ({
+      ...p,
+      companyId: companyId
+    }));
+  }
+
   // تحديث العملة العالمية
   if (settings.currency) {
     setGlobalCurrency(settings.currency);
@@ -1115,57 +1123,90 @@ function generateCompanySeedProjects(companyId, tenant) {
     ];
   }
 
-  // comp_cairo default
+  if (companyId === 'comp_cairo') {
+    return [
+      {
+        id: 'p_cairo_1',
+        companyId: 'comp_cairo',
+        name: 'تشطيب شقة دوبلكس - بيت الوطن',
+        client: 'د. طارق المنشاوي',
+        area: 'التجمع الخامس - القاهرة',
+        type: 'شقة دوبلكس',
+        engineer: 'م. أحمد كامل',
+        accountant: 'أ. سامح فتحي',
+        techOffice: 'م. علياء رمضان',
+        progress: 60,
+        status: 'on_track',
+        budget: 850000,
+        spent: 510000,
+        startDate: '2026-05-01',
+        dueDate: '2026-10-30',
+        submittals: [
+          { item: 'اعتماد عينات بورسلين كليوباترا', status: 'approved' },
+          { item: 'لوحة قواطع شنايدر الفرنسية', status: 'approved' },
+        ],
+        files: [],
+        snags: [],
+        dailyLogs: [
+          { id: 'd1', date: todayISO(), author: 'م. أحمد كامل', work: 'سحب أسلاك السويدي وتشطيب وجه أول معجون', issues: 'لا يوجد', workers: 6 }
+        ],
+      },
+      {
+        id: 'p_cairo_2',
+        companyId: 'comp_cairo',
+        name: 'تشطيب فيلا الترا سوبر لوكس - النرجس',
+        client: 'أ. حسام الدين',
+        area: 'النرجس - القاهرة الجديدة',
+        type: 'فيلا مستقلة',
+        engineer: 'م. ياسر فوزي',
+        accountant: 'أ. سامح فتحي',
+        techOffice: 'م. علياء رمضان',
+        progress: 85,
+        status: 'on_track',
+        budget: 1400000,
+        spent: 1220000,
+        startDate: '2026-02-10',
+        dueDate: '2026-09-15',
+        submittals: [
+          { item: 'اعتماد رخام امبرادور للدرج الداخلي', status: 'approved' }
+        ],
+        files: [],
+        snags: [],
+        dailyLogs: [
+          { id: 'd1', date: todayISO(), author: 'م. ياسر فوزي', work: 'جلي وتلميع الرخام وتركيب سبوتات الإنارة', issues: 'لا يوجد', workers: 8 }
+        ],
+      }
+    ];
+  }
+
+  // مشاريع الشركات المشتركة الخاصة (مثل شركة أملاك وغيرها)
+  const compPrefix = companyId.replace(/^comp_/, '');
+  const compName = tenant?.name || 'الشركة';
   return [
     {
-      id: 'p_cairo_1',
-      companyId: 'comp_cairo',
-      name: 'تشطيب شقة دوبلكس - بيت الوطن',
-      client: 'د. طارق المنشاوي',
-      area: 'التجمع الخامس - القاهرة',
-      type: 'شقة دوبلكس',
-      engineer: 'م. أحمد كامل',
-      accountant: 'أ. سامح فتحي',
-      techOffice: 'م. علياء رمضان',
-      progress: 60,
+      id: `p_${compPrefix}_1`,
+      companyId: companyId,
+      name: `مشروع تشطيب فيلا رئيسية — ${tenant?.city || 'الموقع 1'}`,
+      client: 'أ. عميل المشروع',
+      area: tenant?.city || 'المركز الرئيسي',
+      type: 'فيلا سكنية',
+      engineer: (tenant?.adminName ? 'م. ' + tenant.adminName.replace(/^[أأمم]\.\s*/, '') : 'م. مهندس الموقع'),
+      accountant: 'الإدارة المالية',
+      techOffice: 'المكتب الفني',
+      progress: 50,
       status: 'on_track',
-      budget: 850000,
-      spent: 510000,
-      startDate: '2026-05-01',
-      dueDate: '2026-10-30',
+      budget: 950000,
+      spent: 420000,
+      startDate: '2026-06-01',
+      dueDate: '2026-12-30',
       submittals: [
-        { item: 'اعتماد عينات بورسلين كليوباترا', status: 'approved' },
-        { item: 'لوحة قواطع شنايدر الفرنسية', status: 'approved' },
+        { item: 'اعتماد المخططات والتصميمات التنفيذية', status: 'approved' },
+        { item: 'اعتماد عينات التشطيبات والدهانات', status: 'approved' },
       ],
       files: [],
       snags: [],
       dailyLogs: [
-        { id: 'd1', date: todayISO(), author: 'م. أحمد كامل', work: 'سحب أسلاك السويدي وتشطيب وجه أول معجون', issues: 'لا يوجد', workers: 6 }
-      ],
-    },
-    {
-      id: 'p_cairo_2',
-      companyId: 'comp_cairo',
-      name: 'تشطيب فيلا الترا سوبر لوكس - النرجس',
-      client: 'أ. حسام الدين',
-      area: 'النرجس - القاهرة الجديدة',
-      type: 'فيلا مستقلة',
-      engineer: 'م. ياسر فوزي',
-      accountant: 'أ. سامح فتحي',
-      techOffice: 'م. علياء رمضان',
-      progress: 85,
-      status: 'on_track',
-      budget: 1400000,
-      spent: 1220000,
-      startDate: '2026-02-10',
-      dueDate: '2026-09-15',
-      submittals: [
-        { item: 'اعتماد رخام امبرادور للدرج الداخلي', status: 'approved' }
-      ],
-      files: [],
-      snags: [],
-      dailyLogs: [
-        { id: 'd1', date: todayISO(), author: 'م. ياسر فوزي', work: 'جلي وتلميع الرخام وتركيب سبوتات الإنارة', issues: 'لا يوجد', workers: 8 }
+        { id: 'd1', date: todayISO(), author: 'م. مهندس الموقع', work: `متابعة تنفيذ بنود التشطيبات بموقع ${compName}`, issues: 'لا يوجد', workers: 8 }
       ],
     }
   ];
