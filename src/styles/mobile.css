@@ -1958,9 +1958,25 @@
   }
 }
 
-@media (max-width: 480px) {
+/* ── Quarterly cards grid responsiveness ── */
+.quarterly-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 960px) {
   .quarterly-cards-grid {
     grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .quarterly-cards-grid {
+    grid-template-columns: 1fr !important;
     gap: 8px !important;
   }
 }

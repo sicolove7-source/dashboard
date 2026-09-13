@@ -1,7 +1,53 @@
 import React from 'react';
-import * as Icons from 'lucide-react';
+import {
+  Building2,
+  Bell,
+  Sun,
+  Moon,
+  X,
+  Menu,
+  LogOut,
+  Settings,
+  Compass,
+  ChevronLeft,
+  Circle,
+  Crown,
+  LayoutDashboard,
+  Zap,
+  BadgePercent,
+  TrendingUp,
+  Users,
+  HardHat,
+  Truck,
+  Calculator,
+  BrainCircuit,
+} from 'lucide-react';
 import { NAV } from '../utils/constants';
 import { canSeeNav, ROLES, can } from '../utils/permissions';
+
+const ICON_MAP = {
+  Building2,
+  Bell,
+  Sun,
+  Moon,
+  X,
+  Menu,
+  LogOut,
+  Settings,
+  Compass,
+  ChevronLeft,
+  Circle,
+  Crown,
+  LayoutDashboard,
+  Zap,
+  BadgePercent,
+  TrendingUp,
+  Users,
+  HardHat,
+  Truck,
+  Calculator,
+  BrainCircuit,
+};
 
 const NAV_ICONS = {
   tenants:       'Crown',
@@ -99,7 +145,7 @@ export default function MobileLayout({
                 }}
               />
               <div style={{ display: 'none', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', background: '#1877F2' }}>
-                <Icons.Building2 size={20} color="#fff" />
+                <Building2 size={20} color="#fff" />
               </div>
             </div>
           )}
@@ -128,7 +174,7 @@ export default function MobileLayout({
             }}
             title="التنبيهات الذكية"
           >
-            <Icons.Bell size={18} />
+            <Bell size={18} />
             {unreadNotifsCount > 0 && (
               <span
                 style={{
@@ -163,7 +209,7 @@ export default function MobileLayout({
             }}
             title={isDarkMode ? "الوضع الفاتح" : "الوضع الليلي"}
           >
-            {isDarkMode ? <Icons.Sun size={18} /> : <Icons.Moon size={18} />}
+            {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
           </button>
 
           <button
@@ -171,7 +217,7 @@ export default function MobileLayout({
             onClick={() => setSidebarOpen(!sidebarOpen)}
             title="القائمة الكاملة"
           >
-            {sidebarOpen ? <Icons.X size={20} /> : <Icons.Menu size={20} />}
+            {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
         </div>
       </div>
@@ -230,7 +276,7 @@ export default function MobileLayout({
                     background: '#2563EB',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
-                    <Icons.Building2 size={20} color="#fff" />
+                    <Building2 size={20} color="#fff" />
                   </div>
                 )}
                 <div>
@@ -247,7 +293,7 @@ export default function MobileLayout({
                   width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >
-                <Icons.X size={18} />
+                <X size={18} />
               </button>
             </div>
 
@@ -293,7 +339,7 @@ export default function MobileLayout({
                   flexShrink: 0
                 }}
               >
-                <Icons.LogOut size={13} />
+                <LogOut size={13} />
                 <span>خروج</span>
               </button>
             </div>
@@ -302,7 +348,7 @@ export default function MobileLayout({
             <div style={{ padding: '8px 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
               {NAV.map((n) => {
                 if (!canSeeNav(currentUser || userRole, n.key)) return null;
-                const Icon = Icons[n.icon] || Icons.Circle;
+                const Icon = ICON_MAP[n.icon] || Circle;
                 const isActive = tab === n.key;
                 return (
                   <div
@@ -324,7 +370,7 @@ export default function MobileLayout({
                   >
                     <Icon size={18} />
                     <span>{n.label}</span>
-                    {isActive && <Icons.ChevronLeft size={16} style={{ marginRight: 'auto' }} />}
+                    {isActive && <ChevronLeft size={16} style={{ marginRight: 'auto' }} />}
                   </div>
                 );
               })}
@@ -347,9 +393,9 @@ export default function MobileLayout({
                     marginTop: 4,
                   }}
                 >
-                  <Icons.Settings size={18} />
+                  <Settings size={18} />
                   <span>إعدادات الشركة والمستخدمين</span>
-                  {tab === 'settings' && <Icons.ChevronLeft size={16} style={{ marginRight: 'auto' }} />}
+                  {tab === 'settings' && <ChevronLeft size={16} style={{ marginRight: 'auto' }} />}
                 </div>
               )}
             </div>
@@ -375,7 +421,7 @@ export default function MobileLayout({
                   fontSize: 13,
                 }}
               >
-                <Icons.Compass size={18} color="var(--muted, #64748B)" />
+                <Compass size={18} color="var(--muted, #64748B)" />
                 <span>جولة تعريفية للنظام</span>
               </button>
 
@@ -388,7 +434,7 @@ export default function MobileLayout({
                   borderRadius: 10, color: 'var(--sidebar-text, #475569)', cursor: 'pointer', fontFamily: 'Cairo', fontSize: 13, fontWeight: 600,
                 }}
               >
-                {isDarkMode ? <Icons.Sun size={16} /> : <Icons.Moon size={16} />}
+                {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
                 <span>{isDarkMode ? 'التبديل للوضع الفاتح' : 'التبديل للوضع الليلي'}</span>
               </button>
 
@@ -402,7 +448,7 @@ export default function MobileLayout({
                   transition: 'background 0.15s'
                 }}
               >
-                <Icons.LogOut size={16} />
+                <LogOut size={16} />
                 <span>تسجيل الخروج من الحساب</span>
               </button>
             </div>
@@ -416,7 +462,7 @@ export default function MobileLayout({
           {bottomNavItems.map(key => {
             const navItem = NAV.find(n => n.key === key);
             if (!navItem) return null;
-            const Icon = Icons[NAV_ICONS[key] || navItem.icon] || Icons.Circle;
+            const Icon = ICON_MAP[NAV_ICONS[key] || navItem.icon] || Circle;
             const isActive = tab === key && !sidebarOpen;
             return (
               <div
@@ -435,7 +481,7 @@ export default function MobileLayout({
             className={`mobile-nav-item ${sidebarOpen ? 'active' : ''}`}
             onClick={() => setSidebarOpen(!sidebarOpen)}
           >
-            <Icons.Menu size={19} />
+            <Menu size={19} />
             <span>المزيد</span>
           </div>
         </div>

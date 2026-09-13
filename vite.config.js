@@ -11,11 +11,21 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 600,
+    cssCodeSplit: true,
+    reportCompressedSize: false,
+    modulePreload: {
+      resolveDependencies(filename, deps) {
+        return deps.filter(dep => !dep.includes('charts') && !dep.includes('firebase'));
+      }
+    },
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            if (id.includes('react') || id.includes('react-dom') || id.includes('scheduler')) {
+            if (id.includes('lucide-react')) {
+              return 'vendor-icons';
+            }
+            if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) {
               return 'vendor-react';
             }
             if (id.includes('firebase')) {
@@ -23,9 +33,6 @@ export default defineConfig({
             }
             if (id.includes('recharts') || id.includes('d3-')) {
               return 'vendor-charts';
-            }
-            if (id.includes('lucide-react')) {
-              return 'vendor-icons';
             }
             if (id.includes('canvas-confetti')) {
               return 'vendor-confetti';

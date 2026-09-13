@@ -1,7 +1,48 @@
 import React, { useRef, useState } from 'react';
-import * as Icons from 'lucide-react';
+import {
+  Crown,
+  Building2,
+  LogOut,
+  Settings,
+  Compass,
+  Sun,
+  Moon,
+  Download,
+  Upload,
+  LayoutDashboard,
+  BadgePercent,
+  TrendingUp,
+  Users,
+  Truck,
+  Calculator,
+  BrainCircuit,
+  Zap,
+  HardHat,
+  X,
+} from 'lucide-react';
 import { NAV } from '../utils/constants';
 import { canSeeNav, ROLES, can } from '../utils/permissions';
+
+const NAV_ICON_MAP = {
+  Crown,
+  Building2,
+  LogOut,
+  Settings,
+  Compass,
+  Sun,
+  Moon,
+  Download,
+  Upload,
+  LayoutDashboard,
+  BadgePercent,
+  TrendingUp,
+  Users,
+  Truck,
+  Calculator,
+  BrainCircuit,
+  Zap,
+  HardHat,
+};
 
 // Keys to export/import
 const EXPORT_KEYS = [
@@ -155,7 +196,7 @@ export default function Sidebar({
         }}
         className="sidebar-close-btn"
       >
-        <Icons.X size={16} />
+        <X size={16} />
       </button>
 
       {/* ─── الشعار والهوية ─── */}
@@ -241,7 +282,7 @@ export default function Sidebar({
               }}
             />
             <div style={{ display: 'none', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', background: '#1877F2' }}>
-              {isSuperAdmin ? <Icons.Crown size={22} color="#fff" /> : <Icons.Building2 size={22} color="#fff" />}
+              {isSuperAdmin ? <Crown size={22} color="#fff" /> : <Building2 size={22} color="#fff" />}
             </div>
             {isSuperAdmin && (
               <span
@@ -316,7 +357,7 @@ export default function Sidebar({
             onMouseEnter={(e) => { e.currentTarget.style.color = '#EF4444'; e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent'; }}
           >
-            <Icons.LogOut size={16} />
+            <LogOut size={16} />
           </button>
         )}
       </div>
@@ -325,7 +366,7 @@ export default function Sidebar({
       <nav style={{ padding: "12px 0", flex: 1 }}>
         {NAV.map((n) => {
           if (!canSeeNav(currentUser || userRole, n.key)) return null;
-          const Icon = Icons[n.icon];
+          const Icon = NAV_ICON_MAP[n.icon] || Building2;
           return (
             <div key={n.key} className={`nav-item ${tab === n.key ? "active" : ""}`}
               onClick={() => { setTab(n.key); setView("list"); setSidebarOpen?.(false); }}>
@@ -340,7 +381,7 @@ export default function Sidebar({
             className={`nav-item ${tab === 'settings' ? 'active' : ''}`}
             onClick={() => { setTab('settings'); setView('list'); setSidebarOpen?.(false); }}
           >
-            <Icons.Settings size={18} />
+            <Settings size={18} />
             إعدادات الشركة
           </div>
         )}
@@ -359,7 +400,7 @@ export default function Sidebar({
             fontFamily: "Cairo", fontWeight: 600, fontSize: 13
           }}
         >
-          <Icons.Compass size={15} color="var(--muted)" />
+          <Compass size={15} color="var(--muted)" />
           <span>جولة تعريفية للنظام</span>
         </button>
       </div>
@@ -376,7 +417,7 @@ export default function Sidebar({
             fontFamily: "Cairo", fontSize: 12.5, fontWeight: 600
           }}
         >
-          {isDarkMode ? <Icons.Sun size={15} /> : <Icons.Moon size={15} />}
+          {isDarkMode ? <Sun size={15} /> : <Moon size={15} />}
           {isDarkMode ? "الوضع الفاتح" : "الوضع الليلي"}
         </button>
       </div>
@@ -400,7 +441,7 @@ export default function Sidebar({
               transition: "all 0.15s"
             }}
           >
-            <Icons.Download size={14} />
+            <Download size={14} />
             تصدير البيانات
           </button>
 
@@ -416,7 +457,7 @@ export default function Sidebar({
               transition: "all 0.15s"
             }}
           >
-            <Icons.Upload size={14} />
+            <Upload size={14} />
             استيراد بيانات
           </button>
           <input ref={fileRef} type="file" accept=".json" onChange={handleImport} style={{ display: "none" }} />
@@ -451,7 +492,7 @@ export default function Sidebar({
             onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.06)'; }}
           >
-            <Icons.LogOut size={14} />
+            <LogOut size={14} />
             <span>تسجيل الخروج</span>
           </button>
         </div>

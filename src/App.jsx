@@ -13,10 +13,10 @@ import MobileLayout from './components/MobileLayout';
 import MobileQuickActionsModal from './components/MobileQuickActionsModal';
 import WhatsAppSupportWidget from './components/WhatsAppSupportWidget';
 
-// Core Primary Pages (Loaded instantly with 0ms latency)
-import Overview from './pages/Overview';
-import ProjectsTab from './pages/ProjectsTab';
-import ProjectForm from './pages/ProjectForm';
+// Core Primary Pages (Lazy-Loaded to exclude Recharts from initial bundle)
+const Overview = React.lazy(() => import('./pages/Overview'));
+const ProjectsTab = React.lazy(() => import('./pages/ProjectsTab'));
+const ProjectForm = React.lazy(() => import('./pages/ProjectForm'));
 
 // Lazy-Loaded Secondary Modules (Preloaded quietly in background)
 const ProjectDetail = React.lazy(() => import('./pages/ProjectDetail'));
@@ -198,10 +198,42 @@ function getTabFromPath() {
   return null;
 }
 
+function getInitialCompanyId() {
+  try {
+    const saved = localStorage.getItem('isAdmin');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed?.companyId) return parsed.companyId;
+    }
+  } catch (e) {}
+  return getActiveTenantId() || 'comp_alain';
+}
+
 export default function App() {
-  const [projects, setProjects] = useState(null); // null = loading
-  const [team, setTeam] = useState(null); // {engineers, accountants, techOffice, customerService}
-  const [leads, setLeads] = useState(null); // crm leads
+  const [projects, setProjects] = useState(() => {
+    try {
+      const initial = getTenantData(getInitialCompanyId());
+      return initial?.projects || [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [team, setTeam] = useState(() => {
+    try {
+      const initial = getTenantData(getInitialCompanyId());
+      return initial?.team || { engineers: [], accountants: [], techOffice: [] };
+    } catch (e) {
+      return { engineers: [], accountants: [], techOffice: [] };
+    }
+  });
+  const [leads, setLeads] = useState(() => {
+    try {
+      const initial = getTenantData(getInitialCompanyId());
+      return initial?.leads || [];
+    } catch (e) {
+      return [];
+    }
+  });
   const [companySettings, setCompanySettings] = useState(() => loadCompanySettings());
   const [tab, setTab] = useState(() => {
     const p = getTabFromPath();
@@ -317,14 +349,21 @@ export default function App() {
   }, [isDarkMode]);
 
 
-  // تنظيف أي وثائق عشوائية قديمة سحابياً عند بدء التشغيل
+  // تنظيف أي وثائق عشوائية قديمة سحابياً عند بدء التشغيل في وقت الخمول فقط للمستخدمين المسجلين
   useEffect(() => {
-    cleanUpInvalidDocs();
-  }, []);
+    if (!isAuthenticated) return;
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      window.requestIdleCallback(() => cleanUpInvalidDocs(), { timeout: 3000 });
+    } else {
+      setTimeout(() => cleanUpInvalidDocs(), 2000);
+    }
+  }, [isAuthenticated]);
 
   // Preload secondary modules quietly during idle time so tab clicks are instant (0 ms)
   useEffect(() => {
     const preload = () => {
+      import('./pages/Overview');
+      import('./pages/ProjectsTab');
       import('./pages/ProjectDetail');
       import('./pages/CrmPipeline');
       import('./pages/CompanyFinance');
@@ -437,8 +476,9 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     loadTenantWorkspace(activeCompanyId).catch(e => console.warn('loadTenantWorkspace failed:', e));
-  }, [activeCompanyId]);
+  }, [activeCompanyId, isAuthenticated]);
 
   // الاستماع الفوري لتحديثات إعدادات وهوية الشركة وشعارها
   useEffect(() => {
@@ -459,7 +499,7 @@ export default function App() {
 
   // استماع ومزامنة سحابية حية لمشاريع الشركة عبر Firebase (بدون إتلاف اليوميات المسجلة محلياً)
   useEffect(() => {
-    if (!activeCompanyId) return;
+    if (!isAuthenticated || !activeCompanyId) return;
     const unsub = subscribeToCloudProjects(activeCompanyId, (cloudProjects) => {
       if (Array.isArray(cloudProjects) && cloudProjects.length > 0) {
         setProjects((prev) => {

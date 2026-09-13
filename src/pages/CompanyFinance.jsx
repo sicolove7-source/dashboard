@@ -7,7 +7,7 @@ import {
   TrendingUp, TrendingDown, Wallet, DollarSign, AlertCircle,
   CheckCircle2, Clock, Printer, Plus, ArrowUpRight, ArrowDownRight,
   FileText, ChevronDown, ChevronUp, BarChart2, PieChart as PieIcon,
-  Calendar, Filter, X, Save
+  Calendar, Filter, X, Save, Percent
 } from 'lucide-react';
 import { money, fmtDate, todayISO } from '../utils/helpers';
 
@@ -141,9 +141,40 @@ function AddExpenseModal({ onSave, onClose }) {
   );
 }
 
+/* ───── Project Financial Extraction Helpers ───── */
+function getProjectPayments(p) {
+  if (Array.isArray(p?.clientPayments) && p.clientPayments.length > 0) {
+    return p.clientPayments;
+  }
+  if (Array.isArray(p?.payments) && p.payments.length > 0) {
+    return p.payments.map(x => ({
+      id: x.id || 'pay-' + Math.random(),
+      date: x.date,
+      amount: parseFloat(x.amount || 0),
+      description: x.description || x.note || 'دفعة عميل'
+    }));
+  }
+  return [];
+}
+
+function getProjectExpenses(p) {
+  if (Array.isArray(p?.expenses) && p.expenses.length > 0) {
+    return p.expenses;
+  }
+  if (p?.spent && parseFloat(p.spent) > 0) {
+    return [{
+      id: `exp-${p.id}-spent`,
+      date: p.startDate || todayISO(),
+      amount: parseFloat(p.spent),
+      category: 'مصاريف موقع',
+      description: `تكلفة تنفيذ: ${p.name || ''}`
+    }];
+  }
+  return [];
+}
+
 export default function CompanyFinance({ projects = [], onUpdateProject }) {
   const [activeTab, setActiveTab] = useState('overview'); // overview | monthly | quarterly | expenses
-  const [filterYear, setFilterYear] = useState(new Date().getFullYear());
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [companyExpenses, setCompanyExpenses] = useState(() => {
     try {
@@ -160,6 +191,38 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
       return [];
     }
   });
+
+  const availableYears = useMemo(() => {
+    const currentYr = new Date().getFullYear();
+    const set = new Set([currentYr, currentYr - 1, currentYr + 1]);
+    projects.forEach(p => {
+      getProjectPayments(p).forEach(pay => {
+        if (pay.date) {
+          const yr = new Date(pay.date).getFullYear();
+          if (!isNaN(yr)) set.add(yr);
+        }
+      });
+      getProjectExpenses(p).forEach(exp => {
+        if (exp.date) {
+          const yr = new Date(exp.date).getFullYear();
+          if (!isNaN(yr)) set.add(yr);
+        }
+      });
+      if (p.startDate) {
+        const yr = new Date(p.startDate).getFullYear();
+        if (!isNaN(yr)) set.add(yr);
+      }
+    });
+    companyExpenses.forEach(exp => {
+      if (exp.date) {
+        const yr = new Date(exp.date).getFullYear();
+        if (!isNaN(yr)) set.add(yr);
+      }
+    });
+    return Array.from(set).sort((a, b) => b - a);
+  }, [projects, companyExpenses]);
+
+  const [filterYear, setFilterYear] = useState(() => availableYears[0] || new Date().getFullYear());
 
   const [expandedProject, setExpandedProject] = useState(null);
 
@@ -185,9 +248,11 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
     projects.forEach(p => {
       const budget = parseFloat(p.budget) || 0;
       totalContracts += budget;
-      const collected = (p.clientPayments || []).reduce((s, x) => s + parseFloat(x.amount || 0), 0);
+      const payments = getProjectPayments(p);
+      const collected = payments.reduce((s, x) => s + parseFloat(x.amount || 0), 0);
       totalCollected += collected;
-      const exp = (p.expenses || []).reduce((s, x) => s + parseFloat(x.amount || 0), 0);
+      const expenses = getProjectExpenses(p);
+      const exp = expenses.reduce((s, x) => s + parseFloat(x.amount || 0), 0);
       totalProjectExpenses += exp;
       if (budget > collected && p.status !== 'completed') {
         overdueProjects.push(p);
@@ -224,14 +289,14 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
     }));
 
     projects.forEach(p => {
-      (p.clientPayments || []).forEach(pay => {
+      getProjectPayments(p).forEach(pay => {
         if (!pay.date) return;
         const d = new Date(pay.date);
         if (d.getFullYear() === filterYear) {
           months[d.getMonth()].collected += parseFloat(pay.amount || 0);
         }
       });
-      (p.expenses || []).forEach(exp => {
+      getProjectExpenses(p).forEach(exp => {
         if (!exp.date) return;
         const d = new Date(exp.date);
         if (d.getFullYear() === filterYear) {
@@ -255,6 +320,15 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
     return months;
   }, [projects, companyExpenses, filterYear]);
 
+  /* ── Annual totals for the currently selected year ── */
+  const selectedYearTotals = useMemo(() => {
+    const totalCollected = monthlyData.reduce((s, m) => s + m.collected, 0);
+    const totalExpenses = monthlyData.reduce((s, m) => s + m.expenses, 0);
+    const profit = totalCollected - totalExpenses;
+    const margin = totalCollected > 0 ? +((profit / totalCollected) * 100).toFixed(1) : 0;
+    return { totalCollected, totalExpenses, profit, margin };
+  }, [monthlyData]);
+
   /* ── Quarterly Data ── */
   const quarterlyData = useMemo(() => {
     return [0, 1, 2, 3].map(q => {
@@ -275,11 +349,11 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
   const expByCat = useMemo(() => {
     const map = {};
     companyExpenses.forEach(e => {
-      map[e.category] = (map[e.category] || 0) + parseFloat(e.amount || 0);
+      map[e.category || 'أخرى'] = (map[e.category || 'أخرى'] || 0) + parseFloat(e.amount || 0);
     });
     projects.forEach(p => {
-      (p.expenses || []).forEach(e => {
-        const cat = e.category || 'مصاريف مشروع';
+      getProjectExpenses(p).forEach(e => {
+        const cat = e.category || 'مصاريف موقع';
         map[cat] = (map[cat] || 0) + parseFloat(e.amount || 0);
       });
     });
@@ -298,7 +372,7 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
   const currentQuarter = Math.floor(new Date().getMonth() / 3);
 
   return (
-    <div className="grid tab-fade" style={{ gap: 16 }}>
+    <div className="grid tab-fade company-finance-page" style={{ gap: 16, width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
 
       {/* ── Tab Bar ── */}
       <div style={{
@@ -306,6 +380,7 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
         border: '1px solid var(--border)', padding: 4,
         display: 'flex', gap: 4, overflowX: 'auto',
         scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
+        width: '100%', maxWidth: '100%', boxSizing: 'border-box'
       }}>
         {tabs.map(t => {
           const Icon = t.icon;
@@ -314,9 +389,9 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
             <button key={t.key}
               onClick={() => setActiveTab(t.key)}
               style={{
-                flex: '1 1 0', minWidth: 0,
+                flex: '1 1 0', minWidth: 'max-content',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                padding: '8px 6px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                padding: '8px 12px', borderRadius: 10, border: 'none', cursor: 'pointer',
                 fontFamily: 'Cairo', fontWeight: 700, whiteSpace: 'nowrap', transition: 'all 0.2s',
                 background: isActive ? '#0F172A' : 'transparent',
                 color: isActive ? '#fff' : 'var(--muted)',
@@ -333,14 +408,14 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
 
       {/* ── Actions Bar ── */}
       <div style={{
-        display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
+        display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', width: '100%', boxSizing: 'border-box'
       }}>
         <select value={filterYear} onChange={e => setFilterYear(+e.target.value)}
           style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--ink)', fontFamily: 'Cairo', fontSize: 12, flexShrink: 0 }}>
-          {[2024, 2025, 2026, 2027].map(y => <option key={y}>{y}</option>)}
+          {availableYears.map(y => <option key={y} value={y}>سنة {y}</option>)}
         </select>
         <button className="btn btn-primary" onClick={() => setShowAddExpense(true)}
-          style={{ fontSize: 12, padding: '8px 14px', flex: 1, justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 5 }}>
+          style={{ fontSize: 12, padding: '8px 14px', flex: 1, minWidth: 120, justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 5 }}>
           <Plus size={14} /> مصروف جديد
         </button>
         <button className="btn" onClick={() => window.print()}
@@ -576,11 +651,24 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
       {/* ══════════ MONTHLY TAB ══════════ */}
       {activeTab === 'monthly' && (
         <>
-          <div style={{ background: 'var(--card)', borderRadius: 16, padding: '18px 20px', border: '1px solid var(--border)' }}>
+          {/* Summary KPIs for selected year */}
+          <div className="company-finance-kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+            <KPICard label={`إجمالي المحصّل (${filterYear})`} value={money(selectedYearTotals.totalCollected)}
+              icon={ArrowDownRight} color="#10B981" sub={`تدفقات ${filterYear}`} />
+            <KPICard label={`إجمالي المصروفات (${filterYear})`} value={money(selectedYearTotals.totalExpenses)}
+              icon={ArrowUpRight} color="#EF4444" sub={`مصاريف ${filterYear}`} />
+            <KPICard label={`صافي الربح (${filterYear})`} value={money(selectedYearTotals.profit)}
+              icon={TrendingUp} color={selectedYearTotals.profit >= 0 ? '#10B981' : '#EF4444'}
+              sub={`هامش ربح ${selectedYearTotals.margin}%`} />
+            <KPICard label={`هامش الربح (${filterYear})`} value={`${selectedYearTotals.margin}%`}
+              icon={Percent} color="#6366F1" sub={selectedYearTotals.profit >= 0 ? 'معدل صحي' : 'يحتاج مراجعة'} />
+          </div>
+
+          <div style={{ background: 'var(--card)', borderRadius: 16, padding: '18px 20px', border: '1px solid var(--border)', minWidth: 0, overflow: 'hidden' }}>
             <h3 style={{ margin: '0 0 16px', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14.5 }}>
               <Calendar size={17} color="#6366F1" /> التدفق المالي الشهري — {filterYear}
             </h3>
-            <div dir="ltr">
+            <div dir="ltr" style={{ width: '100%', minWidth: 0, overflow: 'hidden' }}>
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={monthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 10 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
@@ -595,11 +683,11 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
             </div>
           </div>
 
-          <div style={{ background: 'var(--card)', borderRadius: 16, padding: '18px 20px', border: '1px solid var(--border)' }}>
+          <div style={{ background: 'var(--card)', borderRadius: 16, padding: '18px 20px', border: '1px solid var(--border)', minWidth: 0, overflow: 'hidden' }}>
             <h3 style={{ margin: '0 0 16px', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14.5 }}>
               <TrendingUp size={17} color="#6366F1" /> منحنى صافي الربح الشهري
             </h3>
-            <div dir="ltr">
+            <div dir="ltr" style={{ width: '100%', minWidth: 0, overflow: 'hidden' }}>
               <ResponsiveContainer width="100%" height={190}>
                 <AreaChart data={monthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 10 }}>
                   <defs>
@@ -619,10 +707,10 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
           </div>
 
           {/* Monthly table */}
-          <div style={{ background: 'var(--card)', borderRadius: 16, padding: '18px 20px', border: '1px solid var(--border)' }}>
-            <h3 style={{ margin: '0 0 14px', color: 'var(--ink)', fontSize: 14 }}>جدول الأرقام الشهرية</h3>
-            <div className="finance-table-wrapper">
-              <table className="data-table">
+          <div style={{ background: 'var(--card)', borderRadius: 16, padding: '18px 20px', border: '1px solid var(--border)', minWidth: 0, overflow: 'hidden' }}>
+            <h3 style={{ margin: '0 0 14px', color: 'var(--ink)', fontSize: 14 }}>جدول الأرقام الشهرية — {filterYear}</h3>
+            <div className="finance-table-wrapper" style={{ width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              <table className="data-table" style={{ minWidth: 520 }}>
                 <thead>
                   <tr>
                     <th>الشهر</th>
@@ -656,11 +744,11 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
                 </tbody>
                 <tfoot>
                   <tr style={{ background: 'var(--bg)', fontWeight: 800 }}>
-                    <td>الإجمالي</td>
-                    <td style={{ color: '#10B981', fontFamily: 'monospace' }}>{money(monthlyData.reduce((s, m) => s + m.collected, 0))}</td>
-                    <td style={{ color: '#EF4444', fontFamily: 'monospace' }}>{money(monthlyData.reduce((s, m) => s + m.expenses, 0))}</td>
-                    <td style={{ color: '#6366F1', fontFamily: 'monospace' }}>{money(monthlyData.reduce((s, m) => s + m.profit, 0))}</td>
-                    <td>—</td>
+                    <td>الإجمالي ({filterYear})</td>
+                    <td style={{ color: '#10B981', fontFamily: 'monospace' }}>{money(selectedYearTotals.totalCollected)}</td>
+                    <td style={{ color: '#EF4444', fontFamily: 'monospace' }}>{money(selectedYearTotals.totalExpenses)}</td>
+                    <td style={{ color: selectedYearTotals.profit >= 0 ? '#10B981' : '#EF4444', fontFamily: 'monospace' }}>{money(selectedYearTotals.profit)}</td>
+                    <td style={{ color: '#6366F1' }}>{selectedYearTotals.totalCollected > 0 ? selectedYearTotals.margin + '%' : '—'}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -672,41 +760,67 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
       {/* ══════════ QUARTERLY TAB ══════════ */}
       {activeTab === 'quarterly' && (
         <>
-          <div className="quarterly-cards-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-            {quarterlyData.map((q, i) => (
-              <div key={i} style={{
-                background: 'var(--card)', borderRadius: 12, padding: '14px 16px',
-                border: `1px solid ${i === currentQuarter ? '#0F172A' : 'var(--border)'}`,
-                position: 'relative', boxShadow: 'var(--shadow-sm)'
-              }}>
-                {i === currentQuarter && (
-                  <span style={{
-                    position: 'absolute', top: 10, left: 10, fontSize: 9.5, fontWeight: 700,
-                    background: '#0F172A', color: 'white', padding: '2px 8px', borderRadius: 20
-                  }}>الحالي</span>
-                )}
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>{q.name}</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                  <div>
-                    <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 1 }}>محصّل</div>
-                    <div style={{ fontFamily: 'monospace', fontWeight: 800, color: '#10B981', fontSize: 13 }}>{money(q.collected)}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 1 }}>مصروفات</div>
-                    <div style={{ fontFamily: 'monospace', fontWeight: 800, color: '#EF4444', fontSize: 13 }}>{money(q.expenses)}</div>
-                  </div>
-                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: 5 }}>
-                    <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 1 }}>صافي الربح</div>
-                    <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 13.5, color: q.profit >= 0 ? '#6366F1' : '#EF4444' }}>{money(q.profit)}</div>
-                  </div>
-                </div>
-              </div>
-            ))}
+          {/* Summary KPIs for selected year */}
+          <div className="company-finance-kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+            <KPICard label={`إجمالي المحصّل (${filterYear})`} value={money(selectedYearTotals.totalCollected)}
+              icon={ArrowDownRight} color="#10B981" sub={`تدفقات ${filterYear}`} />
+            <KPICard label={`إجمالي المصروفات (${filterYear})`} value={money(selectedYearTotals.totalExpenses)}
+              icon={ArrowUpRight} color="#EF4444" sub={`مصاريف ${filterYear}`} />
+            <KPICard label={`صافي الربح (${filterYear})`} value={money(selectedYearTotals.profit)}
+              icon={TrendingUp} color={selectedYearTotals.profit >= 0 ? '#10B981' : '#EF4444'}
+              sub={`هامش ربح ${selectedYearTotals.margin}%`} />
+            <KPICard label={`هامش الربح (${filterYear})`} value={`${selectedYearTotals.margin}%`}
+              icon={Percent} color="#6366F1" sub={selectedYearTotals.profit >= 0 ? 'معدل صحي' : 'يحتاج مراجعة'} />
           </div>
 
-          <div style={{ background: 'var(--card)', borderRadius: 16, padding: '18px 20px', border: '1px solid var(--border)' }}>
+          <div className="quarterly-cards-grid" style={{ gap: 12 }}>
+            {quarterlyData.map((q, i) => {
+              const qMargin = q.collected > 0 ? ((q.profit / q.collected) * 100).toFixed(1) : '—';
+              return (
+                <div key={i} style={{
+                  background: 'var(--card)', borderRadius: 12, padding: '14px 16px',
+                  border: `1px solid ${i === currentQuarter ? '#0F172A' : 'var(--border)'}`,
+                  position: 'relative', boxShadow: 'var(--shadow-sm)', minWidth: 0
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)' }}>{q.name}</span>
+                    {i === currentQuarter && (
+                      <span style={{
+                        fontSize: 9.5, fontWeight: 700,
+                        background: '#0F172A', color: 'white', padding: '2px 8px', borderRadius: 20
+                      }}>الحالي</span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, color: 'var(--muted)' }}>محصّل</span>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#10B981', fontSize: 12.5 }}>{money(q.collected)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, color: 'var(--muted)' }}>مصروفات</span>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#EF4444', fontSize: 12.5 }}>{money(q.expenses)}</span>
+                    </div>
+                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink)' }}>صافي الربح</span>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 13, color: q.profit >= 0 ? '#10B981' : '#EF4444' }}>{money(q.profit)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10.5 }}>
+                      <span style={{ color: 'var(--muted)' }}>هامش الربح</span>
+                      <span style={{
+                        padding: '1px 6px', borderRadius: 12, fontWeight: 700,
+                        background: qMargin !== '—' && parseFloat(qMargin) >= 15 ? 'rgba(16,185,129,0.1)' : 'rgba(99,102,241,0.1)',
+                        color: qMargin !== '—' && parseFloat(qMargin) >= 15 ? '#10B981' : '#6366F1'
+                      }}>{qMargin !== '—' ? `${qMargin}%` : '—'}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ background: 'var(--card)', borderRadius: 16, padding: '18px 20px', border: '1px solid var(--border)', minWidth: 0, overflow: 'hidden' }}>
             <h3 style={{ margin: '0 0 16px', color: 'var(--ink)', fontSize: 14.5 }}>مقارنة الأرباع — {filterYear}</h3>
-            <div dir="ltr">
+            <div dir="ltr" style={{ width: '100%', minWidth: 0, overflow: 'hidden' }}>
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={quarterlyData} margin={{ top: 10, right: 10, left: 0, bottom: 10 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
@@ -723,7 +837,7 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
           </div>
 
           {/* Print-friendly quarterly report */}
-          <div style={{ background: 'var(--card)', borderRadius: 12, padding: '18px 20px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
+          <div style={{ background: 'var(--card)', borderRadius: 12, padding: '18px 20px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)', minWidth: 0, overflow: 'hidden' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
               <h3 style={{ margin: 0, color: 'var(--ink)', fontSize: 13.5 }}>التقرير المالي الربع سنوي — {filterYear}</h3>
               <button className="btn btn-primary" onClick={() => window.print()}
@@ -732,8 +846,8 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
               </button>
             </div>
 
-            <div className="finance-table-wrapper">
-              <table className="data-table">
+            <div className="finance-table-wrapper" style={{ width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              <table className="data-table" style={{ minWidth: 480 }}>
                 <thead>
                   <tr>
                     <th>البند</th>
@@ -743,9 +857,9 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
                 </thead>
                 <tbody>
                   {[
-                    { label: 'إجمالي المحصّل', key: 'collected', color: '#10B981' },
-                    { label: 'إجمالي المصروفات', key: 'expenses', color: '#EF4444' },
-                    { label: 'صافي الربح', key: 'profit', color: '#6366F1' },
+                    { label: 'إجمالي المحصّل', key: 'collected', totalKey: 'totalCollected', color: '#10B981' },
+                    { label: 'إجمالي المصروفات', key: 'expenses', totalKey: 'totalExpenses', color: '#EF4444' },
+                    { label: 'صافي الربح', key: 'profit', totalKey: 'profit', color: '#6366F1' },
                   ].map(row => (
                     <tr key={row.key}>
                       <td style={{ fontWeight: 700, color: row.color }}>{row.label}</td>
@@ -753,7 +867,7 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
                         <td key={i} style={{ fontFamily: 'monospace', fontWeight: 700, color: row.color }}>{money(q[row.key])}</td>
                       ))}
                       <td style={{ fontFamily: 'monospace', fontWeight: 800, color: row.color }}>
-                        {money(quarterlyData.reduce((s, q) => s + q[row.key], 0))}
+                        {money(selectedYearTotals[row.totalKey])}
                       </td>
                     </tr>
                   ))}
@@ -765,7 +879,7 @@ export default function CompanyFinance({ projects = [], onUpdateProject }) {
                       </td>
                     ))}
                     <td style={{ fontWeight: 800, color: '#6366F1' }}>
-                      {kpis.totalCollected > 0 ? kpis.profitMargin + '%' : '—'}
+                      {selectedYearTotals.totalCollected > 0 ? selectedYearTotals.margin + '%' : '—'}
                     </td>
                   </tr>
                 </tbody>
