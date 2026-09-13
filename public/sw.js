@@ -3,7 +3,7 @@
  * الإصدار الأول المطور لتطبيقات الهواتف والويب التقدمية
  */
 
-const CACHE_NAME = 'tashteeb-pro-v1.3';
+const CACHE_NAME = 'tashteeb-pro-v1.4';
 const PRECACHE_ASSETS = [
   './',
   './index.html',
