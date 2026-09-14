@@ -8,6 +8,7 @@ import { fmtDate, todayISO, nowTimeISO, fmtTime, fmtDateTime, compressImageFile 
 import { saveMediaBlob, createMicroThumbnail } from '../utils/mediaStorage';
 import { uploadMediaToFirebaseStorage } from '../services/cloudSync';
 import MediaThumbnail from '../components/MediaThumbnail';
+import MediaLightbox from '../components/MediaLightbox';
 import VoiceInput from '../components/VoiceInput';
 import InteractiveGantt from '../components/InteractiveGantt';
 import ProjectSupply from '../components/ProjectSupply';
@@ -47,6 +48,7 @@ export default function EngineerView({ project, currentUser, onUpdate, onBack })
   const [sub, setSub] = useState('today');
   const [showCraftsmanContract, setShowCraftsmanContract] = useState(false);
   const [selectedWorkerForContract, setSelectedWorkerForContract] = useState(null);
+  const [previewPhoto, setPreviewPhoto] = useState(null);
   const sm = STATUS_META[project.status] || STATUS_META.on_track;
 
   return (
@@ -126,12 +128,20 @@ export default function EngineerView({ project, currentUser, onUpdate, onBack })
           />
         )}
         {sub === 'plan'      && <PlanPanel     project={project} onUpdate={onUpdate} />}
-        {sub === 'diary'     && <DiaryPanel    project={project} />}
+        {sub === 'diary'     && <DiaryPanel    project={project} onPreviewPhoto={setPreviewPhoto} />}
         {sub === 'supply'    && <ProjectSupply project={project} currentUser={currentUser} onUpdate={onUpdate} />}
-        {sub === 'photos'    && <PhotosPanel   project={project} onUpdate={onUpdate} />}
+        {sub === 'photos'    && <PhotosPanel   project={project} onUpdate={onUpdate} onPreviewPhoto={setPreviewPhoto} />}
         {sub === 'schedule'  && <SchedulePanel project={project} onUpdate={onUpdate} />}
         {sub === 'overview'  && <OverviewPanel project={project} />}
       </div>
+
+      {previewPhoto && (
+        <MediaLightbox
+          item={previewPhoto}
+          items={project.sitePhotos || []}
+          onClose={() => setPreviewPhoto(null)}
+        />
+      )}
 
       {showCraftsmanContract && (
         <CraftsmanContractModal 
@@ -407,7 +417,7 @@ function PlanPanel({ project, onUpdate }) {
 }
 
 /* ═══════════ 3. سجل اليوميات ═══════════ */
-function DiaryPanel({ project }) {
+function DiaryPanel({ project, onPreviewPhoto }) {
   const logs = (project.dailyLogs || []).slice().sort((a, b) => a.date < b.date ? 1 : -1);
   return (
     <div className="panel">
@@ -446,6 +456,7 @@ function DiaryPanel({ project }) {
                     <MediaThumbnail
                       key={i}
                       item={typeof p === 'string' ? { src: p } : p}
+                      onClick={onPreviewPhoto}
                       style={{ width: 72, height: 72, borderRadius: 8, border: '1px solid var(--border)' }}
                     />
                   ))}
@@ -460,7 +471,7 @@ function DiaryPanel({ project }) {
 }
 
 /* ═══════════ 4. صور الموقع ═══════════ */
-function PhotosPanel({ project, onUpdate }) {
+function PhotosPanel({ project, onUpdate, onPreviewPhoto }) {
   const photos = project.sitePhotos || [];
   const [caption, setCaption] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -530,7 +541,7 @@ function PhotosPanel({ project, onUpdate }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
             {photos.slice().reverse().map(p => (
               <div key={p.id} style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                <MediaThumbnail item={p} style={{ width: '100%', height: 130 }} />
+                <MediaThumbnail item={p} onClick={onPreviewPhoto} style={{ width: '100%', height: 130 }} />
                 <div style={{ padding: '6px 8px', background: 'var(--card)' }}>
                   <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmtDate(p.date)}</div>
                   {p.caption && <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginTop: 2 }}>{p.caption}</div>}

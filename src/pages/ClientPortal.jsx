@@ -7,6 +7,7 @@ import {
 import { getGlobalCurrency, fmtDate, fmtTime } from "../utils/helpers";
 import SignaturePad from "../components/SignaturePad";
 import MediaThumbnail from "../components/MediaThumbnail";
+import MediaLightbox from "../components/MediaLightbox";
 import { openWhatsApp, WHATSAPP_TEMPLATES } from "../utils/whatsappTemplates";
 import { can, isEngineer, isOwner } from "../utils/permissions";
 
@@ -773,53 +774,11 @@ export default function ClientPortal({
 
       {/* ─── Lightbox Modal for Photo Preview ─── */}
       {selectedPhoto && (
-        <div
-          onClick={() => setSelectedPhoto(null)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.85)",
-            backdropFilter: "blur(6px)",
-            zIndex: 300,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 20,
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              maxWidth: 750,
-              width: "100%",
-              background: "var(--card)",
-              borderRadius: 16,
-              overflow: "hidden",
-              border: "1px solid var(--border)",
-              boxShadow: "0 25px 50px rgba(0,0,0,0.5)",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 18px", borderBottom: "1px solid var(--border)" }}>
-              <div style={{ fontWeight: 800, fontSize: 14 }}>{selectedPhoto.caption || "معاينة صورة الموقع"}</div>
-              <button
-                onClick={() => setSelectedPhoto(null)}
-                style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--muted)", padding: 4 }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div style={{ background: "#000", minHeight: 250, maxHeight: "70vh", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-              <MediaThumbnail
-                item={selectedPhoto}
-                style={{ width: "100%", maxHeight: "70vh", height: "auto", minHeight: 250, borderRadius: 0, background: "#000" }}
-              />
-            </div>
-            <div style={{ padding: "10px 18px", fontSize: 12, color: "var(--muted)", display: "flex", justifyContent: "space-between" }}>
-              <span>تاريخ الصورة: {selectedPhoto.date || "—"}</span>
-              <span>المصدر: {selectedPhoto.source || "موقع المشروع"}</span>
-            </div>
-          </div>
-        </div>
+        <MediaLightbox
+          item={selectedPhoto}
+          items={allSitePhotos}
+          onClose={() => setSelectedPhoto(null)}
+        />
       )}
 
     </div>
