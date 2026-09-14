@@ -562,6 +562,31 @@ export async function syncLeadsToCloud(companyId, leads) {
 }
 
 /**
+ * الاستماع الفوري والتحديث اللحظي لعملاء الـ CRM والطلبات الواردة
+ */
+export function subscribeToCloudLeads(companyId, onUpdate) {
+  const cId = cleanCompanyId(companyId);
+  if (!cId || typeof onUpdate !== 'function') return () => {};
+  try {
+    const docRef = doc(db, 'companies', cId);
+    const unsub = onSnapshot(docRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (Array.isArray(data?.leads)) {
+          onUpdate(data.leads);
+        }
+      }
+    }, (err) => {
+      console.warn("Cloud snapshot error (leads):", err.message);
+    });
+    return unsub;
+  } catch (e) {
+    console.warn("Could not subscribe to cloud leads:", e);
+    return () => {};
+  }
+}
+
+/**
  * حفظ مستخدمي الشركة في السحابة
  */
 export async function syncCompanyUsersToCloud(companyId, users) {

@@ -31,6 +31,7 @@ const LandingPage = React.lazy(() => import('./pages/LandingPage'));
 const CompanySettings = React.lazy(() => import('./pages/CompanySettings'));
 const CrmPipeline = React.lazy(() => import('./pages/CrmPipeline'));
 const ClientPortal = React.lazy(() => import('./pages/ClientPortal'));
+const ClientIntakePage = React.lazy(() => import('./pages/ClientIntakePage'));
 const SuperAdminDashboard = React.lazy(() => import('./pages/SuperAdminDashboard'));
 const OnboardingTourModal = React.lazy(() => import('./components/OnboardingTourModal'));
 const QuickWinChecklist = React.lazy(() => import('./components/QuickWinChecklist'));
@@ -38,8 +39,9 @@ import { isFirstLogin, markFirstLoginDone, seedDemoData } from './utils/seedDemo
 
 import { loadCompanySettings, applyCompanyBranding, COMPANY_SETTINGS_KEY } from './utils/branding';
 import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed } from './services/tenantsManager';
-import { syncProjectsToCloud, syncSingleProjectToCloud, deleteSingleProjectFromCloud, syncTeamToCloud, syncLeadsToCloud, subscribeToCloudProjects, cleanUpInvalidDocs, sanitizeProjectForCloud, mergeProjectsPreservingLocal, mergeTeamsPreservingLocal, syncSettingsToCloud } from './services/cloudSync';
+import { syncProjectsToCloud, syncSingleProjectToCloud, deleteSingleProjectFromCloud, syncTeamToCloud, syncLeadsToCloud, subscribeToCloudProjects, subscribeToCloudLeads, cleanUpInvalidDocs, sanitizeProjectForCloud, mergeProjectsPreservingLocal, mergeTeamsPreservingLocal, syncSettingsToCloud } from './services/cloudSync';
 import { parseClientPortalFromUrl, resolveClientPortalProject } from './services/portalResolver';
+import { parseIntakeRouteFromUrl } from './services/intakeResolver';
 
 function PageLoadingFallback() {
   return (
@@ -249,6 +251,7 @@ export default function App() {
 
   // Public Client Portal Route State (Accessible without login from any browser/device)
   const [portalRouteInfo, setPortalRouteInfo] = useState(() => parseClientPortalFromUrl());
+  const [intakeRouteInfo, setIntakeRouteInfo] = useState(() => parseIntakeRouteFromUrl());
   const [publicPortalProject, setPublicPortalProject] = useState(null);
   const [publicPortalCompanySettings, setPublicPortalCompanySettings] = useState(null);
   const [portalLoading, setPortalLoading] = useState(() => !!parseClientPortalFromUrl());
@@ -416,13 +419,18 @@ export default function App() {
     return () => { isCancelled = true; };
   }, [portalRouteInfo]);
 
-  // الاستماع لتغيير الروابط وأزرار الرجوع/التقدم بالمتصفح
+  // الاستماع لتغيير الروابط وأزرار الرجوع/التقدم بالمتصفح والـ Hash
   useEffect(() => {
-    const handlePopState = () => {
+    const handleNavigation = () => {
       setPortalRouteInfo(parseClientPortalFromUrl());
+      setIntakeRouteInfo(parseIntakeRouteFromUrl());
     };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('popstate', handleNavigation);
+    window.addEventListener('hashchange', handleNavigation);
+    return () => {
+      window.removeEventListener('popstate', handleNavigation);
+      window.removeEventListener('hashchange', handleNavigation);
+    };
   }, []);
 
   // Company Tenant Scoped ID
@@ -521,6 +529,25 @@ export default function App() {
     });
     return () => unsub();
   }, [activeCompanyId]);
+
+  // استماع ومزامنة سحابية حية لعملاء الـ CRM والطلبات الواردة لحظياً
+  useEffect(() => {
+    if (!isAuthenticated || !activeCompanyId) return;
+    const unsub = subscribeToCloudLeads(activeCompanyId, (cloudLeads) => {
+      if (Array.isArray(cloudLeads)) {
+        setLeads((prev) => {
+          if (JSON.stringify(prev) !== JSON.stringify(cloudLeads)) {
+            try {
+              localStorage.setItem(`tenant_${activeCompanyId}_leads`, JSON.stringify(cloudLeads));
+            } catch (e) {}
+            return cloudLeads;
+          }
+          return prev;
+        });
+      }
+    });
+    return () => { if (unsub) unsub(); };
+  }, [activeCompanyId, isAuthenticated]);
 
   function flashSave(ok) {
     setSaveState(ok ? "saved" : "offline");
@@ -897,6 +924,21 @@ export default function App() {
     }
   }
 
+  // ─── 0.1 PUBLIC CLIENT INTAKE / LEAD CAPTURE VIEW (Bypasses Login and Landing Page!) ───
+  if (intakeRouteInfo) {
+    return (
+      <React.Suspense fallback={<PageLoadingFallback />}>
+        <ClientIntakePage
+          intakeInfo={intakeRouteInfo}
+          onBack={() => {
+            setIntakeRouteInfo(null);
+            window.history.pushState(null, '', '/');
+          }}
+        />
+      </React.Suspense>
+    );
+  }
+
   if (!isAuthenticated) {
     if (!isLoginMode) {
       return (
@@ -1185,6 +1227,7 @@ export default function App() {
                 }}
                 companySettings={companySettings}
                 userRole={userRole}
+                activeCompanyId={activeCompanyId}
               />
             )}
 

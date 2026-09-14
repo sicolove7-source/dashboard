@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import {
   Users, UserPlus, Phone, MapPin, DollarSign, Calendar, MessageCircle,
   ArrowRight, MoreVertical, Plus, CheckCircle2, XCircle, Clock, Search,
-  Filter, Sparkles, Building, Layers, Eye, Trash2, Edit3, Share2, Copy, Check
+  Filter, Sparkles, Building, Layers, Eye, Trash2, Edit3, Share2, Copy, Check, ExternalLink
 } from "lucide-react";
 import { openWhatsApp, WHATSAPP_TEMPLATES } from "../utils/whatsappTemplates";
 import { getGlobalCurrency } from "../utils/helpers";
@@ -33,6 +33,7 @@ export default function CrmPipeline({
   onConvertToProject,
   companySettings,
   userRole,
+  activeCompanyId = "comp_alain",
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterSource, setFilterSource] = useState("all");
@@ -40,8 +41,12 @@ export default function CrmPipeline({
   const [editingLead, setEditingLead] = useState(null);
   const [isFormShareOpen, setIsFormShareOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [shareChannel, setShareChannel] = useState("all");
 
   const companyName = companySettings?.companyName || "إدارة التشطيبات";
+  const intakeCompanyId = activeCompanyId || "comp_alain";
+  const channelParam = shareChannel !== "all" ? `&source=${shareChannel}` : "";
+  const publicIntakeUrl = `${window.location.origin}/#request-quote?c=${intakeCompanyId}${channelParam}`;
 
   // Form State
   const [formData, setFormData] = useState({
@@ -628,24 +633,73 @@ export default function CrmPipeline({
             className="panel"
             style={{
               width: "100%",
-              maxWidth: 520,
+              maxWidth: 580,
               background: "var(--card)",
               borderRadius: 20,
-              padding: 24,
+              padding: 26,
+              boxShadow: "0 25px 50px -12px rgba(0,0,0,0.35)",
             }}
           >
-            <h3 style={{ margin: "0 0 10px", fontSize: 18, fontWeight: 900 }}>
-              🌐 نموذج استقبال طلبات التشطيب (Lead Capture)
-            </h3>
-            <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.7, margin: "0 0 16px" }}>
-              شارك هذا الرابط في حملاتك الإعلانية على فيسبوك/إنستغرام أو بموقعك الإلكتروني ليستقبل السيستم بيانات العملاء مباشرة في خانة (عميل جديد)!
-            </p>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+              <div>
+                <h3 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 900 }}>
+                  🌐 رابط استمارة استقبال العملاء (Lead Capture)
+                </h3>
+                <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6, margin: 0 }}>
+                  شارك هذا الرابط في حملاتك الإعلانية؛ ليقوم العميل بطلب مقايسة وتصل بياناته فورياً هنا في عمود (عميل جديد)!
+                </p>
+              </div>
+              <button
+                onClick={() => setIsFormShareOpen(false)}
+                className="btn btn-ghost"
+                style={{ padding: 6, borderRadius: "50%" }}
+              >
+                ✕
+              </button>
+            </div>
 
+            {/* Campaign Channels Tabs */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 6 }}>
+                تخصيص الرابط حسب منصة النشر (تتبع المصدر تلقائياً):
+              </label>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {[
+                  { id: "all", label: "🌐 رابط عام" },
+                  { id: "facebook", label: "📘 إعلانات فيسبوك" },
+                  { id: "instagram", label: "📸 إنستغرام" },
+                  { id: "tiktok", label: "🎵 تيك توك" },
+                  { id: "whatsapp", label: "💬 واتساب" },
+                ].map((ch) => (
+                  <button
+                    key={ch.id}
+                    type="button"
+                    onClick={() => setShareChannel(ch.id)}
+                    style={{
+                      padding: "5px 12px",
+                      borderRadius: 10,
+                      fontSize: 12,
+                      fontWeight: shareChannel === ch.id ? 800 : 600,
+                      background: shareChannel === ch.id ? "var(--ink, #0F172A)" : "rgba(0,0,0,0.04)",
+                      color: shareChannel === ch.id ? "#FFFFFF" : "var(--muted)",
+                      border: "none",
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    {ch.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* URL Input Box */}
             <div
               style={{
                 background: "rgba(0,0,0,0.03)",
-                padding: "12px 16px",
-                borderRadius: 12,
+                padding: "10px 14px",
+                borderRadius: 14,
                 border: "1px solid var(--border)",
                 display: "flex",
                 alignItems: "center",
@@ -656,7 +710,7 @@ export default function CrmPipeline({
               <input
                 type="text"
                 readOnly
-                value={`${window.location.origin}/#request-quote`}
+                value={publicIntakeUrl}
                 style={{
                   flex: 1,
                   background: "transparent",
@@ -665,28 +719,75 @@ export default function CrmPipeline({
                   fontFamily: "monospace",
                   fontSize: 13,
                   direction: "ltr",
+                  color: "var(--ink)",
                 }}
               />
               <button
                 onClick={() => {
-                  navigator.clipboard?.writeText(`${window.location.origin}/#request-quote`);
+                  navigator.clipboard?.writeText(publicIntakeUrl);
                   setCopiedLink(true);
                   setTimeout(() => setCopiedLink(false), 2000);
                 }}
                 className="btn btn-primary"
-                style={{ padding: "6px 14px", fontSize: 12, gap: 6 }}
+                style={{ padding: "7px 16px", fontSize: 12.5, gap: 6, whiteSpace: "nowrap" }}
               >
                 {copiedLink ? <><Check size={14} /> تم النسخ</> : <><Copy size={14} /> نسخ الرابط</>}
               </button>
             </div>
 
-            <button
-              onClick={() => setIsFormShareOpen(false)}
-              className="btn btn-ghost"
-              style={{ width: "100%" }}
-            >
-              إغلاق
-            </button>
+            {/* Action Buttons: Preview & WhatsApp Share */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+              <button
+                type="button"
+                onClick={() => window.open(publicIntakeUrl, "_blank")}
+                className="btn"
+                style={{
+                  gap: 8,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  background: "#F8FAFC",
+                  border: "1px solid #E2E8F0",
+                  color: "var(--ink)",
+                  justifyContent: "center",
+                }}
+              >
+                <ExternalLink size={15} /> معاينة وتجربة النموذج
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const shareMsg = encodeURIComponent(
+                    `مرحباً، يسعدنا في *${companyName}* استقبال طلب معاينة عقاركم وتقديم المقايسة المبدئية مباشرة من خلال الرابط:\n${publicIntakeUrl}`
+                  );
+                  window.open(`https://wa.me/?text=${shareMsg}`, "_blank");
+                }}
+                className="btn"
+                style={{
+                  gap: 8,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  background: "rgba(16, 185, 129, 0.1)",
+                  border: "1px solid rgba(16, 185, 129, 0.25)",
+                  color: "#059669",
+                  justifyContent: "center",
+                }}
+              >
+                <MessageCircle size={15} /> مشاركة إعلان عبر واتساب
+              </button>
+            </div>
+
+            <div style={{
+              background: "rgba(59, 130, 246, 0.05)",
+              border: "1px solid rgba(59, 130, 246, 0.15)",
+              borderRadius: 12,
+              padding: "10px 14px",
+              fontSize: 12,
+              color: "#2563EB",
+              lineHeight: 1.6,
+            }}>
+              💡 <strong>تحديث فوري تلقائي:</strong> أي عميل يقوم بتعبئة النموذج من هاتفه، ستظهر بياناته فورياً وتلقائياً في بطاقة عميل جديد في هذا الجدول مع إشعار بالطلب.
+            </div>
           </div>
         </div>
       )}
