@@ -52,7 +52,7 @@ export default function CrmPipeline({
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
-    area: AREAS[0] || "الحي الأول",
+    area: "",
     type: TYPES[0] || "شقة سكنية",
     budget: 250000,
     source: "facebook",
@@ -87,7 +87,7 @@ export default function CrmPipeline({
     setFormData({
       name: "",
       phone: "",
-      area: AREAS[0] || "الحي الأول",
+      area: "",
       type: TYPES[0] || "شقة سكنية",
       budget: 250000,
       source: "facebook",
@@ -543,16 +543,14 @@ export default function CrmPipeline({
                 </div>
                 <div>
                   <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 4 }}>المنطقة / الموقع</label>
-                  <select
-                    className="filter-select"
+                  <input
+                    type="text"
+                    className="filter-input"
                     style={{ width: "100%" }}
+                    placeholder="اكتب اسم المنطقة أو المدينة بحرية..."
                     value={formData.area}
                     onChange={(e) => setFormData({ ...formData, area: e.target.value })}
-                  >
-                    {AREAS.map((a) => (
-                      <option key={a} value={a}>{a}</option>
-                    ))}
-                  </select>
+                  />
                 </div>
               </div>
 

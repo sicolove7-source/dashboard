@@ -4,13 +4,11 @@ import { AREAS, TYPES, ENGINEERS } from '../utils/constants';
 import { todayISO } from '../utils/helpers';
 
 export default function ProjectForm({ initial, team, areas, onSave, onCancel }) {
-  const [isCustomArea, setIsCustomArea] = useState(false);
-  
   const engineerList = team?.engineers?.length ? team.engineers : ENGINEERS;
   const initialEngineer = initial?.engineer || engineerList[0] || "";
 
   const [data, setData] = useState(() => initial ? { ...initial } : {
-    name: "", client: "", area: areas && areas.length > 0 ? areas[0] : AREAS[0], 
+    name: "", client: "", area: initial?.area || "", 
     plotNumber: "", apartmentNumber: "", type: TYPES[0],
     engineer: initialEngineer,
     progress: 0, status: "on_track",
@@ -48,38 +46,13 @@ export default function ProjectForm({ initial, team, areas, onSave, onCancel }) 
               <div className="form-field"><label>نوع الوحدة</label>
                 <select value={data.type} onChange={(e) => set("type", e.target.value)}>{TYPES.map((t) => <option key={t}>{t}</option>)}</select>
               </div>
-              <div className="form-field"><label>المنطقة</label>
-                {isCustomArea ? (
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <input 
-                      value={data.area} 
-                      onChange={(e) => set("area", e.target.value)} 
-                      placeholder="اكتب اسم المنطقة..." 
-                      required
-                      style={{ flex: 1 }}
-                      autoFocus
-                    />
-                    <button type="button" className="btn btn-ghost" onClick={() => {
-                      setIsCustomArea(false);
-                      set("area", (areas || AREAS)[0]);
-                    }} style={{ padding: "0 12px" }}>إلغاء</button>
-                  </div>
-                ) : (
-                  <select 
-                    value={data.area} 
-                    onChange={(e) => {
-                      if (e.target.value === "__custom__") {
-                        setIsCustomArea(true);
-                        set("area", "");
-                      } else {
-                        set("area", e.target.value);
-                      }
-                    }}
-                  >
-                    {(areas || AREAS).map((a) => <option key={a} value={a}>{a}</option>)}
-                    <option value="__custom__" style={{ fontWeight: "bold", color: "var(--teal)" }}>+ منطقة أخرى (إدخال يدوي)...</option>
-                  </select>
-                )}
+              <div className="form-field"><label>المنطقة / الموقع</label>
+                <input 
+                  value={data.area || ""} 
+                  onChange={(e) => set("area", e.target.value)} 
+                  placeholder="اكتب اسم المنطقة أو المدينة بحرية (مثال: التجمع، زايد، دمياط...)" 
+                  required
+                />
               </div>
             </div>
           </div>
