@@ -4,7 +4,7 @@ import {
   RotateCw, ZoomIn, ZoomOut, Maximize2, Minimize2,
   ChevronRight, ChevronLeft, MessageCircle, RefreshCw
 } from 'lucide-react';
-import { resolveMediaDisplayUrl } from '../utils/mediaStorage';
+import { resolveMediaDisplayUrl, getMediaBlob } from '../utils/mediaStorage';
 
 export default function MediaLightbox({ item, items = [], onClose }) {
   // Current active item (support single item or gallery list)
@@ -58,30 +58,56 @@ export default function MediaLightbox({ item, items = [], onClose }) {
   const isVideo = activeItem?.type === 'video' ||
     (typeof activeItem?.src === 'string' && (activeItem.src.includes('.mp4') || activeItem.src.includes('.webm') || activeItem.src.startsWith('data:video')));
 
-  // Resolve Image URL
+  // Resolve Image URL with Priority for Full High-Res Original from IndexedDB
   useEffect(() => {
     let active = true;
     if (!activeItem) return;
 
     setLoading(true);
-    const rawSrc = activeItem.src || activeItem.rawSrc || '';
+    const rawSrc = activeItem.rawSrc || activeItem.src || '';
+    const id = activeItem.id || (typeof rawSrc === 'string' && rawSrc.startsWith('idb://') ? rawSrc.replace('idb://', '') : null);
 
-    if (rawSrc.startsWith('http://') || rawSrc.startsWith('https://') || rawSrc.startsWith('data:')) {
+    // 1. If it's a real remote HTTPS url or blob url, use it directly
+    if (typeof rawSrc === 'string' && (rawSrc.startsWith('http://') || rawSrc.startsWith('https://') || rawSrc.startsWith('blob:'))) {
       setResolvedUrl(rawSrc);
       setLoading(false);
       return;
     }
 
+    // 2. Priority: If it has an IndexedDB ID, fetch the full original high-res binary blob!
+    if (id) {
+      getMediaBlob(id).then((blob) => {
+        if (!active) return;
+        if (blob) {
+          const highResUrl = URL.createObjectURL(blob);
+          setResolvedUrl(highResUrl);
+          setLoading(false);
+          return;
+        }
+        // Fallback to resolveMediaDisplayUrl
+        resolveMediaDisplayUrl(activeItem).then((url) => {
+          if (active) {
+            setResolvedUrl(url || activeItem.thumbnail || '');
+            setLoading(false);
+          }
+        });
+      }).catch(() => {
+        if (active) {
+          resolveMediaDisplayUrl(activeItem).then((url) => {
+            if (active) {
+              setResolvedUrl(url || activeItem.thumbnail || '');
+              setLoading(false);
+            }
+          });
+        }
+      });
+      return;
+    }
+
+    // 3. If no ID, use resolveMediaDisplayUrl
     resolveMediaDisplayUrl(activeItem).then((url) => {
       if (active) {
-        const safeUrl = (url && !url.startsWith('idb://'))
-          ? url
-          : (activeItem.thumbnail && !activeItem.thumbnail.startsWith('idb://'))
-            ? activeItem.thumbnail
-            : (rawSrc && (rawSrc.startsWith('http') || rawSrc.startsWith('data:') || rawSrc.startsWith('blob:')))
-              ? rawSrc
-              : '';
-        setResolvedUrl(safeUrl);
+        setResolvedUrl(url || activeItem.thumbnail || (typeof rawSrc === 'string' ? rawSrc : ''));
         setLoading(false);
       }
     }).catch(() => {
@@ -182,21 +208,28 @@ export default function MediaLightbox({ item, items = [], onClose }) {
       onClick={onClose}
       style={{
         position: 'fixed',
-        inset: 0,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100vw',
+        height: '100vh',
         height: '100dvh',
-        maxHeight: '100dvh',
-        background: 'rgba(5, 10, 20, 0.94)',
+        background: 'rgba(5, 10, 20, 0.96)',
         backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
         zIndex: 99999,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '10px 14px',
-        animation: 'fadeIn 0.2s ease-out',
+        padding: '8px 12px',
+        boxSizing: 'border-box',
+        animation: 'fadeIn 0.18s ease-out',
         userSelect: 'none',
         overflow: 'hidden',
         overscrollBehavior: 'none',
+        touchAction: 'none',
       }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
@@ -426,7 +459,7 @@ export default function MediaLightbox({ item, items = [], onClose }) {
         </div>
       </div>
 
-      {/* ─── Center Viewport Stage (مسرح العرض الذكي المتجاوب) ─── */}
+      {/* ─── Center Viewport Stage (مسرح العرض المتناسق المحمي من التمدد والانزياح) ─── */}
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -434,10 +467,12 @@ export default function MediaLightbox({ item, items = [], onClose }) {
           zIndex: 5,
           flex: 1,
           width: '100%',
+          minHeight: 0,
+          minWidth: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '10px',
+          padding: '4px 6px',
           overflow: 'hidden',
           cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
         }}
@@ -456,10 +491,10 @@ export default function MediaLightbox({ item, items = [], onClose }) {
               right: 14,
               top: '50%',
               transform: 'translateY(-50%)',
-              width: 46,
-              height: 46,
+              width: 44,
+              height: 44,
               borderRadius: '50%',
-              background: 'rgba(15, 23, 42, 0.8)',
+              background: 'rgba(15, 23, 42, 0.82)',
               border: '1px solid rgba(255, 255, 255, 0.2)',
               color: '#FFFFFF',
               display: 'flex',
@@ -472,7 +507,7 @@ export default function MediaLightbox({ item, items = [], onClose }) {
               transition: 'all 0.15s',
             }}
           >
-            <ChevronRight size={26} />
+            <ChevronRight size={24} />
           </button>
         )}
 
@@ -480,7 +515,7 @@ export default function MediaLightbox({ item, items = [], onClose }) {
         {loading ? (
           <div style={{ color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
             <Loader2 size={36} className="spin" color="#38BDF8" />
-            <span style={{ fontSize: 14, fontWeight: 700 }}>جاري عرض الصورة بأعلى دقة...</span>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>جاري استرداد الصورة بأعلى دقة أصلية...</span>
           </div>
         ) : isVideo ? (
           <video
@@ -490,7 +525,7 @@ export default function MediaLightbox({ item, items = [], onClose }) {
             playsInline
             style={{
               maxWidth: '96vw',
-              maxHeight: 'calc(100dvh - 130px)',
+              maxHeight: 'calc(100vh - 140px)',
               borderRadius: 16,
               boxShadow: '0 25px 60px rgba(0,0,0,0.7)',
               border: '1.5px solid rgba(255, 255, 255, 0.15)',
@@ -498,7 +533,7 @@ export default function MediaLightbox({ item, items = [], onClose }) {
             }}
           />
         ) : (
-          /* Smart Responsive Image Frame (تتكيف ذاتياً مع الصور الطولية والعرضية) */
+          /* Smart Responsive Image Frame (تتكيف ذاتياً بنسبة العرض إلى الارتفاع الطبيعية دون أي مط) */
           <div
             style={{
               display: 'flex',
@@ -506,7 +541,8 @@ export default function MediaLightbox({ item, items = [], onClose }) {
               justifyContent: 'center',
               width: '100%',
               height: '100%',
-              maxHeight: 'calc(100dvh - 120px)',
+              minHeight: 0,
+              minWidth: 0,
               transform: `translate(${pan.x}px, ${pan.y}px)`,
               transition: isDragging ? 'none' : 'transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)',
             }}
@@ -515,12 +551,12 @@ export default function MediaLightbox({ item, items = [], onClose }) {
               src={resolvedUrl}
               alt={activeItem.caption || 'معاينة الموقع'}
               style={{
-                maxWidth: (rotation === 90 || rotation === 270) ? 'calc(100dvh - 130px)' : '95vw',
-                maxHeight: (rotation === 90 || rotation === 270) ? '90vw' : 'calc(100dvh - 130px)',
-                width: fitMode === 'cover' ? '100%' : 'auto',
-                height: fitMode === 'cover' ? '100%' : 'auto',
-                objectFit: fitMode,
-                borderRadius: 16,
+                maxWidth: (rotation === 90 || rotation === 270) ? 'calc(100vh - 150px)' : 'calc(100vw - 20px)',
+                maxHeight: (rotation === 90 || rotation === 270) ? 'calc(100vw - 20px)' : 'calc(100vh - 150px)',
+                width: 'auto',
+                height: 'auto',
+                objectFit: 'contain',
+                borderRadius: 14,
                 boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
                 border: '1.5px solid rgba(255, 255, 255, 0.18)',
                 transform: `rotate(${rotation}deg) scale(${zoom})`,
@@ -543,10 +579,10 @@ export default function MediaLightbox({ item, items = [], onClose }) {
               left: 14,
               top: '50%',
               transform: 'translateY(-50%)',
-              width: 46,
-              height: 46,
+              width: 44,
+              height: 44,
               borderRadius: '50%',
-              background: 'rgba(15, 23, 42, 0.8)',
+              background: 'rgba(15, 23, 42, 0.82)',
               border: '1px solid rgba(255, 255, 255, 0.2)',
               color: '#FFFFFF',
               display: 'flex',
@@ -559,7 +595,7 @@ export default function MediaLightbox({ item, items = [], onClose }) {
               transition: 'all 0.15s',
             }}
           >
-            <ChevronLeft size={26} />
+            <ChevronLeft size={24} />
           </button>
         )}
       </div>
@@ -627,8 +663,8 @@ export default function MediaLightbox({ item, items = [], onClose }) {
 
       <style>{`
         @keyframes fadeIn {
-          from { opacity: 0; transform: scale(0.98); }
-          to { opacity: 1; transform: scale(1); }
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
         .spin { animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }

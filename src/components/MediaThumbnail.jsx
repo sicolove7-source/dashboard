@@ -42,7 +42,12 @@ export default function MediaThumbnail({ item, onClick, style = {}, className = 
   return (
     <div
       className={className}
-      onClick={() => onClick && onClick({ ...item, src: displaySrc || rawSrc })}
+      onClick={() => onClick && onClick({
+        ...item,
+        id: item?.id,
+        rawSrc: item?.rawSrc || (typeof rawSrc === 'string' && rawSrc.startsWith('idb://') ? rawSrc : null),
+        src: (item?.rawSrc && !item.rawSrc.startsWith('data:')) ? item.rawSrc : (displaySrc || rawSrc)
+      })}
       style={{
         position: 'relative',
         cursor: 'pointer',
