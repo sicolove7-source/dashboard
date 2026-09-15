@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Building2, CalendarDays, Pencil, Trash2, ArrowRight, Plus, X, AlertTriangle, Paperclip, CheckSquare, MessageCircle, FileText, Map, MapPin, Clock, Wallet, Package, Home, Wrench, Sparkles, Target, MessageSquare, Share2, Printer, Camera, Video, Play, HardHat, Search, Filter, ChevronDown } from 'lucide-react';
+import { Building2, CalendarDays, Pencil, Trash2, ArrowRight, Plus, X, AlertTriangle, Paperclip, CheckSquare, MessageCircle, FileText, Map as MapIcon, MapPin, Clock, Wallet, Package, Home, Wrench, Sparkles, Target, MessageSquare, Share2, Printer, Camera, Video, Play, HardHat, Search, Filter, ChevronDown } from 'lucide-react';
 import StatusBadge from '../components/StatusBadge';
 
 import StampRing from '../components/StampRing';
@@ -534,12 +534,12 @@ function SnagsPanel({ project, onUpdate }) {
             {/* Floor Plan Upload Header Button */}
             {!floorPlan ? (
               <label className="btn btn-ghost" style={{ fontSize: 13, padding: "8px 12px", border: "1px dashed var(--border)", cursor: "pointer", color: "var(--teal)" }}>
-                <Map size={16} /> {isUploadingFP ? "جاري الرفع..." : "رفع مخطط معماري للمشروع 📍"}
+                <MapIcon size={16} /> {isUploadingFP ? "جاري الرفع..." : "رفع مخطط معماري للمشروع 📍"}
                 <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleFloorPlanUpload} />
               </label>
             ) : (
               <label className="btn btn-ghost" style={{ fontSize: 13, padding: "8px 12px", cursor: "pointer", color: "var(--muted)" }}>
-                <Map size={16} /> تغيير المخطط
+                <MapIcon size={16} /> تغيير المخطط
                 <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleFloorPlanUpload} />
               </label>
             )}
@@ -947,19 +947,19 @@ function DiaryPanel({ project, team, onUpdate }) {
 
   // Extract available months from logs for fast indexing & jumping
   const availableMonths = useMemo(() => {
-    const map = new Map();
+    const monthCounts = {};
     logs.forEach(l => {
       if (l && l.date) {
         const dStr = String(l.date).trim();
         const match = dStr.match(/^(\d{4})[-/](\d{1,2})/);
         if (match) {
           const ym = `${match[1]}-${match[2].padStart(2, '0')}`;
-          map.set(ym, (map.get(ym) || 0) + 1);
+          monthCounts[ym] = (monthCounts[ym] || 0) + 1;
         }
       }
     });
     const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-    return Array.from(map.entries())
+    return Object.entries(monthCounts)
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([ym, count]) => {
         const parts = ym.split('-');
