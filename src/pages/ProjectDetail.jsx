@@ -912,13 +912,18 @@ function DiaryPanel({ project, team, onUpdate }) {
   function getLogMedia(l) {
     if (!l) return [];
     const items = [];
+    const defaultCaption = l.work ? `يومية ${fmtDate(l.date)}: ${String(l.work).slice(0, 45)}` : `يومية ${fmtDate(l.date)}`;
     if (Array.isArray(l.media)) {
       l.media.forEach(m => {
         if (typeof m === 'string') {
           const isVid = m.startsWith('data:video') || m.includes('.mp4') || m.includes('.webm');
-          items.push({ src: m, type: isVid ? 'video' : 'image' });
+          items.push({ src: m, type: isVid ? 'video' : 'image', caption: defaultCaption, date: fmtDate(l.date) });
         } else if (m && (m.src || m.thumbnail || m.id)) {
-          items.push(m);
+          items.push({
+            ...m,
+            caption: m.caption || defaultCaption,
+            date: m.date || fmtDate(l.date)
+          });
         }
       });
     }
@@ -928,12 +933,15 @@ function DiaryPanel({ project, team, onUpdate }) {
         const id = typeof p === 'object' ? p?.id : null;
         if ((src || id) && !items.some(it => (id && it.id === id) || (src && it.src === src))) {
           const isVid = (typeof src === 'string' && (src.startsWith('data:video') || src.includes('.mp4') || src.includes('.webm'))) || p?.type === 'video';
-          items.push(typeof p === 'object' ? p : { src, type: isVid ? 'video' : 'image', caption: '' });
+          items.push(typeof p === 'object' 
+            ? { ...p, caption: p.caption || defaultCaption, date: p.date || fmtDate(l.date) }
+            : { src, type: isVid ? 'video' : 'image', caption: defaultCaption, date: fmtDate(l.date) }
+          );
         }
       });
     }
     if (l.video && !items.some(it => it.src === l.video)) {
-      items.push({ src: l.video, type: 'video' });
+      items.push({ src: l.video, type: 'video', caption: defaultCaption, date: fmtDate(l.date) });
     }
     return items;
   }
@@ -1029,7 +1037,11 @@ function DiaryPanel({ project, team, onUpdate }) {
     <div className="diary-container">
       {/* Lightbox / Video Modal */}
       {previewModal && (
-        <MediaLightbox item={previewModal} onClose={() => setPreviewModal(null)} />
+        <MediaLightbox
+          item={previewModal.item || previewModal}
+          items={previewModal.items || (previewModal.item ? [previewModal.item] : [previewModal])}
+          onClose={() => setPreviewModal(null)}
+        />
       )}
 
       {!hasTodayLog && (
@@ -1344,67 +1356,88 @@ function DiaryPanel({ project, team, onUpdate }) {
             </div>
           </div>
         ) : (
-          <div className="diary-logs-list">
+          <div className="diary-logs-list" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {filteredLogs.map((l, idx) => {
               const logMedia = getLogMedia(l);
               const logId = l?.id || `log_${idx}`;
+              const authorName = typeof l?.author === 'object' ? (l.author?.name || '—') : (l?.author || '—');
               return (
-                <div key={logId} className="diary-log-card">
-                  <div className="diary-log-header">
-                    <div className="diary-log-meta">
-                      <span className="diary-date-badge font-mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <span>📅 {fmtDate(l?.date)}</span>
-                        {(l?.time || l?.timestamp) && (
-                          <span style={{ opacity: 0.9, borderRight: '1px solid rgba(255,255,255,0.35)', paddingRight: 6, marginRight: 2 }}>
-                            ⏰ {fmtTime(l.time, l.timestamp)}
-                          </span>
-                        )}
+                <div
+                  key={logId}
+                  className="diary-log-card"
+                  style={{
+                    padding: '13px 15px',
+                    borderRadius: 12,
+                    background: 'var(--card)',
+                    border: '1px solid var(--border)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    transition: 'box-shadow 0.15s ease, border-color 0.15s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 800, fontSize: 13, color: 'var(--ink)' }}>
+                        📅 {fmtDate(l?.date)}
                       </span>
-                      <span className="diary-author-text">{typeof l?.author === 'object' ? (l.author?.name || '—') : (l?.author || '—')}</span>
-                      <span className="diary-workers-badge">{l?.workers || l?.laborCount || 1} عامل بالموقع</span>
+                      {(l?.time || l?.timestamp) && (
+                        <span style={{ fontSize: 11.5, fontWeight: 700, color: '#059669', background: 'rgba(5,150,105,0.1)', padding: '2px 7px', borderRadius: 6 }}>
+                          ⏰ {fmtTime(l.time, l.timestamp)}
+                        </span>
+                      )}
                     </div>
-                    
-                    {confirmId === logId ? (
-                      <div className="diary-delete-confirm">
-                        <button className="btn btn-danger btn-xs" onClick={() => removeLog(logId)}>تأكيد الحذف</button>
-                        <button className="btn btn-ghost btn-xs" onClick={() => setConfirmId(null)}>إلغاء</button>
-                      </div>
-                    ) : (
-                      <span className="icon-btn diary-delete-btn" title="حذف اليومية" onClick={() => setConfirmId(logId)}>
-                        <Trash2 size={14} />
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, color: '#10B981', fontWeight: 700, background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: 6 }}>
+                        👷 {l?.workers || l?.laborCount || 1} عمال
                       </span>
-                    )}
+                      <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>
+                        {authorName}
+                      </span>
+                      {confirmId === logId ? (
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center', background: 'rgba(239, 68, 68, 0.1)', padding: '2px 6px', borderRadius: 6 }}>
+                          <button className="btn btn-danger btn-xs" onClick={() => removeLog(logId)} style={{ padding: '2px 8px', fontSize: 11 }}>تأكيد</button>
+                          <button className="btn btn-ghost btn-xs" onClick={() => setConfirmId(null)} style={{ padding: '2px 6px', fontSize: 11 }}>إلغاء</button>
+                        </div>
+                      ) : (
+                        <span className="icon-btn diary-delete-btn" title="حذف اليومية" onClick={() => setConfirmId(logId)} style={{ width: 26, height: 26, padding: 0 }}>
+                          <Trash2 size={13} />
+                        </span>
+                      )}
+                    </div>
                   </div>
                   
-                  <div className="diary-log-content">{l?.work || l?.text || '—'}</div>
+                  <div style={{ fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.6 }}>
+                    {l?.work || l?.text || '—'}
+                  </div>
                   
                   {l?.issues && l.issues !== "لا يوجد" && (
-                    <div className="diary-issue-alert">
-                      <AlertTriangle size={14} color="#D97706" />
-                      <span>عوائق مُسجلة: {l.issues}</span>
+                    <div style={{ fontSize: 11.5, color: '#D97706', background: 'rgba(245,158,11,0.08)', padding: '4px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <AlertTriangle size={13} color="#D97706" />
+                      <span>{l.issues}</span>
                     </div>
                   )}
 
-                  {/* 📸🎥 عرض الصور والفيديوهات المسجلة لليومية بشكل واضح وبارز */}
+                  {/* 📸🎥 مكان عرض الصور والفيديوهات المسجلة لليومية بنفس الأناقة والخفة */}
                   {logMedia.length > 0 && (
-                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px dashed var(--border)' }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Camera size={14} color="#1877F2" />
-                        <span>الصور والفيديوهات المرفقة باليومية ({logMedia.length}):</span>
+                    <div style={{ marginTop: 6, paddingTop: 8, borderTop: '1px dashed var(--border)' }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <Camera size={13} color="#10B981" />
+                        <span>الصور والفيديوهات المسجلة ({logMedia.length}):</span>
                       </div>
-                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         {logMedia.map((item, mIdx) => (
                           <MediaThumbnail
                             key={mIdx}
                             item={item}
-                            onClick={setPreviewModal}
+                            onClick={(clickedItem) => setPreviewModal({ item: clickedItem, items: logMedia })}
                             style={{
-                              width: 90,
-                              height: 90,
+                              width: 75,
+                              height: 75,
                               flexShrink: 0,
+                              borderRadius: 8,
                               border: '1.5px solid var(--border)',
-                              borderRadius: 10,
-                              boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+                              cursor: 'pointer'
                             }}
                           />
                         ))}
