@@ -1021,6 +1021,10 @@ function DiaryPanel({ project, team, onUpdate }) {
     return res;
   }, [sorted, periodFilter, customDate, selectedMonth, filterOnlyIssues, searchQuery, today, currentYM]);
 
+  const issuesTotalCount = useMemo(() => {
+    return logs.filter(l => l && l.issues && l.issues !== "لا يوجد").length;
+  }, [logs]);
+
   return (
     <div className="diary-container">
       {/* Lightbox / Video Modal */}
@@ -1282,7 +1286,7 @@ function DiaryPanel({ project, team, onUpdate }) {
             }}
           >
             <AlertTriangle size={14} color={filterOnlyIssues ? '#D97706' : 'var(--muted)'} />
-            <span>عوائق فقط ({stats.issuesTotal})</span>
+            <span>عوائق فقط ({issuesTotalCount})</span>
           </button>
         </div>
 
