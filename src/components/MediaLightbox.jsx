@@ -216,474 +216,410 @@ export default function MediaLightbox({ item, items = [], onClose }) {
         width: '100vw',
         height: '100vh',
         height: '100dvh',
-        background: 'rgba(5, 10, 20, 0.96)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
+        background: 'rgba(10, 15, 30, 0.82)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
         zIndex: 99999,
         display: 'flex',
-        flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '8px 12px',
+        justifyContent: 'center',
+        padding: '12px',
         boxSizing: 'border-box',
-        animation: 'fadeIn 0.18s ease-out',
+        animation: 'fadeInBackdrop 0.18s ease-out',
         userSelect: 'none',
         overflow: 'hidden',
-        overscrollBehavior: 'none',
-        touchAction: 'none',
       }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* ─── Ambient Glow Background (المحيط الجمالي الملون المضيء لوداع الفراغات السوداء) ─── */}
-      {resolvedUrl && !isVideo && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: -40,
-            backgroundImage: `url(${resolvedUrl})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            filter: 'blur(65px) saturate(1.6) brightness(0.32)',
-            opacity: 0.9,
-            zIndex: 0,
-            pointerEvents: 'none',
-          }}
-        />
-      )}
-
-      {/* ─── Top Luxury Control Bar ─── */}
+      {/* ─── Centered Popup Modal Card (نافذة البوب اب الفخمة في منتصف الشاشة) ─── */}
       <div
-        className="lightbox-top-bar"
         onClick={(e) => e.stopPropagation()}
+        className="lightbox-popup-card"
         style={{
           position: 'relative',
           zIndex: 10,
           width: '100%',
-          maxWidth: 1100,
+          maxWidth: 700,
+          maxHeight: 'min(92dvh, 820px)',
+          background: '#1E293B',
+          border: '1.5px solid rgba(255, 255, 255, 0.16)',
+          borderRadius: 20,
+          boxShadow: '0 25px 65px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.1)',
           display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 12,
-          padding: '8px 16px',
-          background: 'rgba(30, 41, 59, 0.75)',
-          backdropFilter: 'blur(14px)',
-          border: '1px solid rgba(255, 255, 255, 0.14)',
-          borderRadius: 16,
-          color: '#F8FAFC',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          animation: 'popIn 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
           direction: 'rtl',
-          boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
         }}
       >
-        {/* Title & Info */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          {isVideo ? (
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(129, 140, 248, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Video size={18} color="#818CF8" />
-            </div>
-          ) : (
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(52, 211, 153, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <ImageIcon size={18} color="#34D399" />
-            </div>
-          )}
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 800, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-              {activeItem.caption || activeItem.name || (isVideo ? 'فيديو توثيق الموقع' : 'صورة الموقع الميدانية')}
-            </div>
-            <div style={{ fontSize: 11, color: '#94A3B8', display: 'flex', gap: 8 }}>
-              {activeItem.date && <span>{activeItem.date}</span>}
-              {currentList.length > 1 && (
-                <span style={{ color: '#38BDF8', fontWeight: 700 }}>
-                  ({currentIndex + 1} من {currentList.length})
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Toolbar Action Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          {/* Rotate Button (تدوير 90 درجة لحل مشكلة الصور الطولية) */}
-          {!isVideo && (
-            <button
-              onClick={handleRotate}
-              title="تدوير الصورة 90° (حل مشكلة الصور الطولية والعرضية)"
+        {/* 1. ─── Popup Header ─── */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 16px',
+            background: 'rgba(30, 41, 59, 0.96)',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+            gap: 10,
+            flexShrink: 0,
+          }}
+        >
+          {/* Right: Icon + Caption + Date */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <div
               style={{
-                background: rotation !== 0 ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.1)',
-                border: `1px solid ${rotation !== 0 ? '#38BDF8' : 'rgba(255, 255, 255, 0.15)'}`,
-                color: rotation !== 0 ? '#38BDF8' : '#F8FAFC',
-                padding: '7px 10px',
+                width: 34,
+                height: 34,
                 borderRadius: 10,
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: 'pointer',
+                background: isVideo ? 'rgba(129, 140, 248, 0.2)' : 'rgba(52, 211, 153, 0.2)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 5,
-                transition: 'all 0.15s',
+                justifyContent: 'center',
+                flexShrink: 0,
               }}
             >
-              <RotateCw size={15} />
-              <span className="hide-mobile">{rotation !== 0 ? `${rotation}°` : 'تدوير'}</span>
-            </button>
-          )}
-
-          {/* Zoom In & Out */}
-          {!isVideo && (
-            <>
-              <button
-                onClick={handleZoomIn}
-                disabled={zoom >= 3}
-                title="تكبير الصورة"
+              {isVideo ? <Video size={18} color="#818CF8" /> : <ImageIcon size={18} color="#34D399" />}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div
                 style={{
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  fontSize: 13.5,
+                  fontWeight: 800,
                   color: '#F8FAFC',
-                  padding: '7px 9px',
-                  borderRadius: 10,
-                  cursor: zoom >= 3 ? 'not-allowed' : 'pointer',
-                  opacity: zoom >= 3 ? 0.4 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
+                  whiteSpace: 'nowrap',
+                  textOverflow: 'ellipsis',
+                  overflow: 'hidden',
                 }}
               >
-                <ZoomIn size={15} />
-              </button>
+                {activeItem.caption || activeItem.name || (isVideo ? 'فيديو توثيق الموقع' : 'صورة توثيق الموقع')}
+              </div>
+              <div style={{ fontSize: 11, color: '#94A3B8', display: 'flex', gap: 8 }}>
+                {activeItem.date && <span>📅 {activeItem.date}</span>}
+                {currentList.length > 1 && (
+                  <span style={{ color: '#38BDF8', fontWeight: 700 }}>
+                    ({currentIndex + 1} من {currentList.length})
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
 
+          {/* Left: Quick Actions & Prominent Close Button */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            {!isVideo && (
               <button
-                onClick={handleZoomOut}
-                disabled={zoom <= 1}
-                title="تصغير الصورة"
+                onClick={handleRotate}
+                title="تدوير الصورة 90°"
                 style={{
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  color: '#F8FAFC',
-                  padding: '7px 9px',
-                  borderRadius: 10,
-                  cursor: zoom <= 1 ? 'not-allowed' : 'pointer',
-                  opacity: zoom <= 1 ? 0.4 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-              >
-                <ZoomOut size={15} />
-              </button>
-
-              {zoom > 1 && (
-                <button
-                  onClick={handleResetZoom}
-                  title="إعادة ضبط الحجم"
-                  style={{
-                    background: '#38BDF8',
-                    border: 'none',
-                    color: '#0F172A',
-                    padding: '5px 8px',
-                    borderRadius: 8,
-                    fontSize: 11,
-                    fontWeight: 900,
-                    cursor: 'pointer',
-                  }}
-                >
-                  100%
-                </button>
-              )}
-
-              {/* Fit Mode Toggle (ملاءمة / ملء الشاشة) */}
-              <button
-                onClick={() => setFitMode(m => m === 'contain' ? 'cover' : 'contain')}
-                title={fitMode === 'contain' ? 'ملء الشاشة' : 'ملاءمة أبعاد الصورة كاملة'}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  color: '#F8FAFC',
-                  padding: '7px 9px',
-                  borderRadius: 10,
+                  background: rotation !== 0 ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.08)',
+                  border: `1px solid ${rotation !== 0 ? '#38BDF8' : 'rgba(255, 255, 255, 0.15)'}`,
+                  color: rotation !== 0 ? '#38BDF8' : '#F8FAFC',
+                  padding: '6px 9px',
+                  borderRadius: 8,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
+                  gap: 4,
+                  fontSize: 12,
+                  fontWeight: 700,
                 }}
               >
-                {fitMode === 'contain' ? <Maximize2 size={15} /> : <Minimize2 size={15} />}
+                <RotateCw size={14} />
+                <span className="hide-mobile">{rotation !== 0 ? `${rotation}°` : 'تدوير'}</span>
               </button>
-            </>
-          )}
+            )}
 
-          {/* Download Original */}
-          {resolvedUrl && (
-            <a
-              href={resolvedUrl}
-              download={activeItem.name || (isVideo ? 'site_video.mp4' : 'site_photo.jpg')}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="تنزيل الملف بدقته الكاملة"
-              style={{
-                background: 'rgba(255, 255, 255, 0.1)',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                color: '#fff',
-                padding: '7px 10px',
-                borderRadius: 10,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                textDecoration: 'none',
-                cursor: 'pointer',
-                fontSize: 12,
-                fontWeight: 700,
-              }}
-            >
-              <Download size={15} />
-              <span className="hide-mobile">تحميل</span>
-            </a>
-          )}
+            {resolvedUrl && (
+              <a
+                href={resolvedUrl}
+                download={activeItem.name || (isVideo ? 'site_video.mp4' : 'site_photo.jpg')}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="تحميل بجودة كاملة"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  color: '#F8FAFC',
+                  padding: '6px 9px',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  fontSize: 12,
+                  textDecoration: 'none',
+                }}
+              >
+                <Download size={14} />
+              </a>
+            )}
 
-          {/* Close Button */}
-          <button
-            onClick={onClose}
-            title="إغلاق المعاينة"
-            style={{
-              background: 'rgba(239, 68, 68, 0.25)',
-              border: '1px solid rgba(239, 68, 68, 0.45)',
-              color: '#FCA5A5',
-              padding: '7px 12px',
-              borderRadius: 10,
-              fontSize: 12.5,
-              fontWeight: 800,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              cursor: 'pointer',
-              marginLeft: 4,
-            }}
-          >
-            <X size={16} />
-            <span>إغلاق</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ─── Center Viewport Stage (مسرح العرض المتناسق المحمي من التمدد والانزياح) ─── */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          position: 'relative',
-          zIndex: 5,
-          flex: 1,
-          width: '100%',
-          minHeight: 0,
-          minWidth: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '4px 6px',
-          overflow: 'hidden',
-          cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
-        }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-      >
-        {/* Previous Navigation Button (RTL: Right Arrow) */}
-        {currentList.length > 1 && (
-          <button
-            onClick={(e) => { e.stopPropagation(); goToPrev(); }}
-            title="الصورة السابقة"
-            style={{
-              position: 'absolute',
-              right: 14,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              width: 44,
-              height: 44,
-              borderRadius: '50%',
-              background: 'rgba(15, 23, 42, 0.82)',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              color: '#FFFFFF',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              zIndex: 20,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-              backdropFilter: 'blur(8px)',
-              transition: 'all 0.15s',
-            }}
-          >
-            <ChevronRight size={24} />
-          </button>
-        )}
-
-        {/* Loading Spinner */}
-        {loading ? (
-          <div style={{ color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-            <Loader2 size={36} className="spin" color="#38BDF8" />
-            <span style={{ fontSize: 14, fontWeight: 700 }}>جاري استرداد الصورة بأعلى دقة أصلية...</span>
-          </div>
-        ) : isVideo ? (
-          <video
-            src={resolvedUrl}
-            controls
-            autoPlay
-            playsInline
-            style={{
-              maxWidth: '96vw',
-              maxHeight: 'calc(100vh - 140px)',
-              borderRadius: 16,
-              boxShadow: '0 25px 60px rgba(0,0,0,0.7)',
-              border: '1.5px solid rgba(255, 255, 255, 0.15)',
-              background: '#0F172A',
-            }}
-          />
-        ) : (
-          /* Smart Responsive Image Frame (تتكيف ذاتياً بنسبة العرض إلى الارتفاع الطبيعية دون أي مط أو خروج عن الإطار) */
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '100%',
-              height: '100%',
-              maxHeight: '100%',
-              maxWidth: '100%',
-              minHeight: 0,
-              minWidth: 0,
-              transform: `translate(${pan.x}px, ${pan.y}px)`,
-              transition: isDragging ? 'none' : 'transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)',
-            }}
-          >
-            <img
-              src={resolvedUrl}
-              alt={activeItem.caption || 'معاينة الموقع'}
-              style={{
-                maxWidth: (rotation === 90 || rotation === 270) ? '75vh' : '100%',
-                maxHeight: (rotation === 90 || rotation === 270) ? '85vw' : '100%',
-                width: 'auto',
-                height: 'auto',
-                objectFit: 'contain',
-                borderRadius: 14,
-                boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
-                border: '1.5px solid rgba(255, 255, 255, 0.18)',
-                transform: `rotate(${rotation}deg) scale(${zoom})`,
-                transition: isDragging ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
-                transformOrigin: 'center center',
-                display: 'block',
-              }}
-              draggable={false}
-            />
-          </div>
-        )}
-
-        {/* Next Navigation Button (RTL: Left Arrow) */}
-        {currentList.length > 1 && (
-          <button
-            onClick={(e) => { e.stopPropagation(); goToNext(); }}
-            title="الصورة التالية"
-            style={{
-              position: 'absolute',
-              left: 14,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              width: 44,
-              height: 44,
-              borderRadius: '50%',
-              background: 'rgba(15, 23, 42, 0.82)',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              color: '#FFFFFF',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              zIndex: 20,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-              backdropFilter: 'blur(8px)',
-              transition: 'all 0.15s',
-            }}
-          >
-            <ChevronLeft size={24} />
-          </button>
-        )}
-      </div>
-
-      {/* ─── Bottom Information & Quick Share Strip ─── */}
-      <div
-        className="lightbox-bottom-strip"
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          position: 'relative',
-          zIndex: 10,
-          width: '100%',
-          maxWidth: 900,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 12,
-          padding: '8px 18px',
-          background: 'rgba(15, 23, 42, 0.7)',
-          backdropFilter: 'blur(12px)',
-          borderRadius: 14,
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          color: '#CBD5E1',
-          fontSize: 12,
-          direction: 'rtl',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          {activeItem.source && (
-            <span>📌 <strong>المصدر:</strong> {activeItem.source}</span>
-          )}
-          {activeItem.author && (
-            <span>👷 <strong>المسجل:</strong> {activeItem.author}</span>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 11, color: '#94A3B8' }} className="hide-mobile">
-            💡 يمكنك استخدام أسهم لوحة المفاتيح للتنقل وحرف R للتدوير
-          </span>
-          {resolvedUrl && (
             <button
-              onClick={() => {
-                const text = encodeURIComponent(`صورة توثيق موقع المشروع:\n${resolvedUrl}`);
-                window.open(`https://wa.me/?text=${text}`, '_blank');
-              }}
+              onClick={onClose}
+              title="إغلاق البوب اب"
               style={{
-                background: 'rgba(16, 185, 129, 0.2)',
-                border: '1px solid rgba(16, 185, 129, 0.4)',
-                color: '#34D399',
-                padding: '4px 10px',
+                width: 32,
+                height: 32,
                 borderRadius: 8,
-                fontSize: 11.5,
-                fontWeight: 700,
+                background: 'rgba(239, 68, 68, 0.25)',
+                border: '1px solid rgba(239, 68, 68, 0.45)',
+                color: '#FCA5A5',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 5,
+                justifyContent: 'center',
+                transition: 'all 0.15s ease',
               }}
             >
-              <MessageCircle size={13} /> مشاركة واتساب
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* 2. ─── Popup Center Image Stage ─── */}
+        <div
+          style={{
+            position: 'relative',
+            flex: 1,
+            minHeight: 220,
+            maxHeight: 'calc(85dvh - 125px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#0B1120',
+            padding: '10px',
+            overflow: 'hidden',
+            cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
+          }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+        >
+          {/* Ambient Glow Backdrop inside the popup card */}
+          {resolvedUrl && !isVideo && (
+            <div
+              style={{
+                position: 'absolute',
+                inset: -20,
+                backgroundImage: `url(${resolvedUrl})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                filter: 'blur(45px) saturate(1.4) brightness(0.28)',
+                opacity: 0.85,
+                pointerEvents: 'none',
+              }}
+            />
+          )}
+
+          {/* Loading Spinner */}
+          {loading ? (
+            <div style={{ color: '#38BDF8', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, zIndex: 2 }}>
+              <Loader2 size={34} className="spin" />
+              <span style={{ fontSize: 13, color: '#CBD5E1', fontWeight: 700 }}>جاري استرداد الصورة بأعلى دقة أصلية...</span>
+            </div>
+          ) : isVideo ? (
+            <video
+              src={resolvedUrl}
+              controls
+              autoPlay
+              playsInline
+              style={{
+                maxWidth: '100%',
+                maxHeight: 'calc(80dvh - 140px)',
+                borderRadius: 12,
+                zIndex: 2,
+                boxShadow: '0 15px 40px rgba(0,0,0,0.6)',
+              }}
+            />
+          ) : (
+            /* Perfectly Centered, Non-Stretched High-Res Photo */
+            <div
+              style={{
+                position: 'relative',
+                zIndex: 2,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '100%',
+                height: '100%',
+                transform: `translate(${pan.x}px, ${pan.y}px)`,
+                transition: isDragging ? 'none' : 'transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)',
+              }}
+            >
+              <img
+                src={resolvedUrl}
+                alt={activeItem.caption || 'معاينة الموقع'}
+                style={{
+                  maxWidth: (rotation === 90 || rotation === 270) ? '60vh' : '100%',
+                  maxHeight: (rotation === 90 || rotation === 270) ? '80vw' : 'calc(80dvh - 140px)',
+                  width: 'auto',
+                  height: 'auto',
+                  objectFit: 'contain',
+                  borderRadius: 12,
+                  boxShadow: '0 15px 40px rgba(0,0,0,0.5)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  transform: `rotate(${rotation}deg) scale(${zoom})`,
+                  transition: isDragging ? 'none' : 'transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)',
+                  transformOrigin: 'center center',
+                  display: 'block',
+                }}
+                draggable={false}
+              />
+            </div>
+          )}
+
+          {/* Previous Button (RTL: Right Arrow) */}
+          {currentList.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); goToPrev(); }}
+              title="الصورة السابقة"
+              style={{
+                position: 'absolute',
+                right: 12,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: 38,
+                height: 38,
+                borderRadius: '50%',
+                background: 'rgba(15, 23, 42, 0.88)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                color: '#FFFFFF',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                zIndex: 10,
+                boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+              }}
+            >
+              <ChevronRight size={20} />
             </button>
           )}
+
+          {/* Next Button (RTL: Left Arrow) */}
+          {currentList.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); goToNext(); }}
+              title="الصورة التالية"
+              style={{
+                position: 'absolute',
+                left: 12,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: 38,
+                height: 38,
+                borderRadius: '50%',
+                background: 'rgba(15, 23, 42, 0.88)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                color: '#FFFFFF',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                zIndex: 10,
+                boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+              }}
+            >
+              <ChevronLeft size={20} />
+            </button>
+          )}
+        </div>
+
+        {/* 3. ─── Popup Footer ─── */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '9px 14px',
+            background: 'rgba(15, 23, 42, 0.96)',
+            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+            gap: 10,
+            flexShrink: 0,
+            fontSize: 12,
+          }}
+        >
+          {/* Author / Source */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#94A3B8' }}>
+            {activeItem.author && (
+              <span>👷 <strong>المسجل:</strong> {activeItem.author}</span>
+            )}
+            {activeItem.source && (
+              <span className="hide-mobile">📌 {activeItem.source}</span>
+            )}
+          </div>
+
+          {/* WhatsApp & Close */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {resolvedUrl && (
+              <button
+                onClick={() => {
+                  const text = encodeURIComponent(`صورة توثيق موقع المشروع:\n${resolvedUrl}`);
+                  window.open(`https://wa.me/?text=${text}`, '_blank');
+                }}
+                style={{
+                  background: 'rgba(16, 185, 129, 0.2)',
+                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                  color: '#34D399',
+                  padding: '5px 11px',
+                  borderRadius: 8,
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <MessageCircle size={13} />
+                <span>واتساب</span>
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              style={{
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                color: '#E2E8F0',
+                padding: '5px 14px',
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              إغلاق
+            </button>
+          </div>
         </div>
       </div>
 
       <style>{`
-        @keyframes fadeIn {
+        @keyframes fadeInBackdrop {
           from { opacity: 0; }
           to { opacity: 1; }
+        }
+        @keyframes popIn {
+          0% {
+            opacity: 0;
+            transform: scale(0.92) translateY(8px);
+          }
+          100% {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
         }
         .spin { animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
         @media (max-width: 640px) {
           .hide-mobile { display: none !important; }
-          .lightbox-top-bar {
-            padding: 6px 10px !important;
-            gap: 6px !important;
-            border-radius: 12px !important;
-          }
-          .lightbox-bottom-strip {
-            padding: 6px 12px !important;
-            font-size: 11px !important;
-            margin-top: 4px !important;
+          .lightbox-popup-card {
+            max-width: 96vw !important;
+            border-radius: 16px !important;
           }
         }
       `}</style>

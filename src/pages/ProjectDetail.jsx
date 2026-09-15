@@ -1141,11 +1141,11 @@ function DiaryPanel({ project, team, onUpdate }) {
             {mediaList.length > 0 && (
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
                 {mediaList.map((m, idx) => (
-                  <div key={idx} style={{ position: 'relative', width: 85, height: 85, borderRadius: 10, overflow: 'hidden', border: '1.5px solid var(--border)', background: '#0F172A' }}>
-                    <img src={m.src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <div key={idx} style={{ position: 'relative', width: 85, height: 85, borderRadius: 10, overflow: 'hidden', border: '1.5px solid var(--border)', background: '#0F172A', cursor: 'pointer' }}>
+                    <img src={m.src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onClick={() => setPreviewModal(m)} />
                     <button
                       type="button"
-                      onClick={() => setMediaList(prev => prev.filter((_, i) => i !== idx))}
+                      onClick={(e) => { e.stopPropagation(); setMediaList(prev => prev.filter((_, i) => i !== idx)); }}
                       style={{
                         position: 'absolute', top: 3, right: 3, width: 22, height: 22, borderRadius: '50%',
                         background: 'rgba(239,68,68,0.9)', color: '#fff', border: 'none', cursor: 'pointer',
