@@ -102,7 +102,10 @@ const DEFAULT_DRAWINGS = [
 ];
 
 export default function ProjectDrawings({ project, onUpdate }) {
-  const drawings = project.drawingsData || DEFAULT_DRAWINGS;
+  const rawDrawings = Array.isArray(project?.drawingsData) && project.drawingsData.length > 0 
+    ? project.drawingsData 
+    : DEFAULT_DRAWINGS;
+  const drawings = useMemo(() => rawDrawings.filter(Boolean), [rawDrawings]);
 
   const [activeCat, setActiveCat] = useState('all');
   const [search, setSearch] = useState('');
@@ -133,16 +136,19 @@ export default function ProjectDrawings({ project, onUpdate }) {
 
   const filteredDrawings = useMemo(() => {
     return drawings.filter(d => {
+      if (!d) return false;
       const matchCat = activeCat === 'all'
         ? true
         : activeCat === 'comparison'
           ? (d.image && d.realityImage)
           : d.category === activeCat;
-      const matchSearch = !search
+      const q = (search || '').toLowerCase().trim();
+      const titleStr = String(d.title || '').toLowerCase();
+      const roomStr = String(d.room || '').toLowerCase();
+      const descStr = String(d.description || '').toLowerCase();
+      const matchSearch = !q
         ? true
-        : (d.title.toLowerCase().includes(search.toLowerCase()) ||
-           (d.room && d.room.toLowerCase().includes(search.toLowerCase())) ||
-           (d.description && d.description.toLowerCase().includes(search.toLowerCase())));
+        : (titleStr.includes(q) || roomStr.includes(q) || descStr.includes(q));
       return matchCat && matchSearch;
     });
   }, [drawings, activeCat, search]);

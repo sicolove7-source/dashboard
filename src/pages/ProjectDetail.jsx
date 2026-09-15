@@ -25,6 +25,7 @@ import ContractsHubPanel from '../components/ContractsHubPanel';
 import ProjectDrawings from '../components/ProjectDrawings';
 import confetti from 'canvas-confetti';
 import { can } from '../utils/permissions';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 export default function ProjectDetail({ project, team, userRole, onBack, onEdit, onDelete, onUpdate, initialSub, currentUser, activeCompanyId, onOpenClientPortal }) {
   const [confirming, setConfirming] = useState(false);
@@ -32,17 +33,31 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
   const [activeContractView, setActiveContractView] = useState(null); // 'craftsman' | 'client' | null
   const [selectedWorkerForContract, setSelectedWorkerForContract] = useState(null);
 
-  const craftsmenCount = (project.craftsmen?.length || (project.craftsmanContracts ? Object.keys(project.craftsmanContracts).length : 5));
+  const craftsmenCount = (Array.isArray(project?.craftsmen) ? project.craftsmen.length : (project?.craftsmanContracts && typeof project.craftsmanContracts === 'object' ? Object.keys(project.craftsmanContracts).length : 5));
+
+  const materialsList = Array.isArray(project?.resources?.materials) ? project.resources.materials.filter(Boolean) : [];
+  const pendingMaterialsCount = materialsList.filter(m => m && m.status !== 'تم التوريد').length;
+
+  const rawLogs = Array.isArray(project?.dailyLogs)
+    ? project.dailyLogs
+    : (project?.dailyLogs && typeof project.dailyLogs === 'object' ? Object.values(project.dailyLogs) : []);
+  const safeLogs = rawLogs.filter(Boolean);
+
+  const rawSnags = Array.isArray(project?.snags) ? project.snags : [];
+  const safeSnags = rawSnags.filter(Boolean);
+
+  const rawRooms = Array.isArray(project?.rooms) ? project.rooms : [];
+  const safeRooms = rawRooms.filter(Boolean);
 
   const SUBTABS = [
-    { key: "diary",     label: "اليوميات",       icon: CalendarDays, perm: 'project_tab_diary', count: project.dailyLogs?.length },
+    { key: "diary",     label: "اليوميات",       icon: CalendarDays, perm: 'project_tab_diary', count: safeLogs.length },
     { key: "craftsmen", label: "صنايعية الموقع", icon: HardHat,      perm: 'project_tab_craftsmen', count: craftsmenCount },
-    { key: "snags",     label: "الاستلامات",     icon: CheckSquare, perm: 'project_tab_snags', count: project.snags?.length },
+    { key: "snags",     label: "الاستلامات",     icon: CheckSquare, perm: 'project_tab_snags', count: safeSnags.length },
     { key: "schedule",  label: "الجدول الزمني",  icon: Clock,       perm: 'project_tab_gantt' },
     { key: "workplan",  label: "خطة العمل",     icon: Target,      perm: 'project_tab_diary' },
     { key: "drawings",  label: "الرسومات 3D",    icon: Sparkles,    perm: 'project_tab_drawings' },
-    { key: "rooms",     label: "الغرف",         icon: Home,        perm: 'project_tab_rooms', count: project.rooms?.length },
-    { key: "supply",    label: "التوريدات",     icon: Package,     perm: 'project_tab_supply', count: project.resources?.materials?.filter(m => m.status !== 'تم التوريد')?.length || (project.resources?.materials?.length ? project.resources.materials.length : undefined) },
+    { key: "rooms",     label: "الغرف",         icon: Home,        perm: 'project_tab_rooms', count: safeRooms.length },
+    { key: "supply",    label: "التوريدات",     icon: Package,     perm: 'project_tab_supply', count: pendingMaterialsCount || (materialsList.length ? materialsList.length : undefined) },
     { key: "finance",   label: "المالية",        icon: Wallet,      perm: 'project_tab_finance' },
     { key: "overview",  label: "البيانات",       icon: Building2,   perm: null },
     { key: "contracts", label: "العقود والعميل", icon: FileText,    perm: null, count: 4 },
@@ -178,62 +193,64 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
         </div>
       </div>
 
-      <div className="tab-fade">
-        {sub === "craftsmen" && (
-          <ProjectCraftsmen 
-            project={project} 
-            onUpdate={onUpdate} 
-            currentUser={currentUser} 
-            userRole={userRole} 
-            onOpenContractModal={(worker) => {
-              setSelectedWorkerForContract(worker);
-              setSub('contracts');
-              setActiveContractView('craftsman');
-            }} 
-          />
-        )}
-        {sub === "snags"    && <SnagsPanel project={project} onUpdate={onUpdate} />}
-        {sub === "drawings" && <ProjectDrawings project={project} onUpdate={onUpdate} />}
-        {sub === "diary"    && <DiaryPanel project={project} team={team} onUpdate={onUpdate} />}
-        {sub === "workplan" && <WorkPlanPanel project={project} onUpdate={onUpdate} />}
-        {sub === "rooms"    && <ProjectRooms project={project} onUpdate={onUpdate} />}
-        {sub === "schedule" && <ProjectSchedule project={project} onUpdate={onUpdate} />}
-        {sub === "supply"   && <ProjectSupply project={project} currentUser={currentUser} userRole={userRole} onUpdate={onUpdate} />}
-        {sub === "finance"  && can(currentUser || userRole, 'project_tab_finance') && <ProjectFinance project={project} onUpdate={onUpdate} />}
-        {sub === "overview" && <OverviewPanel project={project} onUpdate={onUpdate} />}
-        {sub === "contracts" && (
-          activeContractView === 'craftsman' ? (
-            <CraftsmanContractModal 
-              project={project} 
-              initialWorker={selectedWorkerForContract}
-              onUpdate={onUpdate} 
-              isInline={true}
-              onClose={() => { setActiveContractView(null); setSelectedWorkerForContract(null); }} 
-            />
-          ) : activeContractView === 'client' ? (
-            <ContractGeneratorModal 
+      <ErrorBoundary onBack={onBack} message="حدث خطأ أثناء تحميل محتوى هذا القسم، يمكنك التبديل لقسم آخر أو العودة لقائمة المواقع.">
+        <div className="tab-fade">
+          {sub === "craftsmen" && (
+            <ProjectCraftsmen 
               project={project} 
               onUpdate={onUpdate} 
-              isInline={true}
-              onClose={() => setActiveContractView(null)} 
-            />
-          ) : (
-            <ContractsHubPanel 
-              project={project} 
               currentUser={currentUser} 
               userRole={userRole} 
-              activeCompanyId={activeCompanyId || project.companyId}
-              onOpenCraftsmanContract={(worker = null) => {
+              onOpenContractModal={(worker) => {
                 setSelectedWorkerForContract(worker);
+                setSub('contracts');
                 setActiveContractView('craftsman');
-              }}
-              onOpenClientContract={() => setActiveContractView('client')}
-              onOpenClientPortal={() => onOpenClientPortal && onOpenClientPortal(project.id)}
-              onOpenClientReport={() => setShowClientReport(true)}
+              }} 
             />
-          )
-        )}
-      </div>
+          )}
+          {sub === "snags"    && <SnagsPanel project={project} onUpdate={onUpdate} />}
+          {sub === "drawings" && <ProjectDrawings project={project} onUpdate={onUpdate} />}
+          {sub === "diary"    && <DiaryPanel project={project} team={team} onUpdate={onUpdate} />}
+          {sub === "workplan" && <WorkPlanPanel project={project} onUpdate={onUpdate} />}
+          {sub === "rooms"    && <ProjectRooms project={project} onUpdate={onUpdate} />}
+          {sub === "schedule" && <ProjectSchedule project={project} onUpdate={onUpdate} />}
+          {sub === "supply"   && <ProjectSupply project={project} currentUser={currentUser} userRole={userRole} onUpdate={onUpdate} />}
+          {sub === "finance"  && can(currentUser || userRole, 'project_tab_finance') && <ProjectFinance project={project} onUpdate={onUpdate} />}
+          {sub === "overview" && <OverviewPanel project={project} onUpdate={onUpdate} />}
+          {sub === "contracts" && (
+            activeContractView === 'craftsman' ? (
+              <CraftsmanContractModal 
+                project={project} 
+                initialWorker={selectedWorkerForContract}
+                onUpdate={onUpdate} 
+                isInline={true}
+                onClose={() => { setActiveContractView(null); setSelectedWorkerForContract(null); }} 
+              />
+            ) : activeContractView === 'client' ? (
+              <ContractGeneratorModal 
+                project={project} 
+                onUpdate={onUpdate} 
+                isInline={true}
+                onClose={() => setActiveContractView(null)} 
+              />
+            ) : (
+              <ContractsHubPanel 
+                project={project} 
+                currentUser={currentUser} 
+                userRole={userRole} 
+                activeCompanyId={activeCompanyId || project.companyId}
+                onOpenCraftsmanContract={(worker = null) => {
+                  setSelectedWorkerForContract(worker);
+                  setActiveContractView('craftsman');
+                }}
+                onOpenClientContract={() => setActiveContractView('client')}
+                onOpenClientPortal={() => onOpenClientPortal && onOpenClientPortal(project.id)}
+                onOpenClientReport={() => setShowClientReport(true)}
+              />
+            )
+          )}
+        </div>
+      </ErrorBoundary>
     </div>
   );
 }
@@ -729,14 +746,20 @@ function SnagsPanel({ project, onUpdate }) {
 }
 
 function DiaryPanel({ project, team, onUpdate }) {
-  const logs = project.dailyLogs || [];
-  const hasTodayLog = logs.some(l => l.date === todayISO());
+  const rawLogs = Array.isArray(project?.dailyLogs)
+    ? project.dailyLogs
+    : (project?.dailyLogs && typeof project.dailyLogs === 'object' ? Object.values(project.dailyLogs) : []);
+  const logs = useMemo(() => rawLogs.filter(Boolean), [rawLogs]);
+  const hasTodayLog = useMemo(() => {
+    const today = todayISO();
+    return logs.some(l => l && (l.date === today || (typeof l.date === 'string' && l.date.startsWith(today))));
+  }, [logs]);
   
   const engineerList = team?.engineers?.length ? team.engineers : ENGINEERS;
   const techOfficeList = team?.techOffice?.length ? team.techOffice : TECH_OFFICE;
-  const authorOptions = Array.from(new Set([...engineerList, ...techOfficeList, project.engineer].filter(Boolean)));
+  const authorOptions = Array.from(new Set([...engineerList, ...techOfficeList, project?.engineer].filter(Boolean)));
   
-  const defaultAuthor = project.engineer || authorOptions[0] || "";
+  const defaultAuthor = project?.engineer || authorOptions[0] || "";
   const [form, setForm] = useState({ date: todayISO(), author: defaultAuthor, work: "", issues: "", workers: 5 });
   const [mediaList, setMediaList] = useState([]); // [{ src, type: 'image' | 'video', name }]
   const [previewModal, setPreviewModal] = useState(null);
@@ -749,12 +772,12 @@ function DiaryPanel({ project, team, onUpdate }) {
   const [visibleCount, setVisibleCount] = useState(25);
 
   useEffect(() => {
-    const currentDefault = project.engineer || authorOptions[0] || "";
+    const currentDefault = project?.engineer || authorOptions[0] || "";
     setForm((prev) => ({
       ...prev,
       author: currentDefault
     }));
-  }, [project.id, project.engineer, team]);
+  }, [project?.id, project?.engineer, team]);
 
   async function handleMediaUpload(e) {
     const files = Array.from(e.target.files || []);
@@ -875,13 +898,14 @@ function DiaryPanel({ project, team, onUpdate }) {
   function removeLog(id) {
     const now = new Date().toISOString();
     onUpdate({
-      dailyLogs: logs.filter((l) => l.id !== id),
+      dailyLogs: logs.filter((l) => l && l.id !== id),
       updatedAt: now
     });
     setConfirmId(null);
   }
 
   function getLogMedia(l) {
+    if (!l) return [];
     const items = [];
     if (Array.isArray(l.media)) {
       l.media.forEach(m => {
@@ -910,23 +934,33 @@ function DiaryPanel({ project, team, onUpdate }) {
   }
 
   const sorted = useMemo(() => {
-    return [...logs].sort((a, b) => (a.date < b.date ? 1 : -1));
+    return [...logs].sort((a, b) => {
+      const dateA = a?.date ? String(a.date) : '';
+      const dateB = b?.date ? String(b.date) : '';
+      return dateA < dateB ? 1 : -1;
+    });
   }, [logs]);
 
   // Extract available months from logs for fast indexing & jumping
   const availableMonths = useMemo(() => {
     const map = new Map();
     logs.forEach(l => {
-      if (l.date && l.date.length >= 7) {
-        const ym = l.date.slice(0, 7);
-        map.set(ym, (map.get(ym) || 0) + 1);
+      if (l && l.date) {
+        const dStr = String(l.date).trim();
+        const match = dStr.match(/^(\d{4})[-/](\d{1,2})/);
+        if (match) {
+          const ym = `${match[1]}-${match[2].padStart(2, '0')}`;
+          map.set(ym, (map.get(ym) || 0) + 1);
+        }
       }
     });
     const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
     return Array.from(map.entries())
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([ym, count]) => {
-        const [y, m] = ym.split('-');
+        const parts = ym.split('-');
+        const y = parts[0];
+        const m = parts[1] || '01';
         const mName = monthNames[parseInt(m, 10) - 1] || m;
         return { ym, label: `${mName} ${y}`, count };
       });
@@ -936,19 +970,25 @@ function DiaryPanel({ project, team, onUpdate }) {
   const filteredLogs = useMemo(() => {
     let res = sorted;
     if (selectedMonth !== "all") {
-      res = res.filter(l => l.date && l.date.startsWith(selectedMonth));
+      res = res.filter(l => {
+        if (!l || !l.date) return false;
+        const dStr = String(l.date).replace(/\//g, '-');
+        return dStr.startsWith(selectedMonth);
+      });
     }
     if (filterOnlyIssues) {
-      res = res.filter(l => l.issues && l.issues !== "لا يوجد");
+      res = res.filter(l => l && l.issues && l.issues !== "لا يوجد");
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
-      res = res.filter(l =>
-        (l.work && l.work.toLowerCase().includes(q)) ||
-        (l.author && l.author.toLowerCase().includes(q)) ||
-        (l.date && l.date.includes(q)) ||
-        (l.issues && l.issues.toLowerCase().includes(q))
-      );
+      res = res.filter(l => {
+        if (!l) return false;
+        const workText = String(l.work || l.text || '').toLowerCase();
+        const authorText = String(l.author || '').toLowerCase();
+        const dateText = String(l.date || '').toLowerCase();
+        const issuesText = String(l.issues || '').toLowerCase();
+        return workText.includes(q) || authorText.includes(q) || dateText.includes(q) || issuesText.includes(q);
+      });
     }
     return res;
   }, [sorted, selectedMonth, filterOnlyIssues, searchQuery]);
@@ -960,10 +1000,14 @@ function DiaryPanel({ project, team, onUpdate }) {
 
   // Aggregate KPIs for site management
   const stats = useMemo(() => {
-    const totalWorkers = logs.reduce((sum, l) => sum + (Number(l.workers) || 0), 0);
+    const totalWorkers = logs.reduce((sum, l) => sum + (Number(l?.workers || l?.laborCount) || 0), 0);
     const avgWorkers = logs.length > 0 ? Math.round(totalWorkers / logs.length) : 0;
-    const totalMedia = logs.reduce((sum, l) => sum + (l.media?.length || l.photos?.length || 0), 0);
-    const issuesTotal = logs.filter(l => l.issues && l.issues !== "لا يوجد").length;
+    const totalMedia = logs.reduce((sum, l) => {
+      const mLen = Array.isArray(l?.media) ? l.media.length : 0;
+      const pLen = Array.isArray(l?.photos) ? l.photos.length : 0;
+      return sum + (mLen || pLen || (l?.video ? 1 : 0));
+    }, 0);
+    const issuesTotal = logs.filter(l => l && l.issues && l.issues !== "لا يوجد").length;
     return {
       total: logs.length,
       avgWorkers,
@@ -1265,39 +1309,40 @@ function DiaryPanel({ project, team, onUpdate }) {
         ) : (
           <>
             <div className="diary-logs-list">
-              {displayedLogs.map((l) => {
+              {displayedLogs.map((l, idx) => {
                 const logMedia = getLogMedia(l);
+                const logId = l?.id || `log_${idx}`;
                 return (
-                  <div key={l.id} className="diary-log-card">
+                  <div key={logId} className="diary-log-card">
                     <div className="diary-log-header">
                       <div className="diary-log-meta">
                         <span className="diary-date-badge font-mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                          <span>📅 {fmtDate(l.date)}</span>
-                          {(l.time || l.timestamp) && (
+                          <span>📅 {fmtDate(l?.date)}</span>
+                          {(l?.time || l?.timestamp) && (
                             <span style={{ opacity: 0.9, borderRight: '1px solid rgba(255,255,255,0.35)', paddingRight: 6, marginRight: 2 }}>
                               ⏰ {fmtTime(l.time, l.timestamp)}
                             </span>
                           )}
                         </span>
-                        <span className="diary-author-text">{l.author}</span>
-                        <span className="diary-workers-badge">{l.workers} عامل بالموقع</span>
+                        <span className="diary-author-text">{l?.author || '—'}</span>
+                        <span className="diary-workers-badge">{l?.workers || l?.laborCount || 1} عامل بالموقع</span>
                       </div>
                       
-                      {confirmId === l.id ? (
+                      {confirmId === logId ? (
                         <div className="diary-delete-confirm">
-                          <button className="btn btn-danger btn-xs" onClick={() => removeLog(l.id)}>تأكيد الحذف</button>
+                          <button className="btn btn-danger btn-xs" onClick={() => removeLog(logId)}>تأكيد الحذف</button>
                           <button className="btn btn-ghost btn-xs" onClick={() => setConfirmId(null)}>إلغاء</button>
                         </div>
                       ) : (
-                        <span className="icon-btn diary-delete-btn" title="حذف اليومية" onClick={() => setConfirmId(l.id)}>
+                        <span className="icon-btn diary-delete-btn" title="حذف اليومية" onClick={() => setConfirmId(logId)}>
                           <Trash2 size={14} />
                         </span>
                       )}
                     </div>
                     
-                    <div className="diary-log-content">{l.work}</div>
+                    <div className="diary-log-content">{l?.work || l?.text || '—'}</div>
                     
-                    {l.issues && l.issues !== "لا يوجد" && (
+                    {l?.issues && l.issues !== "لا يوجد" && (
                       <div className="diary-issue-alert">
                         <AlertTriangle size={14} color="#D97706" />
                         <span>عوائق مُسجلة: {l.issues}</span>

@@ -1,10 +1,11 @@
 import React from 'react';
 
 export default function StampRing({ value, size = 56 }) {
+  const val = Math.max(0, Math.min(100, Number(value) || 0));
   const r = (size - 8) / 2;
   const c = 2 * Math.PI * r;
-  const off = c - (value / 100) * c;
-  const color = value >= 70 ? "#10B981" : value >= 40 ? "#F59E0B" : "#EF4444";
+  const off = c - (val / 100) * c;
+  const color = val >= 70 ? "#10B981" : val >= 40 ? "#F59E0B" : "#EF4444";
   
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
