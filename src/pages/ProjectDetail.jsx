@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Building2, CalendarDays, Pencil, Trash2, ArrowRight, Plus, X, AlertTriangle, Paperclip, CheckSquare, MessageCircle, FileText, Map, MapPin, Clock, Wallet, Package, Home, Wrench, Sparkles, Target, MessageSquare, Share2, Printer, Camera, Video, Play, HardHat } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Building2, CalendarDays, Pencil, Trash2, ArrowRight, Plus, X, AlertTriangle, Paperclip, CheckSquare, MessageCircle, FileText, Map, MapPin, Clock, Wallet, Package, Home, Wrench, Sparkles, Target, MessageSquare, Share2, Printer, Camera, Video, Play, HardHat, Search, Filter, ChevronDown } from 'lucide-react';
 import StatusBadge from '../components/StatusBadge';
 
 import StampRing from '../components/StampRing';
@@ -742,6 +742,12 @@ function DiaryPanel({ project, team, onUpdate }) {
   const [previewModal, setPreviewModal] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
 
+  // States for handling thousands of logs smoothly
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState("all");
+  const [filterOnlyIssues, setFilterOnlyIssues] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(25);
+
   useEffect(() => {
     const currentDefault = project.engineer || authorOptions[0] || "";
     setForm((prev) => ({
@@ -903,7 +909,68 @@ function DiaryPanel({ project, team, onUpdate }) {
     return items;
   }
 
-  const sorted = [...logs].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const sorted = useMemo(() => {
+    return [...logs].sort((a, b) => (a.date < b.date ? 1 : -1));
+  }, [logs]);
+
+  // Extract available months from logs for fast indexing & jumping
+  const availableMonths = useMemo(() => {
+    const map = new Map();
+    logs.forEach(l => {
+      if (l.date && l.date.length >= 7) {
+        const ym = l.date.slice(0, 7);
+        map.set(ym, (map.get(ym) || 0) + 1);
+      }
+    });
+    const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+    return Array.from(map.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([ym, count]) => {
+        const [y, m] = ym.split('-');
+        const mName = monthNames[parseInt(m, 10) - 1] || m;
+        return { ym, label: `${mName} ${y}`, count };
+      });
+  }, [logs]);
+
+  // Filter logs by search, month, and issues
+  const filteredLogs = useMemo(() => {
+    let res = sorted;
+    if (selectedMonth !== "all") {
+      res = res.filter(l => l.date && l.date.startsWith(selectedMonth));
+    }
+    if (filterOnlyIssues) {
+      res = res.filter(l => l.issues && l.issues !== "لا يوجد");
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      res = res.filter(l =>
+        (l.work && l.work.toLowerCase().includes(q)) ||
+        (l.author && l.author.toLowerCase().includes(q)) ||
+        (l.date && l.date.includes(q)) ||
+        (l.issues && l.issues.toLowerCase().includes(q))
+      );
+    }
+    return res;
+  }, [sorted, selectedMonth, filterOnlyIssues, searchQuery]);
+
+  // Sliced logs for high performance DOM rendering (handling thousands of entries without freezing)
+  const displayedLogs = useMemo(() => {
+    return filteredLogs.slice(0, visibleCount);
+  }, [filteredLogs, visibleCount]);
+
+  // Aggregate KPIs for site management
+  const stats = useMemo(() => {
+    const totalWorkers = logs.reduce((sum, l) => sum + (Number(l.workers) || 0), 0);
+    const avgWorkers = logs.length > 0 ? Math.round(totalWorkers / logs.length) : 0;
+    const totalMedia = logs.reduce((sum, l) => sum + (l.media?.length || l.photos?.length || 0), 0);
+    const issuesTotal = logs.filter(l => l.issues && l.issues !== "لا يوجد").length;
+    return {
+      total: logs.length,
+      avgWorkers,
+      totalMedia,
+      issuesTotal
+    };
+  }, [logs]);
 
   return (
     <div className="diary-container">
@@ -1037,81 +1104,274 @@ function DiaryPanel({ project, team, onUpdate }) {
         </form>
       </div>
 
+      {/* ─── لوحة مؤشرات اليوميات الميدانية الرقمية (KPIs) ─── */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: 12,
+        marginBottom: 16
+      }}>
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(56, 189, 248, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <CalendarDays size={20} color="#38BDF8" />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>إجمالي اليوميات المسجلة</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--ink)' }}>{stats.total} <span style={{ fontSize: 11, fontWeight: 600 }}>يومية</span></div>
+          </div>
+        </div>
+
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <HardHat size={20} color="#10B981" />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>متوسط العمالة اليومية</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--ink)' }}>{stats.avgWorkers} <span style={{ fontSize: 11, fontWeight: 600 }}>عامل / يوم</span></div>
+          </div>
+        </div>
+
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(99, 102, 241, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Camera size={20} color="#818CF8" />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>أرشيف الصور والفيديو</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--ink)' }}>{stats.totalMedia} <span style={{ fontSize: 11, fontWeight: 600 }}>ملف موثق</span></div>
+          </div>
+        </div>
+
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 42, height: 42, borderRadius: 10, background: stats.issuesTotal > 0 ? 'rgba(245, 158, 11, 0.15)' : 'rgba(148, 163, 184, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <AlertTriangle size={20} color={stats.issuesTotal > 0 ? '#F59E0B' : '#94A3B8'} />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>العوائق والملاحظات</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: stats.issuesTotal > 0 ? '#F59E0B' : 'var(--ink)' }}>{stats.issuesTotal} <span style={{ fontSize: 11, fontWeight: 600 }}>ملاحظة</span></div>
+          </div>
+        </div>
+      </div>
+
       <div className="panel diary-history-panel">
-        <h3 className="diary-section-heading">سجل اليوميات والتوثيق الميداني ({logs.length})</h3>
-        {sorted.length === 0 ? (
-          <div className="diary-empty-state">لا توجد يوميات مسجلة بعد.</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+          <h3 className="diary-section-heading" style={{ margin: 0 }}>
+            <CalendarDays size={18} /> سجل اليوميات والتوثيق الميداني ({logs.length})
+          </h3>
+
+          {/* عداد العرض الحالي */}
+          {filteredLogs.length > 0 && (
+            <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>
+              عرض <strong style={{ color: 'var(--teal)' }}>{displayedLogs.length}</strong> من إجمالي <strong style={{ color: 'var(--ink)' }}>{filteredLogs.length}</strong> يومية
+            </span>
+          )}
+        </div>
+
+        {/* ─── شريط الفلترة والبحث السريع لآلاف اليوميات ─── */}
+        <div style={{
+          display: 'flex',
+          gap: 10,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          background: 'rgba(0,0,0,0.02)',
+          padding: '10px 14px',
+          borderRadius: 12,
+          border: '1px solid var(--border)',
+          marginBottom: 16
+        }}>
+          {/* البحث اللحظي */}
+          <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
+            <Search size={16} color="var(--muted)" style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)' }} />
+            <input
+              type="text"
+              placeholder="ابحث في الأعمال، المسجل، التاريخ، أو العوائق..."
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setVisibleCount(25); }}
+              style={{
+                width: '100%',
+                padding: '9px 36px 9px 12px',
+                borderRadius: 8,
+                border: '1.5px solid var(--border)',
+                background: 'var(--card)',
+                color: 'var(--ink)',
+                fontSize: 13,
+                fontFamily: 'Cairo'
+              }}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: 2 }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* فلتر الشهور والسنوات */}
+          {availableMonths.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>الشهر:</span>
+              <select
+                value={selectedMonth}
+                onChange={(e) => { setSelectedMonth(e.target.value); setVisibleCount(25); }}
+                style={{
+                  padding: '9px 14px',
+                  borderRadius: 8,
+                  border: '1.5px solid var(--border)',
+                  background: 'var(--card)',
+                  color: 'var(--ink)',
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  fontFamily: 'Cairo',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="all">كل الأشهر ({logs.length})</option>
+                {availableMonths.map(m => (
+                  <option key={m.ym} value={m.ym}>{m.label} ({m.count})</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* فلتر العوائق فقط */}
+          <button
+            type="button"
+            onClick={() => { setFilterOnlyIssues(prev => !prev); setVisibleCount(25); }}
+            style={{
+              padding: '8px 14px',
+              borderRadius: 8,
+              border: `1px solid ${filterOnlyIssues ? '#F59E0B' : 'var(--border)'}`,
+              background: filterOnlyIssues ? 'rgba(245, 158, 11, 0.15)' : 'var(--card)',
+              color: filterOnlyIssues ? '#D97706' : 'var(--muted)',
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            <AlertTriangle size={14} color={filterOnlyIssues ? '#D97706' : 'var(--muted)'} />
+            <span>عوائق فقط ({stats.issuesTotal})</span>
+          </button>
+        </div>
+
+        {filteredLogs.length === 0 ? (
+          <div className="diary-empty-state" style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>
+            {logs.length === 0 ? 'لا توجد يوميات مسجلة بعد.' : 'لا توجد نتائج مطابقة لبحثك أو الفلتر المحدد.'}
+          </div>
         ) : (
-          <div className="diary-logs-list">
-            {sorted.map((l) => {
-              const logMedia = getLogMedia(l);
-              return (
-                <div key={l.id} className="diary-log-card">
-                  <div className="diary-log-header">
-                    <div className="diary-log-meta">
-                      <span className="diary-date-badge font-mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <span>📅 {fmtDate(l.date)}</span>
-                        {(l.time || l.timestamp) && (
-                          <span style={{ opacity: 0.9, borderRight: '1px solid rgba(255,255,255,0.35)', paddingRight: 6, marginRight: 2 }}>
-                            ⏰ {fmtTime(l.time, l.timestamp)}
-                          </span>
-                        )}
-                      </span>
-                      <span className="diary-author-text">{l.author}</span>
-                      <span className="diary-workers-badge">{l.workers} عامل بالموقع</span>
+          <>
+            <div className="diary-logs-list">
+              {displayedLogs.map((l) => {
+                const logMedia = getLogMedia(l);
+                return (
+                  <div key={l.id} className="diary-log-card">
+                    <div className="diary-log-header">
+                      <div className="diary-log-meta">
+                        <span className="diary-date-badge font-mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <span>📅 {fmtDate(l.date)}</span>
+                          {(l.time || l.timestamp) && (
+                            <span style={{ opacity: 0.9, borderRight: '1px solid rgba(255,255,255,0.35)', paddingRight: 6, marginRight: 2 }}>
+                              ⏰ {fmtTime(l.time, l.timestamp)}
+                            </span>
+                          )}
+                        </span>
+                        <span className="diary-author-text">{l.author}</span>
+                        <span className="diary-workers-badge">{l.workers} عامل بالموقع</span>
+                      </div>
+                      
+                      {confirmId === l.id ? (
+                        <div className="diary-delete-confirm">
+                          <button className="btn btn-danger btn-xs" onClick={() => removeLog(l.id)}>تأكيد الحذف</button>
+                          <button className="btn btn-ghost btn-xs" onClick={() => setConfirmId(null)}>إلغاء</button>
+                        </div>
+                      ) : (
+                        <span className="icon-btn diary-delete-btn" title="حذف اليومية" onClick={() => setConfirmId(l.id)}>
+                          <Trash2 size={14} />
+                        </span>
+                      )}
                     </div>
                     
-                    {confirmId === l.id ? (
-                      <div className="diary-delete-confirm">
-                        <button className="btn btn-danger btn-xs" onClick={() => removeLog(l.id)}>تأكيد الحذف</button>
-                        <button className="btn btn-ghost btn-xs" onClick={() => setConfirmId(null)}>إلغاء</button>
+                    <div className="diary-log-content">{l.work}</div>
+                    
+                    {l.issues && l.issues !== "لا يوجد" && (
+                      <div className="diary-issue-alert">
+                        <AlertTriangle size={14} color="#D97706" />
+                        <span>عوائق مُسجلة: {l.issues}</span>
                       </div>
-                    ) : (
-                      <span className="icon-btn diary-delete-btn" title="حذف اليومية" onClick={() => setConfirmId(l.id)}>
-                        <Trash2 size={14} />
-                      </span>
+                    )}
+
+                    {/* 📸🎥 عرض الصور والفيديوهات المسجلة لليومية بشكل واضح وبارز */}
+                    {logMedia.length > 0 && (
+                      <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px dashed var(--border)' }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <Camera size={14} color="#1877F2" />
+                          <span>الصور والفيديوهات المرفقة باليومية ({logMedia.length}):</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                          {logMedia.map((item, mIdx) => (
+                            <MediaThumbnail
+                              key={mIdx}
+                              item={item}
+                              onClick={setPreviewModal}
+                              style={{
+                                width: 90,
+                                height: 90,
+                                flexShrink: 0,
+                                border: '1.5px solid var(--border)',
+                                borderRadius: 10,
+                                boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
-                  
-                  <div className="diary-log-content">{l.work}</div>
-                  
-                  {l.issues && l.issues !== "لا يوجد" && (
-                    <div className="diary-issue-alert">
-                      <AlertTriangle size={14} color="#D97706" />
-                      <span>عوائق مُسجلة: {l.issues}</span>
-                    </div>
-                  )}
+                );
+              })}
+            </div>
 
-                  {/* 📸🎥 عرض الصور والفيديوهات المسجلة لليومية بشكل واضح وبارز */}
-                  {logMedia.length > 0 && (
-                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px dashed var(--border)' }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Camera size={14} color="#1877F2" />
-                        <span>الصور والفيديوهات المرفقة باليومية ({logMedia.length}):</span>
-                      </div>
-                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                        {logMedia.map((item, mIdx) => (
-                          <MediaThumbnail
-                            key={mIdx}
-                            item={item}
-                            onClick={setPreviewModal}
-                            style={{
-                              width: 90,
-                              height: 90,
-                              flexShrink: 0,
-                              border: '1.5px solid var(--border)',
-                              borderRadius: 10,
-                              boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
+            {/* ─── زر التحميل التدريجي (Pagination Controls لاستيعاب آلاف اليوميات) ─── */}
+            {filteredLogs.length > visibleCount && (
+              <div style={{
+                marginTop: 20,
+                padding: '16px',
+                borderRadius: 12,
+                background: 'var(--card)',
+                border: '1px dashed var(--border)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 10
+              }}>
+                <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 600 }}>
+                  يتم عرض <strong style={{ color: 'var(--ink)' }}>{displayedLogs.length}</strong> من أصل <strong style={{ color: 'var(--teal)' }}>{filteredLogs.length}</strong> يومية مسجلة
                 </div>
-              );
-            })}
-          </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => setVisibleCount(prev => prev + 25)}
+                    style={{ padding: '9px 24px', fontSize: 13, fontWeight: 800 }}
+                  >
+                    عرض 25 يومية إضافية (متبقي {filteredLogs.length - visibleCount}) ⬇️
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => setVisibleCount(filteredLogs.length)}
+                    style={{ padding: '9px 18px', fontSize: 13 }}
+                  >
+                    عرض الكل ({filteredLogs.length})
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

@@ -109,6 +109,15 @@ export default function ProjectDrawings({ project, onUpdate }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedViewerItem, setSelectedViewerItem] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [viewerRotation, setViewerRotation] = useState(0); // 0, 90, 180, 270
+  const [viewerTab, setViewerTab] = useState('split'); // 'split' | 'design' | 'reality'
+
+  function openViewer(item) {
+    setSelectedViewerItem(item);
+    setZoomLevel(1);
+    setViewerRotation(0);
+    setViewerTab('split');
+  }
 
   // Form State
   const [formData, setFormData] = useState({
@@ -328,7 +337,7 @@ export default function ProjectDrawings({ project, onUpdate }) {
             return (
               <div
                 key={d.id}
-                onClick={() => { setSelectedViewerItem(d); setZoomLevel(1); }}
+                onClick={() => openViewer(d)}
                 style={{
                   background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16,
                   overflow: 'hidden', cursor: 'pointer', transition: 'all 0.25s', display: 'flex', flexDirection: 'column',
@@ -649,95 +658,243 @@ export default function ProjectDrawings({ project, onUpdate }) {
         </div>
       )}
 
-      {/* FULLSCREEN LIGHTBOX & HIGH-RES VIEWER */}
+      {/* FULLSCREEN SMART LIGHTBOX & HIGH-RES VIEWER */}
       {selectedViewerItem && (
         <div
           className="modal-overlay"
           onClick={() => setSelectedViewerItem(null)}
-          style={{ zIndex: 2000, background: 'rgba(5, 10, 20, 0.94)', backdropFilter: 'blur(8px)' }}
+          style={{
+            zIndex: 2000,
+            background: 'rgba(7, 12, 22, 0.94)',
+            backdropFilter: 'blur(16px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '12px'
+          }}
         >
+          {/* Ambient Glow Backdrop (خلفية ضبابية مضيئة مستوحاة من الصورة لتوديع الفراغ والشريط الأسود) */}
+          {selectedViewerItem.image && !selectedViewerItem.image.startsWith('data:application/pdf') && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: -40,
+                backgroundImage: `url(${selectedViewerItem.realityImage || selectedViewerItem.image})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                filter: 'blur(70px) saturate(1.5) brightness(0.25)',
+                opacity: 0.85,
+                zIndex: 0,
+                pointerEvents: 'none',
+              }}
+            />
+          )}
+
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              width: '94%', maxWidth: 1200, height: '90vh', display: 'flex', flexDirection: 'column',
-              background: '#0F172A', borderRadius: 20, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)'
+              position: 'relative',
+              zIndex: 10,
+              width: '96%',
+              maxWidth: 1300,
+              height: '92dvh',
+              maxHeight: '92dvh',
+              display: 'flex',
+              flexDirection: 'column',
+              background: 'rgba(15, 23, 42, 0.85)',
+              backdropFilter: 'blur(20px)',
+              borderRadius: 20,
+              overflow: 'hidden',
+              border: '1px solid rgba(255,255,255,0.15)',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.65)'
             }}
           >
             {/* Viewer Top Toolbar */}
             <div style={{
-              padding: '14px 24px', background: 'rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.1)',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#fff'
+              padding: '12px 18px',
+              background: 'rgba(30, 41, 59, 0.7)',
+              borderBottom: '1px solid rgba(255,255,255,0.12)',
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 10,
+              color: '#fff',
+              direction: 'rtl'
             }}>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 16 }}>{selectedViewerItem.title}</div>
-                <div style={{ fontSize: 12, color: '#94A3B8' }}>{selectedViewerItem.room} • {selectedViewerItem.revision}</div>
+              {/* Title & Badges */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: 15, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                    {selectedViewerItem.title}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: '#94A3B8', display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {selectedViewerItem.room && <span>📍 {selectedViewerItem.room}</span>}
+                    {selectedViewerItem.revision && <span style={{ color: '#38BDF8', fontWeight: 700 }}>• {selectedViewerItem.revision}</span>}
+                  </div>
+                </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {/* View Switcher Tabs (خاص بمقارنة 3D والتنفيذ الواقعي للموبايل والشاشات) */}
+              {selectedViewerItem.realityImage && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  background: 'rgba(0,0,0,0.35)',
+                  padding: '3px',
+                  borderRadius: 12,
+                  border: '1px solid rgba(255,255,255,0.1)'
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => setViewerTab('design')}
+                    style={{
+                      padding: '5px 11px',
+                      borderRadius: 9,
+                      border: 'none',
+                      background: viewerTab === 'design' ? '#F59E0B' : 'transparent',
+                      color: viewerTab === 'design' ? '#000' : '#E2E8F0',
+                      fontWeight: 800,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    ✨ تصميم 3D
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewerTab('reality')}
+                    style={{
+                      padding: '5px 11px',
+                      borderRadius: 9,
+                      border: 'none',
+                      background: viewerTab === 'reality' ? '#10B981' : 'transparent',
+                      color: viewerTab === 'reality' ? '#fff' : '#E2E8F0',
+                      fontWeight: 800,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    📸 الواقع الفعلي
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewerTab('split')}
+                    style={{
+                      padding: '5px 11px',
+                      borderRadius: 9,
+                      border: 'none',
+                      background: viewerTab === 'split' ? '#3B82F6' : 'transparent',
+                      color: viewerTab === 'split' ? '#fff' : '#E2E8F0',
+                      fontWeight: 800,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    ↔️ مقارنة معاً
+                  </button>
+                </div>
+              )}
+
+              {/* Action Buttons Toolbar */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 {!(selectedViewerItem.fileType === 'pdf' || selectedViewerItem.image?.startsWith('data:application/pdf')) && (
                   <>
+                    {/* Rotate 90° Button (حل جذري لمشكلة تدوير صور الموبايل الطولية والعرضية) */}
+                    <button
+                      onClick={() => setViewerRotation(prev => (prev + 90) % 360)}
+                      style={{
+                        background: viewerRotation !== 0 ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255,255,255,0.1)',
+                        border: `1px solid ${viewerRotation !== 0 ? '#38BDF8' : 'rgba(255,255,255,0.15)'}`,
+                        color: viewerRotation !== 0 ? '#38BDF8' : '#fff',
+                        padding: '6px 10px',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 5
+                      }}
+                      title="تدوير الصورة 90 درجة لضبط اتجاه التقاط الموبايل"
+                    >
+                      <RotateCw size={14} />
+                      <span>{viewerRotation !== 0 ? `${viewerRotation}°` : 'تدوير'}</span>
+                    </button>
+
                     {/* Zoom controls for images */}
                     <button
                       onClick={() => setZoomLevel(prev => Math.min(prev + 0.25, 3))}
-                      style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', padding: 8, borderRadius: 8, cursor: 'pointer' }}
+                      style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '6px 8px', borderRadius: 8, cursor: 'pointer' }}
                       title="تكبير"
                     >
-                      <ZoomIn size={16} />
+                      <ZoomIn size={15} />
                     </button>
 
                     <button
                       onClick={() => setZoomLevel(prev => Math.max(prev - 0.25, 0.75))}
-                      style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', padding: 8, borderRadius: 8, cursor: 'pointer' }}
+                      style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '6px 8px', borderRadius: 8, cursor: 'pointer' }}
                       title="تصغير"
                     >
-                      <ZoomOut size={16} />
+                      <ZoomOut size={15} />
                     </button>
 
-                    <button
-                      onClick={() => setZoomLevel(1)}
-                      style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', padding: '6px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}
-                    >
-                      100%
-                    </button>
+                    {zoomLevel !== 1 && (
+                      <button
+                        onClick={() => setZoomLevel(1)}
+                        style={{ background: '#38BDF8', border: 'none', color: '#0F172A', padding: '4px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 900 }}
+                      >
+                        100%
+                      </button>
+                    )}
                   </>
                 )}
 
                 <button
-                  onClick={() => window.open(dataUrlToBlobUrl(selectedViewerItem.image), '_blank')}
-                  style={{ background: '#4F46E5', border: 'none', color: '#fff', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}
-                  title="فتح اللوحة/المخطط في نافذة كاملة جديدة"
+                  onClick={() => window.open(dataUrlToBlobUrl(selectedViewerItem.realityImage && viewerTab === 'reality' ? selectedViewerItem.realityImage : selectedViewerItem.image), '_blank')}
+                  style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', padding: '6px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 11.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}
+                  title="فتح في نافذة كاملة جديدة"
                 >
-                  <ExternalLink size={14} /> فتح في نافذة مستقلة ↗️
+                  <ExternalLink size={13} /> نافذة كاملة
                 </button>
 
                 <button
                   onClick={() => openWhatsAppShare(selectedViewerItem)}
-                  style={{ background: '#25D366', border: 'none', color: '#fff', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}
+                  style={{ background: 'rgba(37, 211, 102, 0.2)', border: '1px solid rgba(37, 211, 102, 0.4)', color: '#25D366', padding: '6px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 11.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}
                 >
-                  <MessageCircle size={15} /> مشاركة واتساب
+                  <MessageCircle size={14} /> واتساب
                 </button>
 
                 <a
-                  href={dataUrlToBlobUrl(selectedViewerItem.image)}
+                  href={dataUrlToBlobUrl(selectedViewerItem.realityImage && viewerTab === 'reality' ? selectedViewerItem.realityImage : selectedViewerItem.image)}
                   download={selectedViewerItem.fileName || selectedViewerItem.title}
-                  style={{ background: '#3B82F6', border: 'none', color: '#fff', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}
+                  style={{ background: 'rgba(59, 130, 246, 0.2)', border: '1px solid rgba(59, 130, 246, 0.4)', color: '#60A5FA', padding: '6px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 11.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, textDecoration: 'none' }}
                 >
-                  <Download size={15} /> تحميل الملف
+                  <Download size={14} /> تحميل
                 </a>
 
                 <button
                   onClick={() => setSelectedViewerItem(null)}
-                  style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', padding: 6 }}
+                  style={{ background: 'rgba(239, 68, 68, 0.25)', border: '1px solid rgba(239, 68, 68, 0.45)', color: '#FCA5A5', cursor: 'pointer', padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 4 }}
                 >
-                  <X size={22} />
+                  <X size={16} /> إغلاق
                 </button>
               </div>
             </div>
 
-            {/* Viewer Stage */}
+            {/* Viewer Stage (مسرح العرض بدون فراغات سوداء كاحلة وبخلفية مريحة للعين) */}
             <div style={{
-              flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: 16, background: '#020617'
+              flex: 1,
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '14px',
+              background: 'rgba(10, 15, 29, 0.65)',
+              position: 'relative'
             }}>
               {(() => {
                 const isPdf = selectedViewerItem.fileType === 'pdf' || selectedViewerItem.image?.startsWith('data:application/pdf') || selectedViewerItem.image?.toLowerCase().endsWith('.pdf');
@@ -771,32 +928,101 @@ export default function ProjectDrawings({ project, onUpdate }) {
                   );
                 }
 
+                // مقارنة 3D بالواقع الفعلي
                 if (selectedViewerItem.realityImage) {
-                  return (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, width: '100%', height: '100%' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%' }}>
-                        <span style={{ color: '#FCD34D', fontWeight: 800, fontSize: 14, marginBottom: 8 }}>✨ منظور التصميم 3D المعتمد</span>
-                        <div style={{ flex: 1, width: '100%', overflow: 'hidden', borderRadius: 12, background: '#000' }}>
+                  // عرض التصميم 3D منفرداً بكامل الحجم
+                  if (viewerTab === 'design') {
+                    return (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        <div style={{ marginBottom: 6, color: '#FCD34D', fontWeight: 800, fontSize: 13.5 }}>✨ منظور التصميم 3D المعتمد</div>
+                        <div style={{ flex: 1, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                           <img
                             src={selectedViewerItem.image}
                             alt="3D Render"
                             style={{
-                              width: '100%', height: '100%', objectFit: 'contain',
-                              transform: `scale(${zoomLevel})`, transition: 'transform 0.2s'
+                              maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
+                              transform: `scale(${zoomLevel}) rotate(${viewerRotation}deg)`,
+                              transition: 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
+                              borderRadius: 12,
+                              boxShadow: '0 15px 35px rgba(0,0,0,0.5)'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // عرض الواقع الفعلي المنفذ منفرداً بكامل الحجم (مثالي لصور الموبايل الطولية والعرضية)
+                  if (viewerTab === 'reality') {
+                    return (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        <div style={{ marginBottom: 6, color: '#10B981', fontWeight: 800, fontSize: 13.5 }}>📸 ما تم تنفيذه في الموقع الفعلي</div>
+                        <div style={{ flex: 1, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                          <img
+                            src={selectedViewerItem.realityImage}
+                            alt="Reality Execution"
+                            style={{
+                              maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
+                              transform: `scale(${zoomLevel}) rotate(${viewerRotation}deg)`,
+                              transition: 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
+                              borderRadius: 12,
+                              boxShadow: '0 15px 35px rgba(0,0,0,0.5)'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // عرض المقارنة جنباً إلى جنب بشكل راقٍ ومريح
+                  return (
+                    <div className="drawings-split-grid" style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: 16,
+                      width: '100%',
+                      height: '100%',
+                      overflow: 'hidden'
+                    }}>
+                      <div style={{
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%',
+                        background: 'rgba(255,255,255,0.03)', borderRadius: 14, padding: '10px',
+                        border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden'
+                      }}>
+                        <span style={{ color: '#FCD34D', fontWeight: 800, fontSize: 13, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          ✨ منظور التصميم 3D
+                        </span>
+                        <div style={{ flex: 1, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                          <img
+                            src={selectedViewerItem.image}
+                            alt="3D Render"
+                            style={{
+                              maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
+                              transform: `scale(${zoomLevel}) rotate(${viewerRotation}deg)`,
+                              transition: 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
+                              borderRadius: 10
                             }}
                           />
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%' }}>
-                        <span style={{ color: '#10B981', fontWeight: 800, fontSize: 14, marginBottom: 8 }}>📸 ما تم تنفيذه في الموقع الفعلي</span>
-                        <div style={{ flex: 1, width: '100%', overflow: 'hidden', borderRadius: 12, background: '#000' }}>
+                      <div style={{
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%',
+                        background: 'rgba(255,255,255,0.03)', borderRadius: 14, padding: '10px',
+                        border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden'
+                      }}>
+                        <span style={{ color: '#10B981', fontWeight: 800, fontSize: 13, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          📸 ما تم تنفيذه في الموقع
+                        </span>
+                        <div style={{ flex: 1, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                           <img
                             src={selectedViewerItem.realityImage}
-                            alt="Reality"
+                            alt="Reality Execution"
                             style={{
-                              width: '100%', height: '100%', objectFit: 'contain',
-                              transform: `scale(${zoomLevel})`, transition: 'transform 0.2s'
+                              maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
+                              transform: `scale(${zoomLevel}) rotate(${viewerRotation}deg)`,
+                              transition: 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
+                              borderRadius: 10
                             }}
                           />
                         </div>
@@ -805,6 +1031,7 @@ export default function ProjectDrawings({ project, onUpdate }) {
                   );
                 }
 
+                // صورة مفردة
                 return (
                   <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                     <img
@@ -812,7 +1039,10 @@ export default function ProjectDrawings({ project, onUpdate }) {
                       alt={selectedViewerItem.title}
                       style={{
                         maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
-                        transform: `scale(${zoomLevel})`, transition: 'transform 0.2s'
+                        transform: `scale(${zoomLevel}) rotate(${viewerRotation}deg)`,
+                        transition: 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
+                        borderRadius: 14,
+                        boxShadow: '0 20px 50px rgba(0,0,0,0.6)'
                       }}
                     />
                   </div>
@@ -822,11 +1052,20 @@ export default function ProjectDrawings({ project, onUpdate }) {
 
             {/* Description Bar */}
             {selectedViewerItem.description && (
-              <div style={{ padding: '12px 24px', background: 'rgba(255,255,255,0.05)', color: '#E2E8F0', fontSize: 13, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                <strong>المواصفة والملاحظة: </strong> {selectedViewerItem.description}
+              <div style={{ padding: '10px 20px', background: 'rgba(30, 41, 59, 0.5)', color: '#E2E8F0', fontSize: 12.5, borderTop: '1px solid rgba(255,255,255,0.1)', direction: 'rtl' }}>
+                <strong style={{ color: '#38BDF8' }}>المواصفة والملاحظة: </strong> {selectedViewerItem.description}
               </div>
             )}
           </div>
+
+          <style>{`
+            @media (max-width: 768px) {
+              .drawings-split-grid {
+                grid-template-columns: 1fr !important;
+                grid-template-rows: 1fr 1fr !important;
+              }
+            }
+          `}</style>
         </div>
       )}
 

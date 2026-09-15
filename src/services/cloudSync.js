@@ -125,40 +125,60 @@ export function sanitizeProjectForCloud(project) {
     p.dailyLogs = p.dailyLogs.map(log => {
       if (!log || typeof log !== 'object') return log;
       const l = { ...log };
+
+      // تنقية وتجريد وسائط اليومية من أي سلاسل Base64 ضخمة
+      let safeMedia = [];
       if (Array.isArray(l.media)) {
-        l.media = l.media.map(m => {
-          if (!m || typeof m !== 'object') return m;
+        safeMedia = l.media.map(m => {
+          if (!m || typeof m !== 'object') return null;
           const src = m.src || '';
-          if (typeof src === 'string' && src.startsWith('data:') && src.length > 60000) {
-            return {
-              ...m,
-              src: m.rawSrc?.startsWith('idb://') ? m.rawSrc : (m.thumbnail || `idb://${m.id || Date.now()}`)
-            };
-          }
-          return m;
-        });
+          const isHeavyBase64 = typeof src === 'string' && src.startsWith('data:') && src.length > 15000;
+          return {
+            id: m.id || ('m_' + Math.random().toString(36).substr(2, 6)),
+            type: m.type || 'image',
+            name: m.name || '',
+            caption: m.caption || '',
+            src: isHeavyBase64 ? (m.rawSrc?.startsWith('idb://') ? m.rawSrc : `idb://${m.id || Date.now()}`) : src,
+            thumbnail: (m.thumbnail && m.thumbnail.length < 25000) ? m.thumbnail : ''
+          };
+        }).filter(Boolean);
       }
+
+      // تنقية صور اليومية
+      let safePhotos = [];
       if (Array.isArray(l.photos)) {
-        l.photos = l.photos.map(photo => {
+        safePhotos = l.photos.map(photo => {
           if (typeof photo === 'string') {
-            if (photo.startsWith('data:') && photo.length > 60000) {
-              return '';
-            }
+            if (photo.startsWith('data:') && photo.length > 15000) return null;
             return photo;
           } else if (photo && typeof photo === 'object') {
             const src = photo.src || '';
-            if (typeof src === 'string' && src.startsWith('data:') && src.length > 60000) {
-              return {
-                ...photo,
-                src: photo.rawSrc?.startsWith('idb://') ? photo.rawSrc : (photo.thumbnail || `idb://${photo.id || Date.now()}`)
-              };
-            }
-            return photo;
+            const isHeavyBase64 = typeof src === 'string' && src.startsWith('data:') && src.length > 15000;
+            return {
+              id: photo.id || ('ph_' + Math.random().toString(36).substr(2, 6)),
+              type: photo.type || 'image',
+              caption: photo.caption || '',
+              src: isHeavyBase64 ? (photo.rawSrc?.startsWith('idb://') ? photo.rawSrc : `idb://${photo.id || Date.now()}`) : src,
+              thumbnail: (photo.thumbnail && photo.thumbnail.length < 25000) ? photo.thumbnail : ''
+            };
           }
           return photo;
         }).filter(Boolean);
       }
-      return l;
+
+      // إرجاع بنية مضغوطة ومنظمة فائقة الخفة لليومية لضمان استيعاب آلاف اليوميات سحابياً
+      return {
+        id: l.id || ('d_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4)),
+        date: l.date || '',
+        author: l.author || '',
+        work: l.work || '',
+        workers: Number(l.workers) || 1,
+        issues: l.issues || '',
+        time: l.time || '',
+        timestamp: l.timestamp || l.createdAt || '',
+        media: safeMedia,
+        photos: safePhotos
+      };
     });
   }
 

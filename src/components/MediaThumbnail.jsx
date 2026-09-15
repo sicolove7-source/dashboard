@@ -70,20 +70,41 @@ export default function MediaThumbnail({ item, onClick, style = {}, className = 
           </div>
         )
       ) : displaySrc ? (
-        <img
-          src={displaySrc}
-          alt={item?.caption || item?.name || 'معاينة'}
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          loading="lazy"
-          onError={(e) => {
-            // إذا فشل تحميل الصورة المباشرة نحاول استخدام المصغرة البديلة
-            if (rawThumb && rawThumb.startsWith('data:') && e.target.src !== rawThumb) {
-              e.target.src = rawThumb;
-            }
-          }}
-        />
+        <>
+          {/* Ambient blurred backdrop so portrait photos fill gracefully */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              backgroundImage: `url(${displaySrc})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              filter: 'blur(12px) brightness(0.6)',
+              transform: 'scale(1.2)',
+              zIndex: 0,
+            }}
+          />
+          <img
+            src={displaySrc}
+            alt={item?.caption || item?.name || 'معاينة'}
+            style={{
+              position: 'relative',
+              zIndex: 1,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              transition: 'transform 0.25s ease'
+            }}
+            loading="lazy"
+            onError={(e) => {
+              if (rawThumb && rawThumb.startsWith('data:') && e.target.src !== rawThumb) {
+                e.target.src = rawThumb;
+              }
+            }}
+          />
+        </>
       ) : (
-        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#94A3B8', background: '#1E293B' }}>
+        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#94A3B8', background: 'rgba(30, 41, 59, 0.5)' }}>
           <Camera size={22} color="#94A3B8" />
           <span style={{ fontSize: 9.5, fontWeight: 700, color: '#94A3B8' }}>صورة موثقة</span>
         </div>

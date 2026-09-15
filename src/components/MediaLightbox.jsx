@@ -183,22 +183,25 @@ export default function MediaLightbox({ item, items = [], onClose }) {
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(5, 10, 20, 0.96)',
-        backdropFilter: 'blur(16px)',
+        height: '100dvh',
+        maxHeight: '100dvh',
+        background: 'rgba(5, 10, 20, 0.94)',
+        backdropFilter: 'blur(20px)',
         zIndex: 99999,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '12px 16px',
+        padding: '10px 14px',
         animation: 'fadeIn 0.2s ease-out',
         userSelect: 'none',
         overflow: 'hidden',
+        overscrollBehavior: 'none',
       }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* ─── Ambient Glow Background (المحيط الجمالي الملون) ─── */}
+      {/* ─── Ambient Glow Background (المحيط الجمالي الملون المضيء لوداع الفراغات السوداء) ─── */}
       {resolvedUrl && !isVideo && (
         <div
           style={{
@@ -207,8 +210,8 @@ export default function MediaLightbox({ item, items = [], onClose }) {
             backgroundImage: `url(${resolvedUrl})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
-            filter: 'blur(60px) saturate(1.4) brightness(0.18)',
-            opacity: 0.85,
+            filter: 'blur(65px) saturate(1.6) brightness(0.32)',
+            opacity: 0.9,
             zIndex: 0,
             pointerEvents: 'none',
           }}
@@ -487,7 +490,7 @@ export default function MediaLightbox({ item, items = [], onClose }) {
             playsInline
             style={{
               maxWidth: '96vw',
-              maxHeight: 'calc(100vh - 150px)',
+              maxHeight: 'calc(100dvh - 130px)',
               borderRadius: 16,
               boxShadow: '0 25px 60px rgba(0,0,0,0.7)',
               border: '1.5px solid rgba(255, 255, 255, 0.15)',
@@ -503,7 +506,7 @@ export default function MediaLightbox({ item, items = [], onClose }) {
               justifyContent: 'center',
               width: '100%',
               height: '100%',
-              maxHeight: 'calc(100vh - 130px)',
+              maxHeight: 'calc(100dvh - 120px)',
               transform: `translate(${pan.x}px, ${pan.y}px)`,
               transition: isDragging ? 'none' : 'transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)',
             }}
@@ -512,14 +515,14 @@ export default function MediaLightbox({ item, items = [], onClose }) {
               src={resolvedUrl}
               alt={activeItem.caption || 'معاينة الموقع'}
               style={{
-                maxWidth: (rotation === 90 || rotation === 270) ? 'calc(100vh - 140px)' : '96vw',
-                maxHeight: (rotation === 90 || rotation === 270) ? '90vw' : 'calc(100vh - 140px)',
+                maxWidth: (rotation === 90 || rotation === 270) ? 'calc(100dvh - 130px)' : '95vw',
+                maxHeight: (rotation === 90 || rotation === 270) ? '90vw' : 'calc(100dvh - 130px)',
                 width: fitMode === 'cover' ? '100%' : 'auto',
                 height: fitMode === 'cover' ? '100%' : 'auto',
                 objectFit: fitMode,
                 borderRadius: 16,
-                boxShadow: '0 25px 60px rgba(0,0,0,0.7)',
-                border: '1.5px solid rgba(255, 255, 255, 0.15)',
+                boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
+                border: '1.5px solid rgba(255, 255, 255, 0.18)',
                 transform: `rotate(${rotation}deg) scale(${zoom})`,
                 transition: isDragging ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
                 transformOrigin: 'center center',
