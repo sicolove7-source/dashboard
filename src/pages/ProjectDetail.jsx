@@ -1038,8 +1038,7 @@ function DiaryPanel({ project, team, onUpdate }) {
       {/* Lightbox / Video Modal */}
       {previewModal && (
         <MediaLightbox
-          item={previewModal.item || previewModal}
-          items={previewModal.items || (previewModal.item ? [previewModal.item] : [previewModal])}
+          item={previewModal}
           onClose={() => setPreviewModal(null)}
         />
       )}
@@ -1430,7 +1429,7 @@ function DiaryPanel({ project, team, onUpdate }) {
                           <MediaThumbnail
                             key={mIdx}
                             item={item}
-                            onClick={(clickedItem) => setPreviewModal({ item: clickedItem, items: logMedia })}
+                            onClick={setPreviewModal}
                             style={{
                               width: 75,
                               height: 75,

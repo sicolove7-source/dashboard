@@ -408,10 +408,15 @@
   font-size: 14px;
 }
 
+.diary-container {
+  overscroll-behavior-y: contain;
+}
+
 .diary-logs-list {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  overscroll-behavior-y: contain;
 }
 
 .diary-log-card {

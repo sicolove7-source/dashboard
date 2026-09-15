@@ -189,6 +189,7 @@ export default function MediaLightbox({ item, items = [], onClose }) {
 
   function handleTouchEnd(e) {
     if (zoom > 1) return; // Don't swipe when zoomed
+    if (currentList.length <= 1) return; // Don't swipe when only 1 item
     const deltaX = e.changedTouches[0].clientX - touchStart.current.x;
     const deltaY = e.changedTouches[0].clientY - touchStart.current.y;
     // Horizontal swipe threshold
@@ -253,6 +254,7 @@ export default function MediaLightbox({ item, items = [], onClose }) {
 
       {/* ─── Top Luxury Control Bar ─── */}
       <div
+        className="lightbox-top-bar"
         onClick={(e) => e.stopPropagation()}
         style={{
           position: 'relative',
@@ -533,7 +535,7 @@ export default function MediaLightbox({ item, items = [], onClose }) {
             }}
           />
         ) : (
-          /* Smart Responsive Image Frame (تتكيف ذاتياً بنسبة العرض إلى الارتفاع الطبيعية دون أي مط) */
+          /* Smart Responsive Image Frame (تتكيف ذاتياً بنسبة العرض إلى الارتفاع الطبيعية دون أي مط أو خروج عن الإطار) */
           <div
             style={{
               display: 'flex',
@@ -541,6 +543,8 @@ export default function MediaLightbox({ item, items = [], onClose }) {
               justifyContent: 'center',
               width: '100%',
               height: '100%',
+              maxHeight: '100%',
+              maxWidth: '100%',
               minHeight: 0,
               minWidth: 0,
               transform: `translate(${pan.x}px, ${pan.y}px)`,
@@ -551,8 +555,8 @@ export default function MediaLightbox({ item, items = [], onClose }) {
               src={resolvedUrl}
               alt={activeItem.caption || 'معاينة الموقع'}
               style={{
-                maxWidth: (rotation === 90 || rotation === 270) ? 'calc(100vh - 150px)' : 'calc(100vw - 20px)',
-                maxHeight: (rotation === 90 || rotation === 270) ? 'calc(100vw - 20px)' : 'calc(100vh - 150px)',
+                maxWidth: (rotation === 90 || rotation === 270) ? '75vh' : '100%',
+                maxHeight: (rotation === 90 || rotation === 270) ? '85vw' : '100%',
                 width: 'auto',
                 height: 'auto',
                 objectFit: 'contain',
@@ -602,6 +606,7 @@ export default function MediaLightbox({ item, items = [], onClose }) {
 
       {/* ─── Bottom Information & Quick Share Strip ─── */}
       <div
+        className="lightbox-bottom-strip"
         onClick={(e) => e.stopPropagation()}
         style={{
           position: 'relative',
@@ -670,6 +675,16 @@ export default function MediaLightbox({ item, items = [], onClose }) {
         @keyframes spin { to { transform: rotate(360deg); } }
         @media (max-width: 640px) {
           .hide-mobile { display: none !important; }
+          .lightbox-top-bar {
+            padding: 6px 10px !important;
+            gap: 6px !important;
+            border-radius: 12px !important;
+          }
+          .lightbox-bottom-strip {
+            padding: 6px 12px !important;
+            font-size: 11px !important;
+            margin-top: 4px !important;
+          }
         }
       `}</style>
     </div>
