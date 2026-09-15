@@ -13,13 +13,22 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 )
 
-// تسجيل Service Worker لتحويل الموقع لتطبيق هاتف مثبت (PWA) والعمل دون اتصال
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then((registration) => {
-      console.log('Tashteeb Pro PWA SW registered successfully:', registration.scope);
-    }).catch((err) => {
-      console.log('PWA SW registration failed:', err);
+// تسجيل Service Worker لتحويل الموقع لتطبيق هاتف مثبت (PWA) والعمل دون اتصال في الإنتاج فقط
+if ('serviceWorker' in navigator) {
+  if (import.meta.env.PROD) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').then((registration) => {
+        console.log('Tashteeb Pro PWA SW registered successfully:', registration.scope);
+      }).catch((err) => {
+        console.log('PWA SW registration failed:', err);
+      });
     });
-  });
+  } else {
+    // في بيئة التطوير المحلية نلغي تسجيل أي Service Worker سابق لمنع تجميد الكاش
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const r of registrations) {
+        r.unregister();
+      }
+    });
+  }
 }

@@ -714,7 +714,14 @@ function WorkersSection() {
 
 /* ── Main Page ─────────────────────────────────────── */
 export default function SuppliersTab({ projects = [], companySettings, userRole, currentUser, activeCompanyId }) {
-  const [activeTab, setActiveTab] = useState('suppliers');
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const target = p.get('subtab') || p.get('tab');
+      if (target === 'subcontractors' || target === 'workers') return target;
+    } catch {}
+    return 'suppliers';
+  });
   const tabs = [
     { key:'suppliers',      label:'الموردون والمواد',          shortLabel:'الموردون',        icon:Truck },
     { key:'workers',        label:'الصنايعية والعمالة',         shortLabel:'الصنايعية',       icon:Wrench },

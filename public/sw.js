@@ -3,7 +3,7 @@
  * الإصدار الأول المطور لتطبيقات الهواتف والويب التقدمية
  */
 
-const CACHE_NAME = 'tashteeb-pro-v1.5';
+const CACHE_NAME = 'tashteeb-pro-v2.0';
 const PRECACHE_ASSETS = [
   './',
   './index.html',
@@ -39,8 +39,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
 
-  // لا نقوم بكاش طلبات Firebase Firestore أو Cloud Functions أو الوسائط المرفوعة
+  // لا نقوم بكاش طلبات بيئة التطوير المحلية أو طلبات Firebase Firestore أو Cloud Functions أو الوسائط المرفوعة
   if (
+    request.url.includes('localhost') ||
+    request.url.includes('127.0.0.1') ||
     request.url.includes('firestore.googleapis.com') ||
     request.url.includes('firebasestorage.googleapis.com') ||
     request.url.includes('google.firestore') ||

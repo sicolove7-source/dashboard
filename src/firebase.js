@@ -1,6 +1,11 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  getFirestore
+} from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 export const firebaseConfig = {
@@ -17,7 +22,22 @@ export const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+
+// تفعيل التخزين الدائم للعمل بدون إنترنت (Firestore Offline Persistence)
+// في Firebase 12 modular API يتم استخدام persistentLocalCache مع persistentMultipleTabManager
+let firestoreDb;
+try {
+  firestoreDb = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  });
+} catch (e) {
+  // في حال إعادة التحميل السريع (Vite HMR) أو التهيئة المسبقة
+  firestoreDb = getFirestore(app);
+}
+
+export const db = firestoreDb;
 export const storage = getStorage(app);
 
 // تفعيل المصادقة الفورية غير المعطلة لتخويل رفع الوسائط إلى Firebase Storage

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X, Download, Video, Image as ImageIcon, Loader2,
   RotateCw, ZoomIn, ZoomOut, Maximize2, Minimize2,
@@ -204,7 +205,7 @@ export default function MediaLightbox({ item, items = [], onClose }) {
 
   if (!activeItem) return null;
 
-  return (
+  const modalContent = (
     <div
       onClick={onClose}
       style={{
@@ -625,4 +626,6 @@ export default function MediaLightbox({ item, items = [], onClose }) {
       `}</style>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }

@@ -556,10 +556,10 @@ select.filter-select:focus, input.filter-input:focus { border-color: #1877F2; bo
 }
 
 /* Animations — ultra fast 0.15s transitions with zero GPU blur overhead */
-.tab-fade { animation: fastTabFade 0.15s ease-out forwards; }
+.tab-fade { animation: fastTabFade 0.15s ease-out; }
 @keyframes fastTabFade { 
-  0% { opacity: 0; transform: translateY(3px); } 
-  100% { opacity: 1; transform: translateY(0); } 
+  0% { opacity: 0; } 
+  100% { opacity: 1; } 
 }
 
 /* Scrollbar */

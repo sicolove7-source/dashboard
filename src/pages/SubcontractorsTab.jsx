@@ -13,29 +13,7 @@ import {
   SEED_WORK_ORDERS,
   SEED_EXTRACTS
 } from '../utils/constants';
-
-const STORE_SUBCONTRACTORS = 'db-subcontractors-v1';
-const STORE_WORK_ORDERS     = 'db-subcontractor-orders-v1';
-const STORE_EXTRACTS        = 'db-subcontractor-extracts-v1';
-
-function loadOrSeed(key, seed) {
-  try {
-    const v = localStorage.getItem(key);
-    if (v) return JSON.parse(v);
-    localStorage.setItem(key, JSON.stringify(seed));
-    return seed;
-  } catch {
-    return seed;
-  }
-}
-
-function saveLS(key, data) {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (e) {
-    console.error('Failed to save to localStorage:', e);
-  }
-}
+import { useSubcontractorsData } from '../hooks/useSubcontractorsData';
 
 // ─── Status Badges ───
 function StatusBadge({ status, type = 'contractor' }) {
@@ -93,13 +71,28 @@ function StarRating({ value, onChange, size = 16 }) {
   );
 }
 
-export default function SubcontractorsTab({ projects = [], userRole = 'owner', companySettings = null }) {
+export default function SubcontractorsTab({
+  projects = [],
+  userRole = 'owner',
+  companySettings = null,
+  currentUser = null,
+  activeCompanyId = null
+}) {
   const currency = getGlobalCurrency();
 
-  // Primary Data
-  const [subcontractors, setSubcontractors] = useState(() => loadOrSeed(STORE_SUBCONTRACTORS, SEED_SUBCONTRACTORS));
-  const [workOrders, setWorkOrders]         = useState(() => loadOrSeed(STORE_WORK_ORDERS, SEED_WORK_ORDERS));
-  const [extracts, setExtracts]             = useState(() => loadOrSeed(STORE_EXTRACTS, SEED_EXTRACTS));
+  // Primary Data & Realtime Firestore sync with Offline Persistence
+  const {
+    subcontractors,
+    workOrders,
+    extracts,
+    updateSubs,
+    updateOrders,
+    updateExts,
+    isOnline,
+    hasPendingWrites,
+    fromCache,
+    loading
+  } = useSubcontractorsData(activeCompanyId || currentUser?.companyId);
 
   // Navigation Sub-tab
   const [activeTab, setActiveTab] = useState('contractors'); // 'contractors' | 'orders' | 'extracts' | 'guarantees'
@@ -123,11 +116,6 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
   const [filterSpecialty, setFilterSpecialty] = useState('');
   const [filterProject, setFilterProject] = useState('');
   const [filterStatus, setFilterStatus]   = useState('');
-
-  // Persist mutations
-  const updateSubs = (next) => { setSubcontractors(next); saveLS(STORE_SUBCONTRACTORS, next); };
-  const updateOrders = (next) => { setWorkOrders(next); saveLS(STORE_WORK_ORDERS, next); };
-  const updateExts = (next) => { setExtracts(next); saveLS(STORE_EXTRACTS, next); };
 
   // ─── KPI Calculations ───
   const stats = useMemo(() => {
@@ -237,6 +225,43 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40, width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
+      {/* ─── مؤشر وتنبيه حالة الاتصال والمزامنة للعمل بدون إنترنت ─── */}
+      {(!isOnline || hasPendingWrites) && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          padding: '12px 18px',
+          borderRadius: 'var(--radius, 10px)',
+          background: !isOnline ? 'rgba(239, 68, 68, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+          border: `1px solid ${!isOnline ? 'rgba(239, 68, 68, 0.25)' : 'rgba(245, 158, 11, 0.25)'}`,
+          color: !isOnline ? '#B91C1C' : '#B45309',
+          fontSize: 13,
+          fontWeight: 600,
+          width: '100%',
+          boxSizing: 'border-box'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 16 }}>{!isOnline ? '🔴' : '🟡'}</span>
+            <span>
+              {!isOnline
+                ? 'غير متصل بالإنترنت - يمكنك الاستمرار في إدخال وتعديل البيانات، سيتم حفظ كل شيء محلياً ومزامنته تلقائياً فور عودة النت'
+                : 'يوجد تعديلات تم حفظها محلياً وجاري مزامنتها مع قاعدة بيانات Firestore...'}
+            </span>
+          </div>
+          <span style={{
+            fontSize: 11,
+            background: !isOnline ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+            padding: '3px 8px',
+            borderRadius: 6,
+            whiteSpace: 'nowrap'
+          }}>
+            {fromCache ? 'الذاكرة المؤقتة (Offline Cache)' : 'مزامنة سحابية'}
+          </span>
+        </div>
+      )}
+
       {/* ─── Header & Top Actions ─── */}
       <div className="sub-header-panel" style={{
         display: 'flex',
@@ -282,6 +307,40 @@ export default function SubcontractorsTab({ projects = [], userRole = 'owner', c
                 whiteSpace: 'nowrap'
               }}>
                 نظام المقاولات والأعمال الميدانية
+              </span>
+              {/* مؤشر حالة الاتصال والمزامنة الحية */}
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '3px 10px',
+                borderRadius: 10,
+                fontSize: 11,
+                fontWeight: 700,
+                background: !isOnline
+                  ? 'rgba(239, 68, 68, 0.12)'
+                  : hasPendingWrites
+                    ? 'rgba(245, 158, 11, 0.12)'
+                    : 'rgba(16, 185, 129, 0.12)',
+                color: !isOnline
+                  ? '#DC2626'
+                  : hasPendingWrites
+                    ? '#D97706'
+                    : '#10B981',
+                border: `1px solid ${!isOnline ? 'rgba(239, 68, 68, 0.25)' : hasPendingWrites ? 'rgba(245, 158, 11, 0.25)' : 'rgba(16, 185, 129, 0.25)'}`,
+                whiteSpace: 'nowrap'
+              }}>
+                <span style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  background: !isOnline ? '#DC2626' : hasPendingWrites ? '#F59E0B' : '#10B981'
+                }} />
+                {!isOnline
+                  ? '🔴 غير متصل'
+                  : hasPendingWrites
+                    ? '🟡 جاري المزامنة...'
+                    : '🟢 متصل ومزامن'}
               </span>
             </div>
             <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--muted)', lineHeight: 1.4 }}>
