@@ -97,19 +97,19 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
             <div className="project-meta-chips">
               <div className="meta-chip">
                 <span className="meta-chip-label">العميل:</span>
-                <span className="meta-chip-val">{project.client}</span>
+                <span className="meta-chip-val">{typeof project.client === 'object' ? (project.client.name || '—') : (project.client || '—')}</span>
               </div>
               <span className="meta-dot">•</span>
               <div className="meta-chip">
                 <span className="meta-chip-label">المنطقة:</span>
-                <span className="meta-chip-val">{project.area}</span>
+                <span className="meta-chip-val">{typeof project.area === 'object' ? (project.area.name || '—') : (project.area || '—')}</span>
               </div>
               {project.engineer && (
                 <>
                   <span className="meta-dot">•</span>
                   <div className="meta-chip">
                     <span className="meta-chip-label">المهندس:</span>
-                    <span className="meta-chip-val">{project.engineer}</span>
+                    <span className="meta-chip-val">{typeof project.engineer === 'object' ? (project.engineer.name || '—') : project.engineer}</span>
                   </div>
                 </>
               )}
@@ -193,7 +193,7 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
         </div>
       </div>
 
-      <ErrorBoundary onBack={onBack} message="حدث خطأ أثناء تحميل محتوى هذا القسم، يمكنك التبديل لقسم آخر أو العودة لقائمة المواقع.">
+      <ErrorBoundary key={sub} onBack={onBack} message="حدث خطأ أثناء تحميل محتوى هذا القسم، يمكنك التبديل لقسم آخر أو العودة لقائمة المواقع.">
         <div className="tab-fade">
           {sub === "craftsmen" && (
             <ProjectCraftsmen 
@@ -256,9 +256,10 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
 }
 
 function SnagsPanel({ project, onUpdate }) {
-  const snags = project.snags || [];
+  const snags = (project.snags || []).filter(Boolean);
   const floorPlan = project.floorPlan || null;
-  const [form, setForm] = useState({ desc: "", location: "", assignee: project.engineer || "", status: "pending", photo: null, thumbnail: "", mediaId: null, pin: null });
+  const engName = typeof project.engineer === 'object' ? (project.engineer.name || "") : (project.engineer || "");
+  const [form, setForm] = useState({ desc: "", location: "", assignee: engName, status: "pending", photo: null, thumbnail: "", mediaId: null, pin: null });
   const [confirmId, setConfirmId] = useState(null);
   const [previewModal, setPreviewModal] = useState(null);
   
@@ -380,7 +381,7 @@ function SnagsPanel({ project, onUpdate }) {
       id: "snag_" + Date.now() + "_" + Math.random().toString(36).substr(2, 4),
       desc: form.desc.trim(),
       location: (form.location || "").trim(),
-      assignee: (form.assignee || project.engineer || "").trim(),
+      assignee: (form.assignee || engName || "").trim(),
       status: form.status || "pending",
       photo: form.photo || null,
       thumbnail: form.thumbnail || "",
@@ -395,7 +396,7 @@ function SnagsPanel({ project, onUpdate }) {
       snags: [newSnag, ...snags],
       updatedAt: now
     });
-    setForm({ desc: "", location: "", assignee: project.engineer || "", status: "pending", photo: null, thumbnail: "", mediaId: null, pin: null });
+    setForm({ desc: "", location: "", assignee: engName, status: "pending", photo: null, thumbnail: "", mediaId: null, pin: null });
   }
 
   function setSnagStatus(id, status) {
@@ -755,11 +756,14 @@ function DiaryPanel({ project, team, onUpdate }) {
     return logs.some(l => l && (l.date === today || (typeof l.date === 'string' && l.date.startsWith(today))));
   }, [logs]);
   
-  const engineerList = team?.engineers?.length ? team.engineers : ENGINEERS;
-  const techOfficeList = team?.techOffice?.length ? team.techOffice : TECH_OFFICE;
-  const authorOptions = Array.from(new Set([...engineerList, ...techOfficeList, project?.engineer].filter(Boolean)));
+  const engineerNames = (team?.engineers || []).map(e => (typeof e === 'string' ? e : e?.name)).filter(Boolean);
+  const techOfficeNames = (team?.techOffice || []).map(e => (typeof e === 'string' ? e : e?.name)).filter(Boolean);
+  const engineerList = engineerNames.length ? engineerNames : (ENGINEERS || []).map(e => (typeof e === 'string' ? e : e?.name)).filter(Boolean);
+  const techOfficeList = techOfficeNames.length ? techOfficeNames : (TECH_OFFICE || []).map(e => (typeof e === 'string' ? e : e?.name)).filter(Boolean);
+  const projEng = typeof project?.engineer === 'string' ? project.engineer : (project?.engineer?.name || '');
+  const authorOptions = Array.from(new Set([...engineerList, ...techOfficeList, projEng].filter(Boolean)));
   
-  const defaultAuthor = project?.engineer || authorOptions[0] || "";
+  const defaultAuthor = projEng || authorOptions[0] || "";
   const [form, setForm] = useState({ date: todayISO(), author: defaultAuthor, work: "", issues: "", workers: 5 });
   const [mediaList, setMediaList] = useState([]); // [{ src, type: 'image' | 'video', name }]
   const [previewModal, setPreviewModal] = useState(null);
@@ -772,12 +776,12 @@ function DiaryPanel({ project, team, onUpdate }) {
   const [visibleCount, setVisibleCount] = useState(25);
 
   useEffect(() => {
-    const currentDefault = project?.engineer || authorOptions[0] || "";
+    const currentDefault = projEng || authorOptions[0] || "";
     setForm((prev) => ({
       ...prev,
       author: currentDefault
     }));
-  }, [project?.id, project?.engineer, team]);
+  }, [project?.id, projEng, team]);
 
   async function handleMediaUpload(e) {
     const files = Array.from(e.target.files || []);
@@ -890,7 +894,7 @@ function DiaryPanel({ project, team, onUpdate }) {
     }
 
     onUpdate(patch);
-    const currentDefault = project.engineer || authorOptions[0] || "";
+    const currentDefault = projEng || authorOptions[0] || "";
     setForm({ date: todayISO(), author: currentDefault, work: "", issues: "", workers: 5 });
     setMediaList([]);
   }
@@ -1324,7 +1328,7 @@ function DiaryPanel({ project, team, onUpdate }) {
                             </span>
                           )}
                         </span>
-                        <span className="diary-author-text">{l?.author || '—'}</span>
+                        <span className="diary-author-text">{typeof l?.author === 'object' ? (l.author?.name || '—') : (l?.author || '—')}</span>
                         <span className="diary-workers-badge">{l?.workers || l?.laborCount || 1} عامل بالموقع</span>
                       </div>
                       
