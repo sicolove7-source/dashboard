@@ -769,11 +769,12 @@ function DiaryPanel({ project, team, onUpdate }) {
   const [previewModal, setPreviewModal] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
 
-  // States for handling thousands of logs smoothly
-  const [searchQuery, setSearchQuery] = useState("");
+  // Filter states requested: Today (default), Week, Month, Custom Date, or All
+  const [periodFilter, setPeriodFilter] = useState('today'); // 'today' | 'week' | 'month' | 'custom' | 'all'
+  const [customDate, setCustomDate] = useState(todayISO());
   const [selectedMonth, setSelectedMonth] = useState("all");
   const [filterOnlyIssues, setFilterOnlyIssues] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(25);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     const currentDefault = projEng || authorOptions[0] || "";
@@ -970,19 +971,41 @@ function DiaryPanel({ project, team, onUpdate }) {
       });
   }, [logs]);
 
-  // Filter logs by search, month, and issues
+  // Filter logs by period (today, week, month, custom date), search, and issues
+  const today = todayISO();
+  const currentYM = today.slice(0, 7);
+
   const filteredLogs = useMemo(() => {
     let res = sorted;
-    if (selectedMonth !== "all") {
+
+    // 1. Period filter (اليوم / أسبوع / شهر / تاريخ محدد / الكل)
+    if (periodFilter === 'today') {
+      res = res.filter(l => l && l.date && String(l.date).startsWith(today));
+    } else if (periodFilter === 'week') {
+      const nowMs = new Date().getTime();
+      const sevenDaysMs = 7 * 86400000;
+      res = res.filter(l => {
+        if (!l || !l.date) return false;
+        const d = new Date(l.date).getTime();
+        return !isNaN(d) && (nowMs - d) <= sevenDaysMs && (nowMs - d) >= -86400000;
+      });
+    } else if (periodFilter === 'month') {
+      const targetMonth = selectedMonth === 'all' ? currentYM : selectedMonth;
       res = res.filter(l => {
         if (!l || !l.date) return false;
         const dStr = String(l.date).replace(/\//g, '-');
-        return dStr.startsWith(selectedMonth);
+        return dStr.startsWith(targetMonth);
       });
+    } else if (periodFilter === 'custom' && customDate) {
+      res = res.filter(l => l && l.date && String(l.date).startsWith(customDate));
     }
+
+    // 2. Issues only
     if (filterOnlyIssues) {
       res = res.filter(l => l && l.issues && l.issues !== "لا يوجد");
     }
+
+    // 3. Search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       res = res.filter(l => {
@@ -994,13 +1017,9 @@ function DiaryPanel({ project, team, onUpdate }) {
         return workText.includes(q) || authorText.includes(q) || dateText.includes(q) || issuesText.includes(q);
       });
     }
-    return res;
-  }, [sorted, selectedMonth, filterOnlyIssues, searchQuery]);
 
-  // Sliced logs for high performance DOM rendering (handling thousands of entries without freezing)
-  const displayedLogs = useMemo(() => {
-    return filteredLogs.slice(0, visibleCount);
-  }, [filteredLogs, visibleCount]);
+    return res;
+  }, [sorted, periodFilter, customDate, selectedMonth, filterOnlyIssues, searchQuery, today, currentYM]);
 
   // Aggregate KPIs for site management
   const stats = useMemo(() => {
@@ -1201,72 +1220,99 @@ function DiaryPanel({ project, team, onUpdate }) {
       </div>
 
       <div className="panel diary-history-panel">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
           <h3 className="diary-section-heading" style={{ margin: 0 }}>
-            <CalendarDays size={18} /> سجل اليوميات والتوثيق الميداني ({logs.length})
+            <CalendarDays size={18} /> سجل اليوميات والتوثيق الميداني ({filteredLogs.length}{periodFilter !== 'all' ? ` من ${logs.length}` : ''})
           </h3>
-
-          {/* عداد العرض الحالي */}
-          {filteredLogs.length > 0 && (
-            <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>
-              عرض <strong style={{ color: 'var(--teal)' }}>{displayedLogs.length}</strong> من إجمالي <strong style={{ color: 'var(--ink)' }}>{filteredLogs.length}</strong> يومية
+          {periodFilter === 'today' && (
+            <span style={{ fontSize: 12, color: 'var(--teal)', fontWeight: 700, background: 'rgba(13, 148, 136, 0.1)', padding: '4px 12px', borderRadius: 99 }}>
+              عرض يومية اليوم ({fmtDate(today)})
             </span>
           )}
         </div>
 
-        {/* ─── شريط الفلترة والبحث السريع لآلاف اليوميات ─── */}
+        {/* ─── أزرار الفلترة الزمنية الذكية (اليوم / أسبوع / شهر / تاريخ محدد / الكل) ─── */}
         <div style={{
           display: 'flex',
-          gap: 10,
+          gap: 8,
           flexWrap: 'wrap',
           alignItems: 'center',
           background: 'rgba(0,0,0,0.02)',
           padding: '10px 14px',
           borderRadius: 12,
           border: '1px solid var(--border)',
-          marginBottom: 16
+          marginBottom: 14
         }}>
-          {/* البحث اللحظي */}
-          <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
-            <Search size={16} color="var(--muted)" style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)' }} />
-            <input
-              type="text"
-              placeholder="ابحث في الأعمال، المسجل، التاريخ، أو العوائق..."
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setVisibleCount(25); }}
-              style={{
-                width: '100%',
-                padding: '9px 36px 9px 12px',
-                borderRadius: 8,
-                border: '1.5px solid var(--border)',
-                background: 'var(--card)',
-                color: 'var(--ink)',
-                fontSize: 13,
-                fontFamily: 'Cairo'
-              }}
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: 2 }}
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', flex: 1 }}>
+            <button
+              type="button"
+              onClick={() => setPeriodFilter('today')}
+              className={`btn btn-xs ${periodFilter === 'today' ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ borderRadius: 8, padding: '7px 14px', fontWeight: 700, fontSize: 12.5 }}
+            >
+              📅 اليوم
+            </button>
+            <button
+              type="button"
+              onClick={() => setPeriodFilter('week')}
+              className={`btn btn-xs ${periodFilter === 'week' ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ borderRadius: 8, padding: '7px 14px', fontWeight: 700, fontSize: 12.5 }}
+            >
+              🗓️ هذا الأسبوع
+            </button>
+            <button
+              type="button"
+              onClick={() => setPeriodFilter('month')}
+              className={`btn btn-xs ${periodFilter === 'month' ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ borderRadius: 8, padding: '7px 14px', fontWeight: 700, fontSize: 12.5 }}
+            >
+              📆 هذا الشهر
+            </button>
+            <button
+              type="button"
+              onClick={() => setPeriodFilter('custom')}
+              className={`btn btn-xs ${periodFilter === 'custom' ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ borderRadius: 8, padding: '7px 14px', fontWeight: 700, fontSize: 12.5 }}
+            >
+              🎯 تاريخ محدد
+            </button>
+            <button
+              type="button"
+              onClick={() => setPeriodFilter('all')}
+              className={`btn btn-xs ${periodFilter === 'all' ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ borderRadius: 8, padding: '7px 14px', fontWeight: 700, fontSize: 12.5 }}
+            >
+              📋 الكل ({logs.length})
+            </button>
 
-          {/* فلتر الشهور والسنوات */}
-          {availableMonths.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>الشهر:</span>
+            {/* تحديد تاريخ مخصص */}
+            {periodFilter === 'custom' && (
+              <input
+                type="date"
+                value={customDate}
+                onChange={(e) => setCustomDate(e.target.value)}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: 8,
+                  border: '1.5px solid var(--teal)',
+                  background: 'var(--card)',
+                  color: 'var(--ink)',
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  fontFamily: 'Cairo'
+                }}
+              />
+            )}
+
+            {/* تحديد شهر مخصص */}
+            {periodFilter === 'month' && availableMonths.length > 0 && (
               <select
                 value={selectedMonth}
-                onChange={(e) => { setSelectedMonth(e.target.value); setVisibleCount(25); }}
+                onChange={(e) => setSelectedMonth(e.target.value)}
                 style={{
-                  padding: '9px 14px',
+                  padding: '5px 12px',
                   borderRadius: 8,
-                  border: '1.5px solid var(--border)',
+                  border: '1.5px solid var(--teal)',
                   background: 'var(--card)',
                   color: 'var(--ink)',
                   fontSize: 12.5,
@@ -1275,20 +1321,20 @@ function DiaryPanel({ project, team, onUpdate }) {
                   cursor: 'pointer'
                 }}
               >
-                <option value="all">كل الأشهر ({logs.length})</option>
+                <option value="all">الشهر الحالي ({currentYM})</option>
                 {availableMonths.map(m => (
                   <option key={m.ym} value={m.ym}>{m.label} ({m.count})</option>
                 ))}
               </select>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* فلتر العوائق فقط */}
           <button
             type="button"
-            onClick={() => { setFilterOnlyIssues(prev => !prev); setVisibleCount(25); }}
+            onClick={() => setFilterOnlyIssues(prev => !prev)}
             style={{
-              padding: '8px 14px',
+              padding: '6px 12px',
               borderRadius: 8,
               border: `1px solid ${filterOnlyIssues ? '#F59E0B' : 'var(--border)'}`,
               background: filterOnlyIssues ? 'rgba(245, 158, 11, 0.15)' : 'var(--card)',
@@ -1306,121 +1352,158 @@ function DiaryPanel({ project, team, onUpdate }) {
           </button>
         </div>
 
+        {/* البحث اللحظي */}
+        <div style={{ position: 'relative', width: '100%', marginBottom: 16 }}>
+          <Search size={16} color="var(--muted)" style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)' }} />
+          <input
+            type="text"
+            placeholder="ابحث في الأعمال، المسجل، التاريخ، أو العوائق..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '9px 36px 9px 12px',
+              borderRadius: 8,
+              border: '1.5px solid var(--border)',
+              background: 'var(--card)',
+              color: 'var(--ink)',
+              fontSize: 13,
+              fontFamily: 'Cairo'
+            }}
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: 2 }}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
         {filteredLogs.length === 0 ? (
-          <div className="diary-empty-state" style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>
-            {logs.length === 0 ? 'لا توجد يوميات مسجلة بعد.' : 'لا توجد نتائج مطابقة لبحثك أو الفلتر المحدد.'}
+          <div className="diary-empty-state" style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--muted)', background: 'var(--card)', borderRadius: 12, border: '1px dashed var(--border)' }}>
+            <CalendarDays size={36} color="var(--muted)" style={{ margin: '0 auto 12px', opacity: 0.5 }} />
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>
+              {periodFilter === 'today'
+                ? `لا توجد يومية مسجلة لليوم (${fmtDate(today)})`
+                : periodFilter === 'week'
+                ? 'لا توجد يوميات مسجلة خلال هذا الأسبوع'
+                : periodFilter === 'month'
+                ? 'لا توجد يوميات مسجلة لهذا الشهر'
+                : periodFilter === 'custom'
+                ? `لا توجد يوميات مسجلة للتاريخ المحدد (${fmtDate(customDate)})`
+                : 'لا توجد نتائج مطابقة لبحثك أو الفلتر المحدد.'}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
+              {periodFilter === 'today' && !hasTodayLog && 'يمكنك تسجيل إنجاز اليوم من النموذج بالأعلى 👆، أو عرض فترات أخرى:'}
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+              {periodFilter !== 'all' && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs"
+                  onClick={() => setPeriodFilter('all')}
+                  style={{ border: '1px solid var(--border)', fontSize: 12 }}
+                >
+                  📋 عرض كل اليوميات ({logs.length})
+                </button>
+              )}
+              {periodFilter !== 'week' && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs"
+                  onClick={() => setPeriodFilter('week')}
+                  style={{ border: '1px solid var(--border)', fontSize: 12 }}
+                >
+                  🗓️ هذا الأسبوع
+                </button>
+              )}
+              {periodFilter !== 'month' && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs"
+                  onClick={() => setPeriodFilter('month')}
+                  style={{ border: '1px solid var(--border)', fontSize: 12 }}
+                >
+                  📆 هذا الشهر
+                </button>
+              )}
+            </div>
           </div>
         ) : (
-          <>
-            <div className="diary-logs-list">
-              {displayedLogs.map((l, idx) => {
-                const logMedia = getLogMedia(l);
-                const logId = l?.id || `log_${idx}`;
-                return (
-                  <div key={logId} className="diary-log-card">
-                    <div className="diary-log-header">
-                      <div className="diary-log-meta">
-                        <span className="diary-date-badge font-mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                          <span>📅 {fmtDate(l?.date)}</span>
-                          {(l?.time || l?.timestamp) && (
-                            <span style={{ opacity: 0.9, borderRight: '1px solid rgba(255,255,255,0.35)', paddingRight: 6, marginRight: 2 }}>
-                              ⏰ {fmtTime(l.time, l.timestamp)}
-                            </span>
-                          )}
-                        </span>
-                        <span className="diary-author-text">{typeof l?.author === 'object' ? (l.author?.name || '—') : (l?.author || '—')}</span>
-                        <span className="diary-workers-badge">{l?.workers || l?.laborCount || 1} عامل بالموقع</span>
-                      </div>
-                      
-                      {confirmId === logId ? (
-                        <div className="diary-delete-confirm">
-                          <button className="btn btn-danger btn-xs" onClick={() => removeLog(logId)}>تأكيد الحذف</button>
-                          <button className="btn btn-ghost btn-xs" onClick={() => setConfirmId(null)}>إلغاء</button>
-                        </div>
-                      ) : (
-                        <span className="icon-btn diary-delete-btn" title="حذف اليومية" onClick={() => setConfirmId(logId)}>
-                          <Trash2 size={14} />
-                        </span>
-                      )}
+          <div className="diary-logs-list">
+            {filteredLogs.map((l, idx) => {
+              const logMedia = getLogMedia(l);
+              const logId = l?.id || `log_${idx}`;
+              return (
+                <div key={logId} className="diary-log-card">
+                  <div className="diary-log-header">
+                    <div className="diary-log-meta">
+                      <span className="diary-date-badge font-mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <span>📅 {fmtDate(l?.date)}</span>
+                        {(l?.time || l?.timestamp) && (
+                          <span style={{ opacity: 0.9, borderRight: '1px solid rgba(255,255,255,0.35)', paddingRight: 6, marginRight: 2 }}>
+                            ⏰ {fmtTime(l.time, l.timestamp)}
+                          </span>
+                        )}
+                      </span>
+                      <span className="diary-author-text">{typeof l?.author === 'object' ? (l.author?.name || '—') : (l?.author || '—')}</span>
+                      <span className="diary-workers-badge">{l?.workers || l?.laborCount || 1} عامل بالموقع</span>
                     </div>
                     
-                    <div className="diary-log-content">{l?.work || l?.text || '—'}</div>
-                    
-                    {l?.issues && l.issues !== "لا يوجد" && (
-                      <div className="diary-issue-alert">
-                        <AlertTriangle size={14} color="#D97706" />
-                        <span>عوائق مُسجلة: {l.issues}</span>
+                    {confirmId === logId ? (
+                      <div className="diary-delete-confirm">
+                        <button className="btn btn-danger btn-xs" onClick={() => removeLog(logId)}>تأكيد الحذف</button>
+                        <button className="btn btn-ghost btn-xs" onClick={() => setConfirmId(null)}>إلغاء</button>
                       </div>
-                    )}
-
-                    {/* 📸🎥 عرض الصور والفيديوهات المسجلة لليومية بشكل واضح وبارز */}
-                    {logMedia.length > 0 && (
-                      <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px dashed var(--border)' }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <Camera size={14} color="#1877F2" />
-                          <span>الصور والفيديوهات المرفقة باليومية ({logMedia.length}):</span>
-                        </div>
-                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                          {logMedia.map((item, mIdx) => (
-                            <MediaThumbnail
-                              key={mIdx}
-                              item={item}
-                              onClick={setPreviewModal}
-                              style={{
-                                width: 90,
-                                height: 90,
-                                flexShrink: 0,
-                                border: '1.5px solid var(--border)',
-                                borderRadius: 10,
-                                boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </div>
+                    ) : (
+                      <span className="icon-btn diary-delete-btn" title="حذف اليومية" onClick={() => setConfirmId(logId)}>
+                        <Trash2 size={14} />
+                      </span>
                     )}
                   </div>
-                );
-              })}
-            </div>
+                  
+                  <div className="diary-log-content">{l?.work || l?.text || '—'}</div>
+                  
+                  {l?.issues && l.issues !== "لا يوجد" && (
+                    <div className="diary-issue-alert">
+                      <AlertTriangle size={14} color="#D97706" />
+                      <span>عوائق مُسجلة: {l.issues}</span>
+                    </div>
+                  )}
 
-            {/* ─── زر التحميل التدريجي (Pagination Controls لاستيعاب آلاف اليوميات) ─── */}
-            {filteredLogs.length > visibleCount && (
-              <div style={{
-                marginTop: 20,
-                padding: '16px',
-                borderRadius: 12,
-                background: 'var(--card)',
-                border: '1px dashed var(--border)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 10
-              }}>
-                <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 600 }}>
-                  يتم عرض <strong style={{ color: 'var(--ink)' }}>{displayedLogs.length}</strong> من أصل <strong style={{ color: 'var(--teal)' }}>{filteredLogs.length}</strong> يومية مسجلة
+                  {/* 📸🎥 عرض الصور والفيديوهات المسجلة لليومية بشكل واضح وبارز */}
+                  {logMedia.length > 0 && (
+                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px dashed var(--border)' }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Camera size={14} color="#1877F2" />
+                        <span>الصور والفيديوهات المرفقة باليومية ({logMedia.length}):</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        {logMedia.map((item, mIdx) => (
+                          <MediaThumbnail
+                            key={mIdx}
+                            item={item}
+                            onClick={setPreviewModal}
+                            style={{
+                              width: 90,
+                              height: 90,
+                              flexShrink: 0,
+                              border: '1.5px solid var(--border)',
+                              borderRadius: 10,
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => setVisibleCount(prev => prev + 25)}
-                    style={{ padding: '9px 24px', fontSize: 13, fontWeight: 800 }}
-                  >
-                    عرض 25 يومية إضافية (متبقي {filteredLogs.length - visibleCount}) ⬇️
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    onClick={() => setVisibleCount(filteredLogs.length)}
-                    style={{ padding: '9px 18px', fontSize: 13 }}
-                  >
-                    عرض الكل ({filteredLogs.length})
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
