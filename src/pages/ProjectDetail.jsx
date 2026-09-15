@@ -1021,24 +1021,6 @@ function DiaryPanel({ project, team, onUpdate }) {
     return res;
   }, [sorted, periodFilter, customDate, selectedMonth, filterOnlyIssues, searchQuery, today, currentYM]);
 
-  // Aggregate KPIs for site management
-  const stats = useMemo(() => {
-    const totalWorkers = logs.reduce((sum, l) => sum + (Number(l?.workers || l?.laborCount) || 0), 0);
-    const avgWorkers = logs.length > 0 ? Math.round(totalWorkers / logs.length) : 0;
-    const totalMedia = logs.reduce((sum, l) => {
-      const mLen = Array.isArray(l?.media) ? l.media.length : 0;
-      const pLen = Array.isArray(l?.photos) ? l.photos.length : 0;
-      return sum + (mLen || pLen || (l?.video ? 1 : 0));
-    }, 0);
-    const issuesTotal = logs.filter(l => l && l.issues && l.issues !== "لا يوجد").length;
-    return {
-      total: logs.length,
-      avgWorkers,
-      totalMedia,
-      issuesTotal
-    };
-  }, [logs]);
-
   return (
     <div className="diary-container">
       {/* Lightbox / Video Modal */}
@@ -1169,54 +1151,6 @@ function DiaryPanel({ project, team, onUpdate }) {
             </button>
           </div>
         </form>
-      </div>
-
-      {/* ─── لوحة مؤشرات اليوميات الميدانية الرقمية (KPIs) ─── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-        gap: 12,
-        marginBottom: 16
-      }}>
-        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(56, 189, 248, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <CalendarDays size={20} color="#38BDF8" />
-          </div>
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>إجمالي اليوميات المسجلة</div>
-            <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--ink)' }}>{stats.total} <span style={{ fontSize: 11, fontWeight: 600 }}>يومية</span></div>
-          </div>
-        </div>
-
-        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <HardHat size={20} color="#10B981" />
-          </div>
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>متوسط العمالة اليومية</div>
-            <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--ink)' }}>{stats.avgWorkers} <span style={{ fontSize: 11, fontWeight: 600 }}>عامل / يوم</span></div>
-          </div>
-        </div>
-
-        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(99, 102, 241, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Camera size={20} color="#818CF8" />
-          </div>
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>أرشيف الصور والفيديو</div>
-            <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--ink)' }}>{stats.totalMedia} <span style={{ fontSize: 11, fontWeight: 600 }}>ملف موثق</span></div>
-          </div>
-        </div>
-
-        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 42, height: 42, borderRadius: 10, background: stats.issuesTotal > 0 ? 'rgba(245, 158, 11, 0.15)' : 'rgba(148, 163, 184, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <AlertTriangle size={20} color={stats.issuesTotal > 0 ? '#F59E0B' : '#94A3B8'} />
-          </div>
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>العوائق والملاحظات</div>
-            <div style={{ fontSize: 18, fontWeight: 900, color: stats.issuesTotal > 0 ? '#F59E0B' : 'var(--ink)' }}>{stats.issuesTotal} <span style={{ fontSize: 11, fontWeight: 600 }}>ملاحظة</span></div>
-          </div>
-        </div>
       </div>
 
       <div className="panel diary-history-panel">
