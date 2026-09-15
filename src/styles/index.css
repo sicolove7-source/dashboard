@@ -104,21 +104,16 @@
 }
 
 html, body, #root {
-  height: 100%;
+  min-height: 100%;
   width: 100%;
-  overscroll-behavior-y: none;
-  overscroll-behavior-x: none;
-  overscroll-behavior: none;
 }
 
 body {
-  overscroll-behavior-y: none;
-  overscroll-behavior: none;
+  min-height: 100%;
+  width: 100%;
 }
 
 .app-root {
-  overscroll-behavior-y: none;
-  overscroll-behavior: none;
   font-family: 'IBM Plex Sans Arabic', 'Cairo', sans-serif;
   font-feature-settings: "tnum" 1;
   color: var(--ink);
