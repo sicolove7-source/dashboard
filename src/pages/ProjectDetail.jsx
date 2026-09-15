@@ -1158,102 +1158,75 @@ function DiaryPanel({ project, team, onUpdate }) {
       </div>
 
       <div className="panel diary-history-panel">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 12,
+          marginBottom: 14
+        }}>
           <h3 className="diary-section-heading" style={{ margin: 0 }}>
             <CalendarDays size={18} /> سجل اليوميات والتوثيق الميداني ({filteredLogs.length}{periodFilter !== 'all' ? ` من ${logs.length}` : ''})
           </h3>
-          {periodFilter === 'today' && (
-            <span style={{ fontSize: 12, color: 'var(--teal)', fontWeight: 700, background: 'rgba(13, 148, 136, 0.1)', padding: '4px 12px', borderRadius: 99 }}>
-              عرض يومية اليوم ({fmtDate(today)})
-            </span>
-          )}
-        </div>
 
-        {/* ─── أزرار الفلترة الزمنية الذكية (اليوم / أسبوع / شهر / تاريخ محدد / الكل) ─── */}
-        <div style={{
-          display: 'flex',
-          gap: 8,
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          background: 'rgba(0,0,0,0.02)',
-          padding: '10px 14px',
-          borderRadius: 12,
-          border: '1px solid var(--border)',
-          marginBottom: 14
-        }}>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', flex: 1 }}>
-            <button
-              type="button"
-              onClick={() => setPeriodFilter('today')}
-              className={`btn btn-xs ${periodFilter === 'today' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ borderRadius: 8, padding: '7px 14px', fontWeight: 700, fontSize: 12.5 }}
-            >
-              📅 اليوم
-            </button>
-            <button
-              type="button"
-              onClick={() => setPeriodFilter('week')}
-              className={`btn btn-xs ${periodFilter === 'week' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ borderRadius: 8, padding: '7px 14px', fontWeight: 700, fontSize: 12.5 }}
-            >
-              🗓️ هذا الأسبوع
-            </button>
-            <button
-              type="button"
-              onClick={() => setPeriodFilter('month')}
-              className={`btn btn-xs ${periodFilter === 'month' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ borderRadius: 8, padding: '7px 14px', fontWeight: 700, fontSize: 12.5 }}
-            >
-              📆 هذا الشهر
-            </button>
-            <button
-              type="button"
-              onClick={() => setPeriodFilter('custom')}
-              className={`btn btn-xs ${periodFilter === 'custom' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ borderRadius: 8, padding: '7px 14px', fontWeight: 700, fontSize: 12.5 }}
-            >
-              🎯 تاريخ محدد
-            </button>
-            <button
-              type="button"
-              onClick={() => setPeriodFilter('all')}
-              className={`btn btn-xs ${periodFilter === 'all' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ borderRadius: 8, padding: '7px 14px', fontWeight: 700, fontSize: 12.5 }}
-            >
-              📋 الكل ({logs.length})
-            </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {/* قائمة الاختيار المدمجة والصغيرة للفترات */}
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <select
+                value={periodFilter}
+                onChange={(e) => setPeriodFilter(e.target.value)}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 8,
+                  border: '1.5px solid var(--border)',
+                  background: 'var(--card)',
+                  color: 'var(--ink)',
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  fontFamily: 'Cairo',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="today">📅 اليوم</option>
+                <option value="week">🗓️ هذا الأسبوع</option>
+                <option value="month">📆 هذا الشهر</option>
+                <option value="custom">🎯 تاريخ محدد</option>
+                <option value="all">📋 الكل ({logs.length})</option>
+              </select>
+            </div>
 
-            {/* تحديد تاريخ مخصص */}
+            {/* تحديد تاريخ مخصص إذا اختار تاريخ محدد */}
             {periodFilter === 'custom' && (
               <input
                 type="date"
                 value={customDate}
                 onChange={(e) => setCustomDate(e.target.value)}
                 style={{
-                  padding: '5px 12px',
+                  padding: '5px 10px',
                   borderRadius: 8,
                   border: '1.5px solid var(--teal)',
                   background: 'var(--card)',
                   color: 'var(--ink)',
-                  fontSize: 12.5,
+                  fontSize: 12,
                   fontWeight: 700,
                   fontFamily: 'Cairo'
                 }}
               />
             )}
 
-            {/* تحديد شهر مخصص */}
+            {/* تحديد شهر مخصص إذا اختار شهر */}
             {periodFilter === 'month' && availableMonths.length > 0 && (
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
                 style={{
-                  padding: '5px 12px',
+                  padding: '5px 10px',
                   borderRadius: 8,
                   border: '1.5px solid var(--teal)',
                   background: 'var(--card)',
                   color: 'var(--ink)',
-                  fontSize: 12.5,
+                  fontSize: 12,
                   fontWeight: 700,
                   fontFamily: 'Cairo',
                   cursor: 'pointer'
@@ -1265,29 +1238,29 @@ function DiaryPanel({ project, team, onUpdate }) {
                 ))}
               </select>
             )}
-          </div>
 
-          {/* فلتر العوائق فقط */}
-          <button
-            type="button"
-            onClick={() => setFilterOnlyIssues(prev => !prev)}
-            style={{
-              padding: '6px 12px',
-              borderRadius: 8,
-              border: `1px solid ${filterOnlyIssues ? '#F59E0B' : 'var(--border)'}`,
-              background: filterOnlyIssues ? 'rgba(245, 158, 11, 0.15)' : 'var(--card)',
-              color: filterOnlyIssues ? '#D97706' : 'var(--muted)',
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6
-            }}
-          >
-            <AlertTriangle size={14} color={filterOnlyIssues ? '#D97706' : 'var(--muted)'} />
-            <span>عوائق فقط ({issuesTotalCount})</span>
-          </button>
+            {/* فلتر العوائق فقط */}
+            <button
+              type="button"
+              onClick={() => setFilterOnlyIssues(prev => !prev)}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 8,
+                border: `1px solid ${filterOnlyIssues ? '#F59E0B' : 'var(--border)'}`,
+                background: filterOnlyIssues ? 'rgba(245, 158, 11, 0.15)' : 'var(--card)',
+                color: filterOnlyIssues ? '#D97706' : 'var(--muted)',
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5
+              }}
+            >
+              <AlertTriangle size={13} color={filterOnlyIssues ? '#D97706' : 'var(--muted)'} />
+              <span>عوائق فقط ({issuesTotalCount})</span>
+            </button>
+          </div>
         </div>
 
         {/* البحث اللحظي */}
