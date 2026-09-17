@@ -891,7 +891,6 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
               ) : (
                 filtered.map((u) => {
                   const isCurrent = u.id === currentUser?.id || u.email === currentUser?.email;
-                  const isPassVisible = showPassFor === u.id;
                   const isCopied = copiedId === u.id;
                   const hasCustom = Boolean(u.hasCustomPermissions || (u.customNav && u.customNav.length > 0) || u.customPermissions);
 
