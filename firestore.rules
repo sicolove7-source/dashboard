@@ -2,16 +2,11 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // =========================================================================
-    // قواعد الحماية المركزية لنظام الـ SaaS وعزل الشركات (Multi-Tenancy)
-    // =========================================================================
-
-    // 1. هل المستخدم مسجل دخوله بحساب موثق من Firebase Authentication؟
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // 2. هل المستخدم هو مالك المنصة الرئيسي (Super Admin)؟
+    // التعرف على السوبر أدمن عبر الـ Custom Claims أو الإيميل المباشر
     function isSuperAdmin() {
       return isAuthenticated() && (
         request.auth.token.role == 'super_admin' ||
@@ -21,14 +16,12 @@ service cloud.firestore {
       );
     }
 
-    // 3. هل يسمح مالك المنصة بدخول واستخدام الحسابات الفرعية؟
-    // فحص سحابي مباشر على مستوى قواعد Firestore
     function isSubAccountsAllowed() {
       return !exists(/databases/$(database)/documents/platform_metadata/platform_settings) ||
              get(/databases/$(database)/documents/platform_metadata/platform_settings).data.subAccountsAllowed != false;
     }
 
-    // فحص ملكية الشركة عبر البريد الإلكتروني الموثق من Google (في حال عدم تعيين Custom Claims بعد)
+    // فحص المالك بالإيميل المسجل بوثيقة الشركة
     function isCompanyAdminByDoc(companyId) {
       return isAuthenticated() &&
              request.auth.token.email != null &&
@@ -42,8 +35,6 @@ service cloud.firestore {
              );
     }
 
-    // 4. التحقق الأمني من هوية الشركة المشتركة (عزل الشركات):
-    // يسمح بالوصول فقط إذا كان المستخدم ينتمي لنفس الشركة مع تفعيل الحسابات الفرعية أو كان هو الـ Super Admin
     function isAuthorized(companyId) {
       return isAuthenticated() && (
         isSuperAdmin() || (
@@ -53,22 +44,15 @@ service cloud.firestore {
       );
     }
 
-    // 5. فحص سلامة البيانات عند الكتابة:
-    // يمنع أي موظف من تسجيل أو نقل أي بيانات لشركة أخرى
     function hasValidCompanyPayload(companyId) {
       return !('companyId' in request.resource.data) ||
              request.resource.data.companyId == companyId ||
              isSuperAdmin();
     }
 
-    // =========================================================================
-    // 1. حماية بيانات كل شركة مشتركة ومشاريعها وعملائها (خزنة معزولة تماماً)
-    // =========================================================================
+    // 1. حماية بيانات الشركات
     match /companies/{companyId} {
-      // قراءة وثيقة الشركة الرئيسية: مقتصرة فقط وحصرياً على موظفي نفس الشركة أو مالك المنصة
       allow read: if isAuthorized(companyId);
-
-      // إنشاء وتعديل بيانات الشركة: لنفس الشركة فقط مع التأكد من تطابق هوية الشركة
       allow create: if isAuthorized(companyId) || (
         isAuthenticated() &&
         hasValidCompanyPayload(companyId) &&
@@ -78,68 +62,40 @@ service cloud.firestore {
         )
       );
       allow update: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
-
-      // حذف وثيقة الشركة: لنفس الشركة أو مالك المنصة
       allow delete: if isAuthorized(companyId);
 
-      // -----------------------------------------------------------------------
-      // المجموعات الفرعية للشركة (Projects, Subcontractors, WorkOrders, Extracts)
-      // -----------------------------------------------------------------------
-
-      // 1. مشاريع الشركة: محصورة كلياً بموظفي ومهندسي نفس الشركة المصرح لهم فقط
       match /projects/{projectId} {
         allow read, write: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
       }
 
-      // 2. باقي المجموعات الفرعية للشركة (Subcontractors, WorkOrders, Extracts, Leads, Workers, etc.)
       match /{subcollection}/{docId} {
-        // قراءة وتعديل وكتابة وحذف: محصورة كلياً بموظفي ومهندسي نفس الشركة المصرح لهم فقط
         allow read: if isAuthorized(companyId);
         allow create, update, delete: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
       }
     }
 
-    // =========================================================================
-    // 2. حماية بيانات منصة الإدارة المركزية (platform_metadata)
-    // =========================================================================
-    match /platform_metadata/{docId} {
-
-      // بيانات اعتماد المشرف الرئيسي (Super Admin Credentials):
-      // مغلقة بالكامل أمام كل الناس من المتصفح (مستحيل قراءتها أو تعديلها)
-      match /superadmin {
-        allow read, write: if false;
-      }
-
-      // إعدادات المنصة العامة (دخول الحسابات الفرعية وغيرها):
-      // قراءة مسموحة للتحقق، وتعديل محصور بمالك المنصة حصراً
-      match /platform_settings {
-        allow read: if true;
-        allow write: if isSuperAdmin();
-      }
-
-      // دليل الشركات المشتركة (Tenants Directory):
-      // محصور حصرياً بمالك المنصة (Super Admin) فقط لإدارة الاشتراكات والعملاء
-      match /tenants {
-        allow read, write: if isSuperAdmin();
-      }
-
-      // أي وثائق إدارية أخرى تابعة للمنصة
-      allow read, write: if isSuperAdmin();
-    }
-
-    // =========================================================================
-    // 3. بوابة العميل العامة المعزولة تماماً (Token = Document ID)
-    // =========================================================================
-    // الوثائق في هذه المجموعة تُنشأ وتُدار حصراً عبر الـ Cloud Functions (Admin SDK)
-    // العميل يقرأ مستند نسخته المنقاة فقط بالتوكن السري دون أي إمكانية للكتابة المباشرة
+    // 2. بوابة العميل بالتوكن السري فقط (قراءة)
     match /portal_shares/{token} {
       allow read: if true;
       allow write: if false;
     }
 
-    // =========================================================================
-    // 4. القاعدة العامة: رفض أي وصول غير مصرح به صراحة (Deny by Default)
-    // =========================================================================
+    // 3. إعدادات المنصة المركزية
+    match /platform_metadata/{docId} {
+      match /superadmin {
+        allow read, write: if false;
+      }
+      match /platform_settings {
+        allow read: if true;
+        allow write: if isSuperAdmin();
+      }
+      match /tenants {
+        allow read, write: if isSuperAdmin();
+      }
+      allow read, write: if isSuperAdmin();
+    }
+
+    // 4. إغلاق أي مسار آخر
     match /{document=**} {
       allow read, write: if false;
     }
