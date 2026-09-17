@@ -83,12 +83,14 @@ export function setSubAccountsLoginAllowed(allowed) {
   }
 }
 
+// قائمة البريد المعتمد لمالك المنصة الرئيسي (Super Admin)
+export const BUILTIN_SUPERADMIN_EMAILS = ['sicolove7@gmail.com', 'admin@platform.com'];
+
 // حساب مالك المنصة الرئيسي الافتراضي (Super Admin)
-// تنبيه أمني: كلمة المرور لا تُخزّن هنا أبداً — تُحفظ في localStorage فقط بعد أول إعداد
 export const DEFAULT_SUPER_ADMIN_ACCOUNT = {
   id: 'super_admin_master',
-  email: 'admin@platform.com',
-  password: '', // مشفوط متعمداً — تجب الإعداد عبر لوحة Super Admin أول مرة
+  email: 'sicolove7@gmail.com',
+  password: '',
   name: 'مالك المنصة الرئيسي',
   role: 'super_admin',
   isSuperAdmin: true,
@@ -714,7 +716,7 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
   const superAdmin = getSuperAdminAccount();
 
   // 1. فحص هل هو حساب الـ Super Admin (عبر Custom Claims الموثقة أو بريد المالك المعتمد)
-  const isSuperAdminEmail = (superAdmin?.email && cleanEmail === superAdmin.email.toLowerCase().trim()) || cleanEmail === 'admin@platform.com';
+  const isSuperAdminEmail = (superAdmin?.email && cleanEmail === superAdmin.email.toLowerCase().trim()) || BUILTIN_SUPERADMIN_EMAILS.includes(cleanEmail);
   if (claims.role === 'super_admin' || claims.isSuperAdmin || isSuperAdminEmail) {
     return {
       success: true,

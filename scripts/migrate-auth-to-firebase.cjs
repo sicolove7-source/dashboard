@@ -93,11 +93,21 @@ async function runMigration() {
     console.warn('⚠️ تعذر قراءة وثيقة superadmin:', e.message);
   }
 
+  // إضافة حساب الـ Super Admin المعتمد لمالك المنصة
+  if (!candidateMap.has('sicolove7@gmail.com')) {
+    candidateMap.set('sicolove7@gmail.com', {
+      email: 'sicolove7@gmail.com',
+      displayName: 'مالك المنصة الرئيسي',
+      role: 'super_admin',
+      source: 'owner_primary',
+    });
+  }
+
   // إضافة حساب الـ Super Admin الافتراضي الاحتياطي إن لم يكن مسجلاً
   if (!candidateMap.has('admin@platform.com')) {
     candidateMap.set('admin@platform.com', {
       email: 'admin@platform.com',
-      displayName: 'مالك المنصة الرئيسي',
+      displayName: 'مالك المنصة (حساب احتياطي)',
       role: 'super_admin',
       source: 'default_superadmin',
     });

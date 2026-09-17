@@ -88,7 +88,7 @@ async function main() {
   console.log('=============================================================\n');
 
   // 1. حساب الـ Super Admin
-  const superAdminEmails = ['admin@platform.com'];
+  const superAdminEmails = ['sicolove7@gmail.com', 'admin@platform.com'];
   try {
     const sDoc = await db.collection('platform_metadata').doc('superadmin').get();
     if (sDoc.exists && sDoc.data()?.email) {
