@@ -92,7 +92,7 @@ export const DEFAULT_SUPER_ADMIN_ACCOUNT = {
   id: 'super_admin_master',
   email: 'sicolove7@gmail.com',
   password: '',
-  name: 'مالك المنصة الرئيسي',
+  name: 'مدير شركة أملاك',
   role: 'super_admin',
   isSuperAdmin: true,
 };
@@ -141,23 +141,23 @@ export const SUPER_ADMIN_ACCOUNT = DEFAULT_SUPER_ADMIN_ACCOUNT;
 export const DEFAULT_TENANTS = [
   {
     id: 'comp_alain',
-    name: 'مؤسسة العين الحديثة للتشطيبات والمقاولات',
-    subtitle: 'متخصصون في تشطيب القصور والفلل الفاخرة',
-    city: 'العين',
-    country: 'الإمارات',
-    currency: 'د.إ',
-    phone: '+971 50 123 4567',
-    plan: 'trial',
-    planName: 'باقة تجريبية (14 يوماً)',
-    status: 'trial',
-    startDate: '2026-08-20',
-    expiryDate: '2026-09-15',
+    name: 'شركة أملاك للمقاولات والتشطيبات',
+    subtitle: 'متخصصون في تشطيب الشقق والقصور والفلل الفاخرة',
+    city: 'القاهرة',
+    country: 'مصر',
+    currency: 'ج.م',
+    phone: '+20 100 123 4567',
+    plan: 'pro_annual',
+    planName: 'باقة المحترفين VIP',
+    status: 'active',
+    startDate: '2026-01-01',
+    expiryDate: '2027-01-01',
     primaryColor: '#1877F2',
     accentColor: '#166FE5',
-    adminEmail: 'ceo@alain-contract.ae',
-    adminName: 'أ. هزاع الشامسي',
+    adminEmail: 'sicolove7@gmail.com',
+    adminName: 'أ. مدير شركة أملاك',
     projectsCount: 3,
-    createdAt: '2026-08-20',
+    createdAt: '2026-01-01',
   },
   {
     id: 'comp_dhabi',
@@ -542,10 +542,10 @@ export function getTenantData(companyId) {
   if (!team) {
     if (companyId === 'comp_alain') {
       team = {
-        engineers: ['م. هزاع المنصوري', 'م. سيف النيادي', 'م. خليفة الكعبي'],
-        accountants: ['أ. حمد الشامسي'],
-        techOffice: ['م. فاطمة البلوشي'],
-        customerService: ['أ. مريم الظاهري']
+        engineers: ['م. أحمد كامل', 'م. ياسر فوزي', 'م. مروة سعيد'],
+        accountants: ['أ. سامح فتحي'],
+        techOffice: ['م. علياء رمضان'],
+        customerService: ['أ. نورا حسن']
       };
     } else if (companyId === 'comp_dhabi') {
       team = {
@@ -576,8 +576,8 @@ export function getTenantData(companyId) {
   if (!leads) {
     if (companyId === 'comp_alain') {
       leads = [
-        { id: 'lead_alain_1', name: 'سعادة سالم الدرعي', phone: '+971 50 111 2233', area: 'الفوعة', type: 'قصر فاخر', budget: 1800000, source: 'referral', stage: 'quotation', createdAt: '2026-08-20', notes: 'طلب مقايسة تشطيب مجلس رجال ومسبح وحديقة.' },
-        { id: 'lead_alain_2', name: 'د. عائشة الكعبي', phone: '+971 50 444 5566', area: 'المرخانية', type: 'فيلا سكنية', budget: 950000, source: 'instagram', stage: 'inspection', createdAt: '2026-08-24', notes: 'موعد معاينة يوم الأحد لرفع مقاسات الفيلا 800م.' },
+        { id: 'lead_alain_1', name: 'أ. محمد المهدي', phone: '+20 100 111 2233', area: 'التجمع الخامس', type: 'فيلا سكنية', budget: 1500000, source: 'referral', stage: 'quotation', createdAt: '2026-08-20', notes: 'طلب مقايسة تشطيب فيلا كاملة مع حديقة ومسبح.' },
+        { id: 'lead_alain_2', name: 'د. هاني شاكر', phone: '+20 102 444 5566', area: 'الشيخ زايد', type: 'شقة دوبلكس', budget: 850000, source: 'facebook', stage: 'inspection', createdAt: '2026-08-24', notes: 'موعد معاينة لرفع مقاسات الشقة.' },
       ];
     } else if (companyId === 'comp_dhabi') {
       leads = [
@@ -725,17 +725,21 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
   // 1. فحص هل هو حساب الـ Super Admin (عبر Custom Claims الموثقة أو بريد المالك المعتمد)
   const isSuperAdminEmail = (superAdmin?.email && cleanEmail === superAdmin.email.toLowerCase().trim()) || BUILTIN_SUPERADMIN_EMAILS.includes(cleanEmail);
   if (claims.role === 'super_admin' || claims.isSuperAdmin || isSuperAdminEmail) {
+    const amlakTenant = tenants.find(t => t.id === 'comp_alain') || tenants[0] || DEFAULT_TENANTS[0];
     return {
       success: true,
       user: {
         ...superAdmin,
         id: firebaseUid || superAdmin.id,
         email: cleanEmail,
-        name: superAdmin.name || 'مالك المنصة الرئيسي',
+        name: superAdmin.name || 'مدير شركة أملاك',
         role: 'super_admin',
         isSuperAdmin: true,
+        companyId: amlakTenant.id,
+        companyName: amlakTenant.name,
+        currency: amlakTenant.currency || 'ج.م',
       },
-      tenant: null,
+      tenant: amlakTenant,
       isSuperAdmin: true,
     };
   }
@@ -880,13 +884,13 @@ function generateCompanySeedProjects(companyId, tenant) {
       {
         id: 'p_alain_1',
         companyId: 'comp_alain',
-        name: 'تشطيب قصر VIP - حي الفوعة',
-        client: 'سعادة محمد الشامسي',
-        area: 'الفوعة - العين',
-        type: 'قصر فاخر',
-        engineer: 'م. هزاع المنصوري',
-        accountant: 'أ. حمد الشامسي',
-        techOffice: 'م. فاطمة البلوشي',
+        name: 'تشطيب فيلا الترا سوبر لوكس - النرجس',
+        client: 'أ. حسام الدين',
+        area: 'النرجس - القاهرة الجديدة',
+        type: 'فيلا مستقلة',
+        engineer: 'م. أحمد كامل',
+        accountant: 'أ. سامح فتحي',
+        techOffice: 'م. علياء رمضان',
         progress: 65,
         status: 'on_track',
         budget: 1450000,
@@ -894,72 +898,67 @@ function generateCompanySeedProjects(companyId, tenant) {
         startDate: '2026-05-10',
         dueDate: '2026-11-30',
         submittals: [
-          { item: 'اعتماد رخام ستتواريو إيطالي للصالات', status: 'approved' },
-          { item: 'مخططات التكييف المركزي والـ VRF', status: 'approved' },
-          { item: 'مخطط الأسقف الجبسية المغربية', status: 'approved' },
+          { item: 'اعتماد رخام امبرادور للدرج الداخلي', status: 'approved' },
+          { item: 'لوحة قواطع شنايدر الفرنسية', status: 'approved' },
+          { item: 'مخطط الأسقف الجبسية الحديثة', status: 'approved' },
         ],
         files: [],
         snags: [
-          { id: 's1', room: 'مجلس الرجال', desc: 'ضبط زوايا شطف الرخام عند المدخل الرئيسي', status: 'completed', severity: 'medium' },
-          { id: 's2', room: 'الجناح الرئيسي', desc: 'استكمال عزل حوائط الحمام الماستر', status: 'pending', severity: 'high' },
+          { id: 's1', room: 'ريسبشن الدور الأول', desc: 'ضبط فواصل تمدد البورسلين', status: 'completed', severity: 'medium' },
         ],
         dailyLogs: [
-          { id: 'd1', date: todayISO(), author: 'م. هزاع المنصوري', work: 'استلام أعمال تمديدات التكييف المركزي وصب بلاط المجلس', issues: 'لا يوجد', workers: 12 },
-          { id: 'd2', date: '2026-08-25', author: 'م. هزاع المنصوري', work: 'فحص ضغط شبكة السباكة المخفية واختبار العزل المائي', issues: 'لا يوجد', workers: 9 }
+          { id: 'd1', date: todayISO(), author: 'م. أحمد كامل', work: 'سحب أسلاك السويدي وتشطيب وجه أول معجون', issues: 'لا يوجد', workers: 10 },
         ],
       },
       {
         id: 'p_alain_2',
         companyId: 'comp_alain',
-        name: 'فيلا مودرن - المرخانية',
-        client: 'أ. راشد الدرعي',
-        area: 'المرخانية - العين',
-        type: 'فيلا مستقلة',
-        engineer: 'م. سيف النيادي',
-        accountant: 'أ. حمد الشامسي',
-        techOffice: 'م. فاطمة البلوشي',
-        progress: 30,
-        status: 'at_risk',
+        name: 'تشطيب شقة دوبلكس - بيت الوطن',
+        client: 'د. طارق المنشاوي',
+        area: 'بيت الوطن - التجمع الخامس',
+        type: 'شقة دوبلكس',
+        engineer: 'م. ياسر فوزي',
+        accountant: 'أ. سامح فتحي',
+        techOffice: 'م. علياء رمضان',
+        progress: 40,
+        status: 'on_track',
         budget: 920000,
-        spent: 310000,
-        startDate: '2026-07-01',
+        spent: 380000,
+        startDate: '2026-06-01',
         dueDate: '2026-12-15',
         submittals: [
           { item: 'اعتماد قطاعات الألوميتال والزجاج الدبل', status: 'approved' },
           { item: 'عينة دهانات جوتن فينوماستيك', status: 'pending' },
         ],
         files: [],
-        snags: [
-          { id: 's1', room: 'الصالة العائلية', desc: 'تعديل مناسيب مفاتيح السمارت هوم', status: 'pending', severity: 'medium' }
-        ],
+        snags: [],
         dailyLogs: [
-          { id: 'd1', date: todayISO(), author: 'م. سيف النيادي', work: 'تأسيس شبكة الكهرباء الذكية وتركيب شاسيهات الجبس', issues: 'تأخر توريد قطاعات الصاج يومين', workers: 8 }
+          { id: 'd1', date: todayISO(), author: 'م. ياسر فوزي', work: 'تأسيس شبكة الكهرباء وتركيب شاسيهات الجبس', issues: 'لا يوجد', workers: 8 }
         ],
       },
       {
         id: 'p_alain_3',
         companyId: 'comp_alain',
-        name: 'مجلس عربي تراثي ومسبح - زاخر',
-        client: 'م. سعيد الكعبي',
-        area: 'زاخر - العين',
-        type: 'مجلس وملحق خارجي',
-        engineer: 'م. خليفة الكعبي',
-        accountant: 'أ. حمد الشامسي',
-        techOffice: 'م. فاطمة البلوشي',
+        name: 'تشطيب مقر إداري - التسعين الشمالي',
+        client: 'شركة المروة للاستثمار',
+        area: 'التسعين الشمالي - القاهرة',
+        type: 'مقر إداري',
+        engineer: 'م. أحمد كامل',
+        accountant: 'أ. سامح فتحي',
+        techOffice: 'م. علياء رمضان',
         progress: 88,
         status: 'on_track',
-        budget: 580000,
-        spent: 510000,
+        budget: 680000,
+        spent: 590000,
         startDate: '2026-04-15',
-        dueDate: '2026-09-20',
+        dueDate: '2026-09-30',
         submittals: [
-          { item: 'اعتماد مشربيات الخشب والأرابيسك', status: 'approved' },
-          { item: 'اختبار تشغيل فلاتر وإضاءة المسبح', status: 'approved' },
+          { item: 'اعتماد قواطع الزجاج السيكوريت والشبكات', status: 'approved' },
         ],
         files: [],
         snags: [],
         dailyLogs: [
-          { id: 'd1', date: todayISO(), author: 'م. خليفة الكعبي', work: 'دهان الوجه الأخير للتجاليد الخشبية وتلميع الأرضيات', issues: 'لا يوجد', workers: 6 }
+          { id: 'd1', date: todayISO(), author: 'م. أحمد كامل', work: 'تشطيبات نهائية وتجهيز تسليم المكاتب', issues: 'لا يوجد', workers: 6 }
         ],
       }
     ];
