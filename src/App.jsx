@@ -332,7 +332,7 @@ export default function App() {
     const p = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
     return p === 'register' || p === 'signup' ? 'register' : 'login';
   });
-  const [isDemoUser, setIsDemoUser] = useState(false);
+  const isDemoUser = false;
 
   // Company Tenant Scoped ID:
   // في وضع Demo: نستخدم تينانت معزول comp_demo أوفلاين بالكامل
@@ -1138,40 +1138,6 @@ export default function App() {
     // تم حذف استدعاء loadTenantWorkspace المزدوج هنا لأن تغيير activeCompanyId و isAuthenticated يُشغّل الـ Effect تلقائياً
   };
 
-  const handleStartLiveDemo = () => {
-    const demoUser = {
-      id: 'demo_guest',
-      name: 'مهندس زائر (Demo Mode)',
-      role: 'owner',
-      isDemo: true,
-      companyId: 'comp_demo',
-    };
-    setCurrentUser(demoUser);
-    setIsAuthenticated(true);
-    setIsDemoUser(true);
-    setActiveTenantId('comp_demo');
-    // توليد مشاريع تجريبية محلية أوفلاين معزولة 100% دون أي مزامنة سحابية
-    const demoProjects = generateSeedProjects().map(p => ({ ...p, companyId: 'comp_demo' }));
-    setProjects(demoProjects);
-    setTeam({
-      engineers: ['م. أحمد تجريبي', 'م. سارة تجريبية'],
-      accountants: ['أ. محمد تجريبي'],
-      techOffice: ['م. محمود تجريبي'],
-      customerService: [],
-    });
-    setLeads([]);
-    setCompanySettings({
-      companyName: 'شركة التجربة الحية (Demo)',
-      companySubtitle: 'نسخة تجريبية معزولة تماماً أوفلاين',
-      currency: 'ج.م',
-      primaryColor: '#1877F2',
-      accentColor: '#166FE5',
-    });
-    setTab('overview');
-    setView('list');
-    setActiveId(null);
-  };
-
   const handleLogout = async () => {
     try {
       await logoutUser();
@@ -1186,7 +1152,6 @@ export default function App() {
     } catch (e) {}
     setCurrentUser(null);
     setIsAuthenticated(false);
-    setIsDemoUser(false);
     setTab('overview');
     setView('list');
     setActiveId(null);
@@ -1349,7 +1314,6 @@ export default function App() {
                 setIsLoginMode(true);
                 window.history.replaceState(null, '', targetMode === 'register' ? '/register' : '/login');
               }}
-              onStartLiveDemo={handleStartLiveDemo}
             />
           </React.Suspense>
         </AdminProvider>
@@ -1366,7 +1330,6 @@ export default function App() {
               setIsLoginMode(false);
               window.history.replaceState(null, '', '/landing');
             }}
-            onStartLiveDemo={handleStartLiveDemo}
           />
         </React.Suspense>
       </AdminProvider>

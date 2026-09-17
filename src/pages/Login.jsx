@@ -19,7 +19,6 @@ export default function Login({
   onLogin,
   companySettings,
   onBackToLanding,
-  onStartLiveDemo,
   initialMode = 'login'
 }) {
   // Always use the real platform branding for the main login portal
@@ -193,26 +192,6 @@ export default function Login({
             >
               <ArrowRight size={14} /> <span>العودة للموقع التعريفي</span>
             </button>
-            {onStartLiveDemo && (
-              <button
-                onClick={onStartLiveDemo}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '6px 12px',
-                  borderRadius: 8,
-                  background: 'rgba(217, 119, 6, 0.1)',
-                  border: '1px solid rgba(217, 119, 6, 0.25)',
-                  color: '#B45309',
-                  fontSize: 12,
-                  fontWeight: 800,
-                  cursor: 'pointer'
-                }}
-              >
-                <Sparkles size={13} /> <span>تجربة حية (Demo)</span>
-              </button>
-            )}
           </div>
         )}
 
@@ -653,32 +632,6 @@ export default function Login({
                 <span>{loading ? "⏳ جاري إعداد مساحة عمل شركتك..." : "إنشاء الحساب وبدء التجربة المجانية 🚀"}</span>
               </button>
             </form>
-          )}
-
-          {/* ─── أزرار بديلة (دخول تجريبي وعودة) ─── */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '18px 0 14px' }}>
-            <div style={{ flex: 1, height: 1, background: 'var(--border)' }}></div>
-            <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>أو</span>
-            <div style={{ flex: 1, height: 1, background: 'var(--border)' }}></div>
-          </div>
-
-          {onStartLiveDemo && (
-            <button
-              type="button"
-              onClick={onStartLiveDemo}
-              style={{
-                width: "100%", padding: "10px",
-                background: "rgba(217, 119, 6, 0.08)",
-                color: "#D97706",
-                border: "1.5px dashed rgba(217, 119, 6, 0.35)",
-                borderRadius: 12,
-                fontFamily: "'Cairo', sans-serif", fontSize: 13.5, fontWeight: 800,
-                cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              }}
-            >
-              <span>✨ تصفح النظام كزائر فوري (Demo بالجنيه المصري)</span>
-            </button>
           )}
 
           {onBackToLanding && (

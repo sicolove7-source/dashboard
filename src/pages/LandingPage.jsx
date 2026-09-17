@@ -128,13 +128,19 @@ function useInjectStyle(css) {
   }, [css]);
 }
 
-export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
+export default function LandingPage({ onGoToLogin }) {
   useInjectStyle(LANDING_STYLES);
 
   const [activeFaq, setActiveFaq] = useState(null);
   const [billingCycle, setBillingCycle] = useState('monthly'); // 'monthly' | 'yearly'
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [previewTab, setPreviewTab] = useState('contracts'); // 'contracts' | 'portal' | 'boq' | 'snags'
+
+  const handleStartTrial = () => {
+    if (onGoToLogin) {
+      onGoToLogin('register');
+    }
+  };
 
   const waNumber = '201018160582';
 
@@ -213,7 +219,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
       feature: 'سرعة التجربة والبدء في الاستخدام',
       excel: '❌ مجهود يدوي متواصل كل يوم',
       eleven: '❌ استمارة انتظار لمراجعة وموافقة فريق المبيعات',
-      tashteeb: '✅ تجربة حية فورية بدون تسجيل وبدون أي انتظار 🚀'
+      tashteeb: '✅ تجربة مجانية فورية لمدة 14 يوماً لكافة الميزات 🚀'
     },
     {
       feature: 'شفافية الأسعار ومرونة الاشتراك',
@@ -302,7 +308,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
     },
     {
       q: 'هل يمكنني تجربة النظام ببيانات حقيقية قبل دفع أي مليم؟',
-      a: 'نعم بكل تأكيد وبدون أي حواجز! اضغط على زر "تجربة حية فوراً (Live Demo)" بأعلى الصفحة لتدخل مباشرة إلى النظام بكافة شاشاته وميزاته وبياناته التوضيحية دون حتى الحاجة لتسجيل حساب.'
+      a: 'نعم بكل تأكيد وبكل سهولة! يمكنك الضغط على زر "ابدأ تجربتك المجانية" لتسجيل حساب شركتك في أقل من دقيقة وتجربة النظام بكافة شاشاته وميزاته مجاناً قبل أي التزام.'
     },
     {
       q: 'هل تعمل المنصة بسلاسة على موبايل المهندس في الموقع؟',
@@ -382,24 +388,18 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
           
           <button
             className="mnav-btn"
-            onClick={() => { setMobileNavOpen(false); onStartLiveDemo(); }}
+            onClick={() => { setMobileNavOpen(false); handleStartTrial(); }}
             style={{
-              color: '#F59E0B',
-              background: 'rgba(245, 158, 11, 0.15)',
-              padding: '10px 24px',
+              color: '#FFFFFF',
+              background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+              padding: '12px 24px',
               borderRadius: 12,
-              border: '1px solid rgba(245, 158, 11, 0.3)'
+              border: 'none',
+              fontWeight: 800,
+              boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)'
             }}
           >
-            ⚡ تجربة حية فوراً (Live Demo)
-          </button>
-
-          <button
-            className="mnav-btn"
-            onClick={() => { setMobileNavOpen(false); onGoToLogin('register'); }}
-            style={{ color: '#10B981' }}
-          >
-            ✨ إنشاء حساب شركة جديد
+            🚀 ابدأ تجربتك المجانية (14 يوماً)
           </button>
           
           <button
@@ -476,7 +476,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
           {/* Header CTAs */}
           <div className="landing-header-ctas" style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
             <button
-              onClick={onStartLiveDemo}
+              onClick={handleStartTrial}
               style={{
                 padding: '10px 18px',
                 fontSize: 13,
@@ -485,16 +485,16 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
                 alignItems: 'center',
                 gap: 6,
                 borderRadius: 10,
-                background: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)',
+                background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
                 color: '#FFFFFF',
                 border: 'none',
                 cursor: 'pointer',
-                boxShadow: '0 4px 14px rgba(217, 119, 6, 0.35)',
+                boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
                 transition: 'all .15s ease'
               }}
             >
               <Sparkles size={15} />
-              <span className="hero-cta-text">تجربة حية (Live Demo)</span>
+              <span className="hero-cta-text">ابدأ تجربة مجانية ✨</span>
             </button>
 
             <button
@@ -610,54 +610,32 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
             maxWidth: 620
           }}>
             <button
-              onClick={onStartLiveDemo}
+              onClick={handleStartTrial}
               style={{
-                padding: '15px 32px',
-                fontSize: 16,
+                padding: '16px 36px',
+                fontSize: 16.5,
                 fontWeight: 900,
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 8,
+                gap: 9,
                 borderRadius: 14,
-                background: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)',
+                background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
                 color: '#FFFFFF',
                 border: 'none',
                 cursor: 'pointer',
-                boxShadow: '0 8px 25px rgba(217, 119, 6, 0.4)',
+                boxShadow: '0 8px 25px rgba(16, 185, 129, 0.4)',
                 transition: 'transform .15s ease'
               }}
             >
-              <Sparkles size={19} />
-              <span>ابدأ التجربة الحية فوراً (بدون تسجيل) ⚡</span>
-            </button>
-
-            <button
-              onClick={() => onGoToLogin('register')}
-              style={{
-                padding: '15px 28px',
-                fontSize: 15.5,
-                fontWeight: 800,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-                borderRadius: 14,
-                background: '#10B981',
-                color: '#FFFFFF',
-                border: 'none',
-                cursor: 'pointer',
-                boxShadow: '0 8px 20px rgba(16, 185, 129, 0.3)',
-                transition: 'transform .15s ease'
-              }}
-            >
-              <CheckCircle2 size={18} />
-              <span>إنشاء حساب شركة جديد ✨</span>
+              <Sparkles size={20} />
+              <span>ابدأ تجربتك المجانية لمدة 14 يوماً 🚀</span>
             </button>
 
             <button
               onClick={() => openWhatsApp('مرحباً، أرغب في استشارة ومعرفة مميزات منصة تشطيب برو لشركتنا')}
               style={{
-                padding: '14px 24px',
-                fontSize: 14.5,
+                padding: '15px 26px',
+                fontSize: 15,
                 fontWeight: 800,
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -670,8 +648,8 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
                 boxShadow: '0 4px 12px rgba(21, 128, 61, 0.08)'
               }}
             >
-              <MessageSquare size={17} color="#25D366" />
-              <span>استفسار واتساب سريع</span>
+              <MessageSquare size={18} color="#25D366" />
+              <span>تواصل مع المبيعات عبر واتساب 💬</span>
             </button>
           </div>
 
@@ -798,10 +776,10 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
               </span>
             </div>
             <button
-              onClick={onStartLiveDemo}
+              onClick={handleStartTrial}
               style={{
                 background: 'rgba(255,255,255,0.12)',
-                color: '#F59E0B',
+                color: '#10B981',
                 border: 'none',
                 padding: '4px 12px',
                 borderRadius: 8,
@@ -810,7 +788,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
                 cursor: 'pointer'
               }}
             >
-              فتح النظام بالكامل ↗
+              ابدأ التجربة المجانية ↗
             </button>
           </div>
 
@@ -841,12 +819,12 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
                   </p>
                 </div>
                 <button
-                  onClick={onStartLiveDemo}
+                  onClick={handleStartTrial}
                   style={{
                     marginTop: 16,
                     padding: '10px 16px',
                     borderRadius: 10,
-                    background: '#D97706',
+                    background: '#10B981',
                     color: '#fff',
                     border: 'none',
                     fontWeight: 800,
@@ -854,7 +832,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
                     cursor: 'pointer'
                   }}
                 >
-                  جرّب محرر العقود بنفسك الآن 📜
+                  جرّب محرر العقود مجاناً 📜
                 </button>
               </div>
             </div>
@@ -889,7 +867,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
                   </p>
                 </div>
                 <button
-                  onClick={onStartLiveDemo}
+                  onClick={handleStartTrial}
                   style={{
                     marginTop: 16,
                     padding: '10px 16px',
@@ -902,7 +880,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
                     cursor: 'pointer'
                   }}
                 >
-                  استعرض بوابة العميل الحية 🌐
+                  جرّب بوابة العميل مجاناً 🌐
                 </button>
               </div>
             </div>
@@ -936,7 +914,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
                   </p>
                 </div>
                 <button
-                  onClick={onStartLiveDemo}
+                  onClick={handleStartTrial}
                   style={{
                     marginTop: 16,
                     padding: '10px 16px',
@@ -949,7 +927,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
                     cursor: 'pointer'
                   }}
                 >
-                  جرّب حاسبة المقايسات الآن ⚡
+                  جرّب حاسبة المقايسات مجاناً ⚡
                 </button>
               </div>
             </div>
@@ -984,7 +962,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
                   </p>
                 </div>
                 <button
-                  onClick={onStartLiveDemo}
+                  onClick={handleStartTrial}
                   style={{
                     marginTop: 16,
                     padding: '10px 16px',
@@ -997,7 +975,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
                     cursor: 'pointer'
                   }}
                 >
-                  استعرض بوابات الجودة والاستلام 🔍
+                  جرّب بوابات الجودة والاستلام مجاناً 🔍
                 </button>
               </div>
             </div>
@@ -1078,7 +1056,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
 
           <div style={{ textAlign: 'center', marginTop: 24 }}>
             <button
-              onClick={onStartLiveDemo}
+              onClick={handleStartTrial}
               style={{
                 padding: '12px 28px',
                 borderRadius: 12,
@@ -1091,7 +1069,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
                 boxShadow: '0 4px 14px rgba(15, 23, 42, 0.2)'
               }}
             >
-              جرّب الفرق بنفسك على أرض الواقع (Live Demo) 🚀
+              ابدأ تجربتك المجانية واكتشف الفرق بنفسك 🚀
             </button>
           </div>
         </div>
@@ -1315,7 +1293,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
                       اشترك الآن وتحدث مع المبيعات 💬
                     </button>
                     <button
-                      onClick={onStartLiveDemo}
+                      onClick={handleStartTrial}
                       style={{
                         width: '100%',
                         padding: '10px',
@@ -1328,7 +1306,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
                         color: '#64748B',
                       }}
                     >
-                      أو جرّب الباقة بالنسخة الحية أولاً ↗
+                      أو ابدأ تجربة مجانية لمدة 14 يوماً ↗
                     </button>
                   </div>
                 </div>
@@ -1435,36 +1413,35 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
           </p>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center', marginTop: 10 }}>
             <button
-              onClick={onStartLiveDemo}
+              onClick={handleStartTrial}
               style={{
                 padding: '14px 32px',
                 fontSize: 16,
                 fontWeight: 900,
                 borderRadius: 14,
-                background: 'linear-gradient(135deg, #D97706, #B45309)',
+                background: 'linear-gradient(135deg, #10B981, #059669)',
                 color: '#FFFFFF',
                 border: 'none',
                 cursor: 'pointer',
-                boxShadow: '0 8px 24px rgba(217, 119, 6, 0.4)'
+                boxShadow: '0 8px 24px rgba(16, 185, 129, 0.4)'
               }}
             >
-              دخول النسخة الحية فوراً (Demo) 🚀
+              ابدأ تجربتك المجانية لمدة 14 يوماً 🚀
             </button>
             <button
-              onClick={() => onGoToLogin('register')}
+              onClick={() => openWhatsApp('مرحباً، أود تفعيل باقة لشركتي في تشطيب برو')}
               style={{
                 padding: '14px 28px',
                 fontSize: 15.5,
                 fontWeight: 800,
                 borderRadius: 14,
-                background: '#10B981',
-                color: '#FFFFFF',
-                border: 'none',
-                cursor: 'pointer',
-                boxShadow: '0 8px 20px rgba(16, 185, 129, 0.3)'
+                background: '#FFFFFF',
+                color: '#15803D',
+                border: '1.5px solid #BBF7D0',
+                cursor: 'pointer'
               }}
             >
-              تسجيل حساب شركة جديد ✨
+              تحدث مع المبيعات واتساب 💬
             </button>
           </div>
         </div>
@@ -1497,7 +1474,7 @@ export default function LandingPage({ onGoToLogin, onStartLiveDemo }) {
           </p>
 
           <div style={{ display: 'flex', gap: 18, fontSize: 13, color: '#CBD5E1', marginTop: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-            <span style={{ cursor: 'pointer', fontWeight: 700 }} onClick={onStartLiveDemo}>تجربة حية فورية</span>
+            <span style={{ cursor: 'pointer', fontWeight: 700 }} onClick={handleStartTrial}>ابدأ تجربة مجانية</span>
             <span style={{ opacity: 0.3 }}>•</span>
             <span style={{ cursor: 'pointer', fontWeight: 700 }} onClick={() => openWhatsApp('استفسار عن منصة Tashteeb Pro')}>تواصل واتساب</span>
             <span style={{ opacity: 0.3 }}>•</span>
