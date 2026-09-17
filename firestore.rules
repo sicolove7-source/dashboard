@@ -13,7 +13,10 @@ service cloud.firestore {
 
     // 2. هل المستخدم هو مالك المنصة الرئيسي (Super Admin)؟
     function isSuperAdmin() {
-      return isAuthenticated() && request.auth.token.role == 'super_admin';
+      return isAuthenticated() && (
+        request.auth.token.role == 'super_admin' ||
+        request.auth.token.isSuperAdmin == true
+      );
     }
 
     // 3. هل يسمح مالك المنصة بدخول واستخدام الحسابات الفرعية؟
@@ -23,12 +26,26 @@ service cloud.firestore {
              get(/databases/$(database)/documents/platform_metadata/platform_settings).data.subAccountsAllowed != false;
     }
 
+    // فحص ملكية الشركة عبر البريد الإلكتروني الموثق من Google (في حال عدم تعيين Custom Claims بعد)
+    function isCompanyAdminByDoc(companyId) {
+      return isAuthenticated() &&
+             request.auth.token.email != null &&
+             exists(/databases/$(database)/documents/companies/$(companyId)) &&
+             (
+               get(/databases/$(database)/documents/companies/$(companyId)).data.adminEmail == request.auth.token.email ||
+               (
+                 get(/databases/$(database)/documents/companies/$(companyId)).data.settings != null &&
+                 get(/databases/$(database)/documents/companies/$(companyId)).data.settings.adminEmail == request.auth.token.email
+               )
+             );
+    }
+
     // 4. التحقق الأمني من هوية الشركة المشتركة (عزل الشركات):
     // يسمح بالوصول فقط إذا كان المستخدم ينتمي لنفس الشركة مع تفعيل الحسابات الفرعية أو كان هو الـ Super Admin
     function isAuthorized(companyId) {
       return isAuthenticated() && (
         isSuperAdmin() || (
-          request.auth.token.companyId == companyId &&
+          (request.auth.token.companyId == companyId || isCompanyAdminByDoc(companyId)) &&
           isSubAccountsAllowed()
         )
       );
@@ -50,7 +67,15 @@ service cloud.firestore {
       allow read: if isAuthorized(companyId);
 
       // إنشاء وتعديل بيانات الشركة: لنفس الشركة فقط مع التأكد من تطابق هوية الشركة
-      allow create, update: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
+      allow create: if isAuthorized(companyId) || (
+        isAuthenticated() &&
+        hasValidCompanyPayload(companyId) &&
+        (
+          request.resource.data.adminEmail == request.auth.token.email ||
+          (request.resource.data.settings != null && request.resource.data.settings.adminEmail == request.auth.token.email)
+        )
+      );
+      allow update: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
 
       // حذف وثيقة الشركة: لنفس الشركة أو مالك المنصة
       allow delete: if isAuthorized(companyId);

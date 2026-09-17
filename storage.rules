@@ -1,9 +1,14 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // السماح بالقراءة والكتابة للوسائط الميدانية وصور وفيديوهات المشاريع
+    // السماح بقراءة وسائط وصور المشاريع عبر روابط التحميل
     match /{allPaths=**} {
-      allow read, write: if true;
+      allow read: if true;
+      // حماية التخزين: السماح فقط برفع الصور والفيديوهات ومستندات PDF بحد أقصى 50MB (منع رفع ملفات تنفيذية أو إغراق التخزين)
+      allow write: if (
+        request.resource.size < 50 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*|application/pdf|video/.*')
+      );
     }
   }
 }
