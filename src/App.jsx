@@ -1153,8 +1153,28 @@ export default function App() {
 
     const compId = tenantData?.id || userData?.companyId || getActiveTenantId() || 'comp_alain';
     setActiveTenantId(compId);
+
+    // 🔒 مسح أمني: إزالة بيانات الشركات الأخرى من LocalStorage لمنع تلوث البيانات
+    // يحافظ فقط على بيانات الشركة الحالية
+    if (compId && !roleIsSuperAdmin) {
+      try {
+        const keysToRemove = Object.keys(localStorage).filter(k => {
+          if (!k.startsWith('tenant_')) return false;
+          // استخراج الـ company ID من المفتاح: tenant_{companyId}_{field}
+          const parts = k.split('_');
+          if (parts.length < 3) return false;
+          const keyCompanyId = parts.slice(1, -1).join('_');
+          return keyCompanyId !== compId;
+        });
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+        if (keysToRemove.length > 0) {
+          console.log(`[handleLogin] Cleared ${keysToRemove.length} localStorage keys from other companies`);
+        }
+      } catch (e) {}
+    }
     // تم حذف استدعاء loadTenantWorkspace المزدوج هنا لأن تغيير activeCompanyId و isAuthenticated يُشغّل الـ Effect تلقائياً
   };
+
 
   const handleLogout = async () => {
     try {

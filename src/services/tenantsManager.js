@@ -504,26 +504,34 @@ export function getTenantData(companyId) {
     if (raw) users = sanitizeCompanyUsersForCloud(JSON.parse(raw));
   } catch (e) {}
   if (!users || users.length === 0) {
-    users = [
-      {
-        id: `u_${companyId}_admin`,
-        email: tenant.adminEmail,
-        role: 'owner',
-        name: tenant.adminName,
-        engineerName: null,
-        companyId,
-      },
-      {
-        id: `u_${companyId}_eng1`,
-        email: `eng@${tenant.adminEmail.split('@')[1] || 'site.ae'}`,
-        role: 'engineer',
-        name: companyId === 'comp_alain' ? 'م. هزاع المنصوري' : (companyId === 'comp_dhabi' ? 'م. عبد الله الظاهري' : 'م. أحمد كامل'),
-        engineerName: companyId === 'comp_alain' ? 'م. هزاع المنصوري' : (companyId === 'comp_dhabi' ? 'م. عبد الله الظاهري' : 'م. أحمد كامل'),
-        companyId,
-      }
-    ];
-    try { localStorage.setItem(`tenant_${companyId}_users`, JSON.stringify(users)); } catch (e) {}
+    if (tenant) {
+      users = [
+        {
+          id: `u_${companyId}_admin`,
+          email: tenant.adminEmail || '',
+          role: 'owner',
+          name: tenant.adminName || 'مدير الشركة',
+          engineerName: null,
+          companyId,
+        },
+        {
+          id: `u_${companyId}_eng1`,
+          email: `eng@${(tenant.adminEmail || '').split('@')[1] || 'site.ae'}`,
+          role: 'engineer',
+          name: companyId === 'comp_alain' ? 'م. هزاع المنصوري' : (companyId === 'comp_dhabi' ? 'م. عبد الله الظاهري' : 'م. أحمد كامل'),
+          engineerName: companyId === 'comp_alain' ? 'م. هزاع المنصوري' : (companyId === 'comp_dhabi' ? 'م. عبد الله الظاهري' : 'م. أحمد كامل'),
+          companyId,
+        }
+      ];
+    } else {
+      // شركة جديدة: نبدأ بقائمة فارغة من المستخدمين وسيتم تعبئتها من السحابة
+      users = [];
+    }
+    if (users.length > 0) {
+      try { localStorage.setItem(`tenant_${companyId}_users`, JSON.stringify(users)); } catch (e) {}
+    }
   }
+
 
   // 3. الفريق
   let team = null;
@@ -592,8 +600,14 @@ export function getTenantData(companyId) {
     if (raw) projects = JSON.parse(raw);
   } catch (e) {}
   if (!projects || projects.length === 0) {
-    projects = generateCompanySeedProjects(companyId, tenant);
-    try { localStorage.setItem(`tenant_${companyId}_projects`, JSON.stringify(projects)); } catch (e) {}
+    // فقط نُنشئ مشاريع تجريبية إذا كانت الشركة في القائمة المحلية (للشركات الافتراضية فقط)
+    // الشركات الجديدة تبدأ بدون مشاريع وتُجلب بياناتها من السحابة
+    if (tenant) {
+      projects = generateCompanySeedProjects(companyId, tenant);
+      try { localStorage.setItem(`tenant_${companyId}_projects`, JSON.stringify(projects)); } catch (e) {}
+    } else {
+      projects = []; // شركة جديدة: لا مشاريع افتراضية
+    }
   }
 
   // التأكد من أن جميع المشاريع موسومة بمعرف هذه الشركة لحمايتها من التداخل
@@ -620,21 +634,22 @@ export async function getTenantDataAsync(companyId) {
     const cloud = await fetchCompanyDataFromCloud(companyId);
     if (cloud) {
       const tenants = await loadAllTenantsAsync();
-      const tenant = tenants.find(t => t.id === companyId) || tenants[0] || DEFAULT_TENANTS[0];
+      // لا نستخدم tenants[0] كـ fallback لأن ذلك يُعطي بيانات شركة خاطئة
+      const tenant = tenants.find(t => t.id === companyId) || null;
 
       const localFallback = getTenantData(companyId);
       const localSettings = localFallback?.settings;
       const cloudSettings = cloud.settings;
 
       const settings = {
-        companyName: tenant.name,
-        companySubtitle: tenant.subtitle,
-        city: tenant.city,
-        country: tenant.country,
-        currency: tenant.currency || 'ج.م',
-        phone: tenant.phone,
-        primaryColor: tenant.primaryColor,
-        accentColor: tenant.accentColor,
+        companyName: tenant?.name || cloud.settings?.companyName || 'شركة المقاولات',
+        companySubtitle: tenant?.subtitle || cloud.settings?.companySubtitle || 'نظام إدارة المشاريع',
+        city: tenant?.city || cloud.settings?.city || '',
+        country: tenant?.country || cloud.settings?.country || 'مصر',
+        currency: tenant?.currency || cloud.settings?.currency || 'ج.م',
+        phone: tenant?.phone || cloud.settings?.phone || '',
+        primaryColor: tenant?.primaryColor || cloud.settings?.primaryColor || '#1877F2',
+        accentColor: tenant?.accentColor || cloud.settings?.accentColor || '#166FE5',
         companyLogo: null,
         ...(localSettings || {}),
         ...(cloudSettings || {}),
@@ -752,6 +767,24 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
         isSuperAdmin: false,
       };
     }
+
+    // ✅ الشركة في الـ Claims لكن غير موجودة محلياً (مثلاً: جهاز جديد أو شركة حديثة)
+    // نبني الـ user record مباشرة من الـ Claims دون ربطه بشركة أخرى
+    console.warn('[resolveTenantUserByEmail] Company from claims not in local list, building user from claims:', claims.companyId);
+    return {
+      success: true,
+      user: {
+        id: firebaseUid || `u_${claims.companyId}_${claims.role || 'user'}`,
+        email: cleanEmail,
+        name: claims.name || cleanEmail.split('@')[0],
+        role: claims.role || 'owner',
+        companyId: claims.companyId,
+        companyName: claims.companyName || claims.companyId,
+        currency: claims.currency || 'ج.م',
+      },
+      tenant: null,
+      isSuperAdmin: false,
+    };
   }
 
   for (const t of tenants) {
@@ -808,21 +841,12 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     }
   }
 
-  // في حال لم يتم العثور على شركة محددة، نربطه بأول شركة موجودة تلقائياً
-  const defaultTenant = tenants[0] || (typeof INITIAL_PLATFORM_TENANTS !== 'undefined' ? INITIAL_PLATFORM_TENANTS[0] : DEFAULT_TENANTS[0]);
+  // ⚠️ أمان حاسم: لم يتم العثور على هذا المستخدم في أي شركة مسجلة
+  // لا نربطه بأي شركة عشوائية — نرجع فشل لمنعه من الدخول حمايةً للبيانات
+  console.warn('[resolveTenantUserByEmail] No matching company found for user — login blocked:', cleanEmail);
   return {
-    success: true,
-    user: {
-      id: firebaseUid || `u_${Date.now()}`,
-      email: cleanEmail,
-      name: cleanEmail.split('@')[0],
-      role: 'owner',
-      companyId: defaultTenant?.id || 'comp_alain',
-      companyName: defaultTenant?.name || 'مؤسسة التشطيبات',
-      currency: defaultTenant?.currency || 'ج.م',
-    },
-    tenant: defaultTenant,
-    isSuperAdmin: false,
+    success: false,
+    error: 'لم يتم ربط هذا الحساب بأي شركة مسجلة في المنصة. يرجى التواصل مع مدير المنصة لإضافة حسابك.',
   };
 }
 

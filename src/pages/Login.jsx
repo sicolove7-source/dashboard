@@ -9,6 +9,7 @@ import {
   sendPasswordReset,
   registerWithEmail,
   getUserClaims,
+  callAssignUserClaims,
 } from "../services/auth";
 import {
   resolveTenantUserByEmail,
@@ -132,6 +133,18 @@ export default function Login({
             origin: { y: 0.6 }
           });
         } catch (e) {}
+
+        // ✅ تعيين Custom Claims سحابياً لربط المستخدم بشركته بشكل دائم وآمن
+        // هذا يضمن أنه في المرة القادمة لن يرى بيانات شركة أخرى
+        if (authRes.user?.uid && res.tenant?.id) {
+          callAssignUserClaims({
+            targetUid: authRes.user.uid,
+            companyId: res.tenant.id,
+            role: 'owner',
+            companyName: res.tenant.name,
+            currency: res.tenant.currency || 'ج.م',
+          }).catch(e => console.warn('assignUserClaims non-blocking error:', e));
+        }
 
         // دخول تلقائي مباشر لبيئة الشركة المنشأة
         setTimeout(() => {

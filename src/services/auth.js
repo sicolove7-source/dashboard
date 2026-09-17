@@ -6,6 +6,7 @@
  */
 
 import { auth } from '../firebase';
+import { functions } from '../firebase';
 import {
   signInWithEmailAndPassword,
   signOut,
@@ -15,6 +16,23 @@ import {
   updatePassword,
   updateEmail,
 } from 'firebase/auth';
+import { httpsCallable } from 'firebase/functions';
+
+/**
+ * استدعاء Cloud Function لتعيين Custom Claims للمستخدم بشكل آمن من Server-Side
+ * يُضمن ربط المستخدم بشركته في Firebase Auth Token
+ */
+export async function callAssignUserClaims({ targetUid, companyId, role, companyName, currency }) {
+  try {
+    const fn = httpsCallable(functions, 'assignUserClaims');
+    const result = await fn({ targetUid, companyId, role, companyName, currency });
+    return result.data;
+  } catch (err) {
+    console.warn('[callAssignUserClaims] Cloud function error (non-blocking):', err?.message || err);
+    return { success: false, error: err?.message };
+  }
+}
+
 
 /**
  * تسجيل الدخول باستخدام البريد الإلكتروني وكلمة المرور

@@ -2,6 +2,7 @@ const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getAuth } = require("firebase-admin/auth");
 const crypto = require("crypto");
 
 initializeApp();
@@ -13,6 +14,105 @@ const db = getFirestore();
 function generateSecureToken() {
   return crypto.randomBytes(24).toString("hex");
 }
+
+/**
+ * 0. دالة تعيين Custom Claims للمستخدم (assignUserClaims)
+ * تستدعيها خدمة registerNewTenant بعد نجاح التسجيل لربط المستخدم بشركته في Firebase Auth
+ * مُقيدة بالتحقق: المستخدم المطلوب تعيين Claims له يجب أن يكون نفسه أو Super Admin
+ */
+exports.assignUserClaims = onCall(async (request) => {
+  const { targetUid, companyId, role, companyName, currency } = request.data || {};
+
+  // التحقق من صحة المدخلات
+  if (!targetUid || !companyId) {
+    throw new HttpsError("invalid-argument", "targetUid و companyId مطلوبان.");
+  }
+
+  // الأمان: يُسمح فقط للمستخدم نفسه (يُعيَّن لنفسه) أو للسوبر أدمن
+  const callerUid = request.auth?.uid;
+  const callerClaims = request.auth?.token || {};
+  const isSuperAdmin = callerClaims.role === 'super_admin' || callerClaims.isSuperAdmin === true;
+
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً.");
+  }
+
+  const isSelf = callerUid === targetUid;
+  if (!isSelf && !isSuperAdmin) {
+    throw new HttpsError("permission-denied", "لا تملك صلاحية تعيين Claims لمستخدمين آخرين.");
+  }
+
+  // منع تعيين صلاحية super_admin من هذه الدالة (يتم فقط عبر Firebase Console)
+  const safeRole = (role === 'super_admin' && !isSuperAdmin) ? 'owner' : (role || 'owner');
+
+  try {
+    await getAuth().setCustomUserClaims(targetUid, {
+      companyId,
+      role: safeRole,
+      companyName: companyName || companyId,
+      currency: currency || 'ج.م',
+    });
+
+    // تحديث وثيقة الشركة في Firestore بمعرف المستخدم Firebase (UID)
+    try {
+      await db.doc(`companies/${companyId}`).set({
+        adminUid: targetUid,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    } catch (e) {
+      console.warn('[assignUserClaims] Could not update adminUid in company doc:', e.message);
+    }
+
+    console.log(`[assignUserClaims] Claims set for UID ${targetUid}: companyId=${companyId}, role=${safeRole}`);
+    return { success: true };
+  } catch (err) {
+    console.error('[assignUserClaims] Error setting claims:', err);
+    throw new HttpsError("internal", "تعذر تعيين صلاحيات المستخدم. يرجى المحاولة لاحقاً.");
+  }
+});
+
+/**
+ * 0b. دالة تعيين Claims للسوبر أدمن (setSuperAdminClaims)
+ * تُستخدم من Firebase Console أو من سكريبت إداري مرة واحدة فقط
+ * مُقيدة للغاية: يجب أن يكون المتصل سوبر أدمن بالفعل أو المستخدم المُحدد هو المتصل نفسه
+ * وكلمة مرور الإدارة يجب التحقق منها بشكل منفصل
+ */
+exports.setSuperAdminClaims = onCall(async (request) => {
+  const { targetUid, adminSecret } = request.data || {};
+  const callerUid = request.auth?.uid;
+  const callerClaims = request.auth?.token || {};
+
+  // فحص صلاحية المتصل
+  const isAlreadySuperAdmin = callerClaims.role === 'super_admin' || callerClaims.isSuperAdmin === true;
+  const isSelf = callerUid === targetUid;
+
+  if (!callerUid || !isSelf) {
+    throw new HttpsError("permission-denied", "يُسمح فقط للمستخدم بتعيين صلاحياته لنفسه من هذه الدالة.");
+  }
+
+  // التحقق من كلمة مرور إدارية سرية (مخزنة في Firestore المشفر)
+  try {
+    const secretDoc = await db.doc('platform_metadata/superadmin').get();
+    if (!secretDoc.exists) {
+      throw new HttpsError("not-found", "بيانات المنصة غير مكتملة.");
+    }
+    const storedSecret = secretDoc.data()?.setupSecret;
+    if (!storedSecret || storedSecret !== adminSecret) {
+      throw new HttpsError("permission-denied", "رمز الإدارة غير صحيح.");
+    }
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
+    throw new HttpsError("internal", "تعذر التحقق من صلاحيات الإدارة.");
+  }
+
+  await getAuth().setCustomUserClaims(targetUid, {
+    role: 'super_admin',
+    isSuperAdmin: true,
+  });
+
+  console.log(`[setSuperAdminClaims] Super Admin claims set for UID: ${targetUid}`);
+  return { success: true };
+});
 
 /**
  * 1. تريجر مزامنة بوابة العميل (syncPortalShare):
