@@ -18,6 +18,8 @@ import {
   BrainCircuit,
   Zap,
   HardHat,
+  Hammer,
+  FileText,
   X,
 } from 'lucide-react';
 import { NAV } from '../utils/constants';
@@ -42,6 +44,8 @@ const NAV_ICON_MAP = {
   BrainCircuit,
   Zap,
   HardHat,
+  Hammer,
+  FileText,
 };
 
 // Keys to export/import

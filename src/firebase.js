@@ -7,6 +7,7 @@ import {
   getFirestore
 } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { getFunctions } from "firebase/functions";
 
 export const firebaseConfig = {
   apiKey: "AIzaSyCsrivi9P36fdl4DANVdtB_uaBP0X4t8TM",
@@ -39,6 +40,7 @@ try {
 
 export const db = firestoreDb;
 export const storage = getStorage(app);
+export const functions = getFunctions(app);
 
 // تفعيل المصادقة الفورية غير المعطلة لتخويل رفع الوسائط إلى Firebase Storage
 if (typeof window !== 'undefined' && auth) {

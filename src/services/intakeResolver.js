@@ -163,14 +163,36 @@ export async function resolveCompanyForIntake(companyId) {
 export async function submitPublicLead(companyId, leadData) {
   const cId = companyId ? String(companyId).trim() : 'comp_alain';
 
+  // Rate Limiting: منع إرسال أكثر من طلب خلال 30 ثانية لمنع هجمات الـ Spam
+  try {
+    const lastSubmit = sessionStorage.getItem('last_intake_submit');
+    if (lastSubmit && (Date.now() - parseInt(lastSubmit, 10)) < 30000) {
+      return { success: false, error: 'تم استلام طلبك بالفعل، يرجى الانتظار 30 ثانية قبل إرسال طلب آخر.' };
+    }
+  } catch (e) {}
+
+  // تنظيف وتقييد أطوال المدخلات (Data Sanitization)
+  const cleanName = String(leadData?.name || '').trim().slice(0, 100);
+  const cleanPhone = String(leadData?.phone || '').trim().slice(0, 25);
+  const cleanNotes = String(leadData?.notes || leadData?.details || '').trim().slice(0, 500);
+
+  if (!cleanName || !cleanPhone) {
+    return { success: false, error: 'يرجى إدخال الاسم ورقم الهاتف بشكل صحيح.' };
+  }
+
   const fullLead = {
     ...leadData,
+    name: cleanName,
+    phone: cleanPhone,
+    notes: cleanNotes,
     id: leadData.id || `lead_${Date.now()}`,
     createdAt: leadData.createdAt || new Date().toISOString().slice(0, 10),
     stage: 'new_lead',
     source: leadData.source || 'website',
     isFromPublicForm: true,
   };
+
+  try { sessionStorage.setItem('last_intake_submit', Date.now().toString()); } catch (e) {}
 
   let savedCloud = false;
 

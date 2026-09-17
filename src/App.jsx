@@ -22,7 +22,8 @@ const ProjectForm = React.lazy(() => import('./pages/ProjectForm'));
 const ProjectDetail = React.lazy(() => import('./pages/ProjectDetail'));
 const TeamPerformance = React.lazy(() => import('./pages/TeamPerformance'));
 const SuppliersTab = React.lazy(() => import('./pages/SuppliersTab'));
-const SubcontractorsTab = null; // مُدمج داخل SuppliersTab - لا يحتاج استيراد مستقل
+const SubcontractorsTab = React.lazy(() => import('./pages/SubcontractorsTab'));
+const SpecsAssistant = React.lazy(() => import('./pages/SpecsAssistant'));
 
 const QuotationBuilder = React.lazy(() => import('./pages/QuotationBuilder'));
 const CompanyFinance = React.lazy(() => import('./pages/CompanyFinance'));
@@ -35,12 +36,33 @@ const ClientIntakePage = React.lazy(() => import('./pages/ClientIntakePage'));
 const SuperAdminDashboard = React.lazy(() => import('./pages/SuperAdminDashboard'));
 const OnboardingTourModal = React.lazy(() => import('./components/OnboardingTourModal'));
 const QuickWinChecklist = React.lazy(() => import('./components/QuickWinChecklist'));
+import ErrorBoundary from './components/ErrorBoundary';
 import { isFirstLogin, markFirstLoginDone, seedDemoData } from './utils/seedDemoData';
 
 import { loadCompanySettings, applyCompanyBranding, COMPANY_SETTINGS_KEY } from './utils/branding';
-import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed } from './services/tenantsManager';
-import { syncProjectsToCloud, syncSingleProjectToCloud, deleteSingleProjectFromCloud, syncTeamToCloud, syncLeadsToCloud, subscribeToCloudProjects, subscribeToCloudLeads, cleanUpInvalidDocs, sanitizeProjectForCloud, mergeProjectsPreservingLocal, mergeTeamsPreservingLocal, syncSettingsToCloud } from './services/cloudSync';
-import { parseClientPortalFromUrl, resolveClientPortalProject } from './services/portalResolver';
+import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail } from './services/tenantsManager';
+import { onAuthChange, logoutUser } from './services/auth';
+import { AdminProvider } from './context/AdminContext';
+import {
+  syncProjectsToCloud,
+  syncSingleProjectToCloud,
+  deleteSingleProjectFromCloud,
+  syncTeamToCloud,
+  syncLeadsToCloud,
+  subscribeToCloudProjects,
+  subscribeToCloudLeads,
+  cleanUpInvalidDocs,
+  sanitizeProjectForCloud,
+  mergeProjectsPreservingLocal,
+  mergeTeamsPreservingLocal,
+  syncSettingsToCloud,
+  subscribeToCloudCompanyField,
+  syncWorkersToCloud,
+  syncSuppliersToCloud,
+  syncQuotationsToCloud,
+  fetchCompanyDataFromCloud,
+} from './services/cloudSync';
+import { parseClientPortalFromUrl, resolveClientPortalProject, submitClientPortalApproval } from './services/portalResolver';
 import { parseIntakeRouteFromUrl } from './services/intakeResolver';
 
 function PageLoadingFallback() {
@@ -200,6 +222,20 @@ function getTabFromPath() {
   return null;
 }
 
+function hasCollectionChanged(prev, next) {
+  if (prev === next) return false;
+  if (!prev || !next) return true;
+  if (prev.length !== next.length) return true;
+  for (let i = 0; i < prev.length; i++) {
+    const a = prev[i];
+    const b = next[i];
+    if (a === b) continue;
+    if (!a || !b) return true;
+    if (a.id !== b.id || a.updatedAt !== b.updatedAt) return true;
+  }
+  return false;
+}
+
 function getInitialCompanyId() {
   try {
     const saved = localStorage.getItem('isAdmin');
@@ -236,7 +272,31 @@ export default function App() {
       return [];
     }
   });
-  const [companySettings, setCompanySettings] = useState(() => loadCompanySettings());
+  const [workers, setWorkers] = useState(() => {
+    try {
+      const cId = getInitialCompanyId();
+      return JSON.parse(localStorage.getItem(`tenant_${cId}_workers`) || '[]');
+    } catch (e) {
+      return [];
+    }
+  });
+  const [suppliers, setSuppliers] = useState(() => {
+    try {
+      const cId = getInitialCompanyId();
+      return JSON.parse(localStorage.getItem(`tenant_${cId}_suppliers`) || '[]');
+    } catch (e) {
+      return [];
+    }
+  });
+  const [quotations, setQuotations] = useState(() => {
+    try {
+      const cId = getInitialCompanyId();
+      return JSON.parse(localStorage.getItem(`tenant_${cId}_quotations`) || '[]');
+    } catch (e) {
+      return [];
+    }
+  });
+  const [companySettings, setCompanySettings] = useState(() => loadCompanySettings(getInitialCompanyId()));
   const [tab, setTab] = useState(() => {
     const p = getTabFromPath();
     if (p === 'automations') return 'settings';
@@ -260,6 +320,7 @@ export default function App() {
   const [saveState, setSaveState] = useState(null); // null | 'saved' | 'offline'
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null); // { role, name, engineerName, email }
+  const [authLoading, setAuthLoading] = useState(true);
   const userRole = currentUser?.role || 'engineer';
 
   // Landing Page vs Login state
@@ -272,6 +333,18 @@ export default function App() {
     return p === 'register' || p === 'signup' ? 'register' : 'login';
   });
   const [isDemoUser, setIsDemoUser] = useState(false);
+
+  // Company Tenant Scoped ID:
+  // في وضع Demo: نستخدم تينانت معزول comp_demo أوفلاين بالكامل
+  // للمستخدم العادي: نعتمد حصرياً على companyId من الـ Claims السحابية
+  // للسوبر أدمن فقط: نسمح بالتبديل بين الشركات عبر getActiveTenantId()
+  const activeCompanyId = useMemo(() => {
+    if (isDemoUser) return 'comp_demo';
+    if (currentUser?.isSuperAdmin || currentUser?.role === 'super_admin') {
+      return getActiveTenantId() || 'comp_alain';
+    }
+    return currentUser?.companyId || 'comp_alain';
+  }, [currentUser, isDemoUser]);
 
   // Mobile sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -290,18 +363,39 @@ export default function App() {
   // Onboarding Tour state
   const [showTour, setShowTour] = useState(false);
 
-  // أول دخول: بذار بيانات تجريبية وفتح الجولة الاستكشافية
+  // أول دخول: بذار بيانات تجريبية وفتح الجولة الاستكشافية بالتينانت الفعلي فقط بعد نجاح تسجيل الدخول
   useEffect(() => {
-    if (isFirstLogin()) {
-      seedDemoData(STORAGE_KEY, TEAM_KEY);
-      markFirstLoginDone();
+    if (!isAuthenticated || !activeCompanyId || isDemoUser || activeCompanyId === 'comp_demo') return;
+    if (isFirstLogin(activeCompanyId)) {
+      const seeded = seedDemoData(`tenant_${activeCompanyId}_projects`, `tenant_${activeCompanyId}_team`, activeCompanyId);
+      markFirstLoginDone(activeCompanyId);
+      if (seeded) {
+        const localData = getTenantData(activeCompanyId);
+        if (localData?.projects?.length) {
+          setProjects(localData.projects);
+        }
+        if (localData?.team) {
+          setTeam(localData.team);
+        }
+      }
       const timer = setTimeout(() => setShowTour(true), 1200);
       return () => clearTimeout(timer);
     }
-  }, []);
+  }, [activeCompanyId, isAuthenticated, isDemoUser]);
 
-  // Theme State (Default to Clean Calm Light Mode for daily work)
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  // Theme State (Default to Clean Calm Light Mode, initialized directly from storage to eliminate flash)
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    try {
+      const savedTheme = localStorage.getItem(THEME_KEY);
+      if (savedTheme === 'dark') {
+        if (typeof document !== 'undefined') {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  });
 
   // Apply company branding and currency on startup
   useEffect(() => {
@@ -327,20 +421,7 @@ export default function App() {
     return () => window.removeEventListener('storage', onStorageChange);
   }, []);
 
-  // Initialize theme
-  useEffect(() => {
-    const savedTheme = localStorage.getItem(THEME_KEY);
-    if (savedTheme === 'dark') {
-      setIsDarkMode(true);
-      document.documentElement.setAttribute('data-theme', 'dark');
-    } else {
-      setIsDarkMode(false);
-      document.documentElement.removeAttribute('data-theme');
-      localStorage.setItem(THEME_KEY, 'light');
-    }
-  }, []);
-
-  // Update theme
+  // Update theme when toggled by user
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.setAttribute('data-theme', 'dark');
@@ -350,7 +431,6 @@ export default function App() {
       localStorage.setItem(THEME_KEY, 'light');
     }
   }, [isDarkMode]);
-
 
   // تنظيف أي وثائق عشوائية قديمة سحابياً عند بدء التشغيل في وقت الخمول فقط للمستخدمين المسجلين
   useEffect(() => {
@@ -373,6 +453,8 @@ export default function App() {
       import('./pages/TeamPerformance');
       import('./pages/QuotationBuilder');
       import('./pages/SuppliersTab');
+      import('./pages/SubcontractorsTab');
+      import('./pages/SpecsAssistant');
       import('./pages/CompanySettings');
     };
     if (typeof window !== 'undefined') {
@@ -396,8 +478,7 @@ export default function App() {
       setPortalLoading(true);
       try {
         const resolved = await resolveClientPortalProject(
-          portalRouteInfo.projectId,
-          portalRouteInfo.companyId
+          portalRouteInfo.token || portalRouteInfo.projectId
         );
         if (!isCancelled && resolved?.project) {
           setPublicPortalProject(resolved.project);
@@ -433,8 +514,14 @@ export default function App() {
     };
   }, []);
 
-  // Company Tenant Scoped ID
-  const activeCompanyId = currentUser?.companyId || getActiveTenantId() || 'comp_alain';
+  // Admin Context Memoized Value
+  const adminContextValue = useMemo(() => ({
+    role: userRole,
+    companyId: activeCompanyId,
+    isSuperAdmin: userRole === 'super_admin' || !!currentUser?.isSuperAdmin,
+    currentUser,
+    isAuthenticated,
+  }), [userRole, activeCompanyId, currentUser, isAuthenticated]);
 
   // Load and sync tenant data whenever active company changes (Cloud-First with instant local cache)
   const loadTenantWorkspace = async (companyId) => {
@@ -445,13 +532,16 @@ export default function App() {
       companyId: companyId
     }));
     setProjects(scopedLocalProjects);
-    setTeam(localData.team);
-    setLeads(localData.leads);
+    setTeam(localData.team || { engineers: [], accountants: [], techOffice: [] });
+    setLeads(localData.leads || []);
     setCompanySettings(localData.settings);
     applyCompanyBranding(localData.settings);
     if (localData.settings?.currency) {
       setGlobalCurrency(localData.settings.currency);
     }
+
+    // إذا كان في وضع Demo أوفلاين، لا نجلب أي بيانات من السحابة إطلاقاً
+    if (isDemoUser || companyId === 'comp_demo') return;
 
     // 2. فحص وجلب أحدث البيانات سحابياً من Firestore مع الحفاظ التام على أحدث التعديلات المحلية
     try {
@@ -474,6 +564,54 @@ export default function App() {
           setTeam(prev => mergeTeamsPreservingLocal(prev || localData.team, cloudData.team, cloudData.users || localData.users));
         }
         if (Array.isArray(cloudData.leads)) setLeads(cloudData.leads);
+
+        // قراءة ودمج العمالة والموردين وعروض الأسعار سحابياً بنفس طريقة team
+        try {
+          const cloudCompanyRaw = await fetchCompanyDataFromCloud(companyId);
+          const cloudWorkers = cloudData.workers || cloudCompanyRaw?.workers;
+          const cloudSuppliers = cloudData.suppliers || cloudCompanyRaw?.suppliers;
+          const cloudQuotations = cloudData.quotations || cloudCompanyRaw?.quotations;
+
+          if (Array.isArray(cloudWorkers)) {
+            setWorkers(prev => {
+              const localRaw = localStorage.getItem(`tenant_${companyId}_workers`);
+              const local = (prev && prev.length > 0) ? prev : (localRaw ? JSON.parse(localRaw) : []);
+              const map = new Map();
+              cloudWorkers.forEach(item => { if (item?.id) map.set(item.id, item); });
+              local.forEach(item => { if (item?.id) map.set(item.id, item); });
+              const merged = Array.from(map.values());
+              try { localStorage.setItem(`tenant_${companyId}_workers`, JSON.stringify(merged)); } catch (e) {}
+              return merged;
+            });
+          }
+          if (Array.isArray(cloudSuppliers)) {
+            setSuppliers(prev => {
+              const localRaw = localStorage.getItem(`tenant_${companyId}_suppliers`);
+              const local = (prev && prev.length > 0) ? prev : (localRaw ? JSON.parse(localRaw) : []);
+              const map = new Map();
+              cloudSuppliers.forEach(item => { if (item?.id) map.set(item.id, item); });
+              local.forEach(item => { if (item?.id) map.set(item.id, item); });
+              const merged = Array.from(map.values());
+              try { localStorage.setItem(`tenant_${companyId}_suppliers`, JSON.stringify(merged)); } catch (e) {}
+              return merged;
+            });
+          }
+          if (Array.isArray(cloudQuotations)) {
+            setQuotations(prev => {
+              const localRaw = localStorage.getItem(`tenant_${companyId}_quotations`);
+              const local = (prev && prev.length > 0) ? prev : (localRaw ? JSON.parse(localRaw) : []);
+              const map = new Map();
+              cloudQuotations.forEach(item => { if (item?.id) map.set(item.id, item); });
+              local.forEach(item => { if (item?.id) map.set(item.id, item); });
+              const merged = Array.from(map.values());
+              try { localStorage.setItem(`tenant_${companyId}_quotations`, JSON.stringify(merged)); } catch (e) {}
+              return merged;
+            });
+          }
+        } catch (e) {
+          console.warn("Could not merge cloud workers/suppliers/quotations:", e);
+        }
+
         if (cloudData.settings) {
           const mergedSettings = {
             ...localData.settings,
@@ -514,7 +652,7 @@ export default function App() {
 
   // استماع ومزامنة سحابية حية لمشاريع الشركة عبر Firebase (بدون إتلاف اليوميات المسجلة محلياً)
   useEffect(() => {
-    if (!isAuthenticated || !activeCompanyId) return;
+    if (!isAuthenticated || !activeCompanyId || isDemoUser || activeCompanyId === 'comp_demo') return;
     const unsub = subscribeToCloudProjects(activeCompanyId, (cloudProjects) => {
       if (Array.isArray(cloudProjects) && cloudProjects.length > 0) {
         setProjects((prev) => {
@@ -527,16 +665,16 @@ export default function App() {
         });
       }
     });
-    return () => unsub();
-  }, [activeCompanyId]);
+    return () => { if (typeof unsub === 'function') unsub(); };
+  }, [activeCompanyId, isAuthenticated, isDemoUser]);
 
   // استماع ومزامنة سحابية حية لعملاء الـ CRM والطلبات الواردة لحظياً
   useEffect(() => {
-    if (!isAuthenticated || !activeCompanyId) return;
+    if (!isAuthenticated || !activeCompanyId || isDemoUser || activeCompanyId === 'comp_demo') return;
     const unsub = subscribeToCloudLeads(activeCompanyId, (cloudLeads) => {
       if (Array.isArray(cloudLeads)) {
         setLeads((prev) => {
-          if (JSON.stringify(prev) !== JSON.stringify(cloudLeads)) {
+          if (hasCollectionChanged(prev, cloudLeads)) {
             try {
               localStorage.setItem(`tenant_${activeCompanyId}_leads`, JSON.stringify(cloudLeads));
             } catch (e) {}
@@ -546,8 +684,65 @@ export default function App() {
         });
       }
     });
-    return () => { if (unsub) unsub(); };
-  }, [activeCompanyId, isAuthenticated]);
+    return () => { if (typeof unsub === 'function') unsub(); };
+  }, [activeCompanyId, isAuthenticated, isDemoUser]);
+
+  // استماع ومزامنة سحابية حية للعمالة لحظياً
+  useEffect(() => {
+    if (!isAuthenticated || !activeCompanyId || isDemoUser || activeCompanyId === 'comp_demo') return;
+    const unsub = subscribeToCloudCompanyField(activeCompanyId, 'workers', (cloudWorkers) => {
+      if (Array.isArray(cloudWorkers)) {
+        setWorkers((prev) => {
+          if (hasCollectionChanged(prev, cloudWorkers)) {
+            try {
+              localStorage.setItem(`tenant_${activeCompanyId}_workers`, JSON.stringify(cloudWorkers));
+            } catch (e) {}
+            return cloudWorkers;
+          }
+          return prev;
+        });
+      }
+    });
+    return () => { if (typeof unsub === 'function') unsub(); };
+  }, [activeCompanyId, isAuthenticated, isDemoUser]);
+
+  // استماع ومزامنة سحابية حية للموردين لحظياً
+  useEffect(() => {
+    if (!isAuthenticated || !activeCompanyId || isDemoUser || activeCompanyId === 'comp_demo') return;
+    const unsub = subscribeToCloudCompanyField(activeCompanyId, 'suppliers', (cloudSuppliers) => {
+      if (Array.isArray(cloudSuppliers)) {
+        setSuppliers((prev) => {
+          if (hasCollectionChanged(prev, cloudSuppliers)) {
+            try {
+              localStorage.setItem(`tenant_${activeCompanyId}_suppliers`, JSON.stringify(cloudSuppliers));
+            } catch (e) {}
+            return cloudSuppliers;
+          }
+          return prev;
+        });
+      }
+    });
+    return () => { if (typeof unsub === 'function') unsub(); };
+  }, [activeCompanyId, isAuthenticated, isDemoUser]);
+
+  // استماع ومزامنة سحابية حية لعروض الأسعار لحظياً
+  useEffect(() => {
+    if (!isAuthenticated || !activeCompanyId || isDemoUser || activeCompanyId === 'comp_demo') return;
+    const unsub = subscribeToCloudCompanyField(activeCompanyId, 'quotations', (cloudQuotations) => {
+      if (Array.isArray(cloudQuotations)) {
+        setQuotations((prev) => {
+          if (hasCollectionChanged(prev, cloudQuotations)) {
+            try {
+              localStorage.setItem(`tenant_${activeCompanyId}_quotations`, JSON.stringify(cloudQuotations));
+            } catch (e) {}
+            return cloudQuotations;
+          }
+          return prev;
+        });
+      }
+    });
+    return () => { if (typeof unsub === 'function') unsub(); };
+  }, [activeCompanyId, isAuthenticated, isDemoUser]);
 
   function flashSave(ok) {
     setSaveState(ok ? "saved" : "offline");
@@ -561,7 +756,12 @@ export default function App() {
       flashSave(true); 
     }
     catch (e) { console.error("storage error", e); flashSave(false); }
-    syncProjectsToCloud(activeCompanyId, next);
+    if (!isDemoUser && activeCompanyId !== 'comp_demo') {
+      syncProjectsToCloud(activeCompanyId, next).catch(err => {
+        console.warn("Cloud sync projects error:", err);
+        flashSave(false);
+      });
+    }
   }
 
   async function persistTeam(next) {
@@ -571,7 +771,12 @@ export default function App() {
       flashSave(true); 
     }
     catch (e) { console.error("storage error", e); flashSave(false); }
-    syncTeamToCloud(activeCompanyId, next);
+    if (!isDemoUser && activeCompanyId !== 'comp_demo') {
+      syncTeamToCloud(activeCompanyId, next).catch(err => {
+        console.warn("Cloud sync team error:", err);
+        flashSave(false);
+      });
+    }
   }
 
   async function persistLeads(next) {
@@ -581,7 +786,12 @@ export default function App() {
       flashSave(true); 
     }
     catch (e) { console.error("storage error", e); flashSave(false); }
-    syncLeadsToCloud(activeCompanyId, next);
+    if (!isDemoUser && activeCompanyId !== 'comp_demo') {
+      syncLeadsToCloud(activeCompanyId, next).catch(err => {
+        console.warn("Cloud sync leads error:", err);
+        flashSave(false);
+      });
+    }
   }
 
   function addLead(lead) {
@@ -626,10 +836,14 @@ export default function App() {
     };
     persistTeam(nextTeam);
 
-    if (oldName !== trimmedNew && projects) {
+    if (oldName !== trimmedNew) {
       const pKey = role === 'engineers' ? 'engineer' : role === 'accountants' ? 'accountant' : 'techOffice';
-      const updatedProjects = projects.map(p => p[pKey] === oldName ? { ...p, [pKey]: trimmedNew } : p);
-      persist(updatedProjects);
+      setProjects(prev => {
+        const list = prev || [];
+        const updatedProjects = list.map(p => p[pKey] === oldName ? { ...p, [pKey]: trimmedNew } : p);
+        persist(updatedProjects);
+        return updatedProjects;
+      });
     }
 
     try {
@@ -693,103 +907,192 @@ export default function App() {
         expenses: [],
         paymentMilestones: []
       };
-      const updated = [newProject, ...(projects || [])];
-      setProjects(updated);
-      try {
-        const lean = updated.map(p => sanitizeProjectForCloud(p));
-        localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(lean));
-        flashSave(true);
-      } catch (e) { flashSave(false); }
-      // مزامنة فورية ذرية للمشروع الجديد في السحابة
-      syncSingleProjectToCloud(activeCompanyId, id, newProject);
+      setProjects(prev => {
+        const updated = [newProject, ...(prev || [])];
+        try {
+          const lean = updated.map(p => sanitizeProjectForCloud(p));
+          localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(lean));
+          flashSave(true);
+        } catch (e) {
+          flashSave(false);
+        }
+        if (!isDemoUser && activeCompanyId !== 'comp_demo') {
+          syncSingleProjectToCloud(activeCompanyId, id, newProject).catch(err => {
+            console.warn("Cloud sync single project error:", err);
+            flashSave(false);
+          });
+        }
+        return updated;
+      });
       setActiveId(id);
       setView("detail");
     }
   }
 
   function deleteProject(id) {
-    const updated = (projects || []).filter((p) => p.id !== id);
-    setProjects(updated);
-    try {
-      localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(updated));
-      flashSave(true);
-    } catch (e) { flashSave(false); }
-    // حذف ذري للمشروع من السحابة دون المساس بالمشاريع الأخرى
-    deleteSingleProjectFromCloud(activeCompanyId, id);
+    setProjects(prev => {
+      const updated = (prev || []).filter((p) => p.id !== id);
+      try {
+        localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(updated));
+        flashSave(true); 
+      } catch (e) {
+        flashSave(false);
+      }
+      if (!isDemoUser && activeCompanyId !== 'comp_demo') {
+        deleteSingleProjectFromCloud(activeCompanyId, id).catch(err => {
+          console.warn("Cloud delete project error:", err);
+          flashSave(false);
+        });
+      }
+      return updated;
+    });
     backToList();
   }
 
   function updateProject(id, patch) {
     const now = new Date().toISOString();
-    const updated = (projects || []).map((p) => (p.id === id ? { ...p, ...patch, updatedAt: patch?.updatedAt || now } : p));
-    setProjects(updated);
-    // دائماً نظّف الصور والوسائط قبل الحفظ في localStorage لتجنب QuotaExceededError
-    try {
-      const lean = updated.map(p => sanitizeProjectForCloud(p));
-      localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(lean));
-      flashSave(true);
-    } catch (e) {
-      console.error("localStorage save error", e);
-      flashSave(false);
-    }
-    // إرسال المشروع المدمج كاملاً للسحابة (وليس patch فقط) لضمان تطابق كامل
-    const fullProject = updated.find(p => p.id === id);
-    if (fullProject) {
-      syncSingleProjectToCloud(activeCompanyId, id, fullProject);
-    } else {
-      syncSingleProjectToCloud(activeCompanyId, id, { ...patch, updatedAt: now });
-    }
+    setProjects(prev => {
+      const list = prev || [];
+      const updated = list.map((p) => (p.id === id ? { ...p, ...patch, updatedAt: patch?.updatedAt || now } : p));
+      try {
+        const lean = updated.map(p => sanitizeProjectForCloud(p));
+        localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(lean));
+        flashSave(true);
+      } catch (e) {
+        console.error("localStorage save error", e);
+        flashSave(false);
+      }
+      if (!isDemoUser && activeCompanyId !== 'comp_demo') {
+        const fullProject = updated.find(p => p.id === id);
+        syncSingleProjectToCloud(activeCompanyId, id, fullProject || { ...patch, updatedAt: now }).catch(err => {
+          console.warn("Cloud sync update project error:", err);
+          flashSave(false);
+        });
+      }
+      return updated;
+    });
   }
 
   const activeProject = projects && activeId ? projects.find((p) => p.id === activeId) : null;
 
-  // Handle Login State on Initial Load
+  // Handle Login State via Firebase Authentication & Custom Claims (Server-Enforced)
   useEffect(() => {
-    const saved = localStorage.getItem('isAdmin');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        
-        // إذا كان الحساب فرعياً (ليس سوبر أدمن) ودخول الحسابات الفرعية مقفل -> إنهاء الجلسة فوراً
-        if (parsed.role !== 'super_admin' && !parsed.isSuperAdmin && !isSubAccountsLoginAllowed()) {
-          localStorage.removeItem('isAdmin');
-          setCurrentUser(null);
-          setIsAuthenticated(false);
+    const unsubscribe = onAuthChange(async (firebaseUser) => {
+      if (firebaseUser) {
+        // إنهاء جلسات الزوار المجهولين إذا لم يكونوا في بوابة العميل أو استمارة الاستفسار
+        if (firebaseUser.isAnonymous) {
+          if (!portalRouteInfo && !intakeRouteInfo) {
+            logoutUser().catch(() => {});
+          }
+          setAuthLoading(false);
           return;
         }
 
-        setCurrentUser(parsed);
-        setIsAuthenticated(true);
-        const compId = parsed.companyId || getActiveTenantId() || 'comp_alain';
-        loadTenantWorkspace(compId);
+        try {
+          // قراءة الـ Custom Claims المشفرة من Google
+          const idTokenResult = await firebaseUser.getIdTokenResult();
+          const claims = idTokenResult.claims || {};
 
-        const requestedTab = getTabFromPath();
-        if (requestedTab) {
-          setTab(requestedTab);
-        } else if (parsed.role === 'super_admin') {
-          setTab('tenants');
-        } else {
-          const allowedTabs = NAV_PERMISSIONS[parsed.role] || ['overview'];
-          const initialTab = DEFAULT_TAB[parsed.role] || 'overview';
-          setTab(prev => (allowedTabs.includes(prev) && prev !== 'tenants' ? prev : initialTab));
+          // استخراج role و companyId حصرياً من claims (بدون backdoor لإيميل محدد)
+          const claimRole = claims.role;
+          const isSuperAdminClaim = claimRole === 'super_admin' || !!claims.isSuperAdmin;
+
+          // إذا كان المستخدم لا يملك claims مسجلة لشركة وليس سوبر أدمن -> إنهاء الجلسة ورفض الدخول
+          if (!isSuperAdminClaim && (!claimRole || !claims.companyId)) {
+            console.warn("Unassigned user attempted login without company claims:", firebaseUser.email);
+            await logoutUser();
+            setCurrentUser(null);
+            setIsAuthenticated(false);
+            setAuthLoading(false);
+            return;
+          }
+
+          const role = claimRole || (isSuperAdminClaim ? 'super_admin' : 'engineer');
+          const companyId = claims.companyId || (isSuperAdminClaim ? (getActiveTenantId() || 'comp_alain') : null);
+          const isSuperAdmin = role === 'super_admin' || isSuperAdminClaim;
+
+          // إذا كان الحساب فرعياً (ليس سوبر أدمن) ودخول الحسابات الفرعية مقفل سحابياً أو محلياً -> إنهاء الجلسة فوراً
+          if (role !== 'super_admin' && !isSuperAdmin) {
+            let allowed = isSubAccountsLoginAllowed();
+            try {
+              const cloudSettings = await fetchPlatformSettingsFromCloud();
+              if (cloudSettings && typeof cloudSettings.subAccountsAllowed === 'boolean') {
+                allowed = cloudSettings.subAccountsAllowed;
+              }
+            } catch (e) {}
+
+            if (!allowed) {
+              await logoutUser();
+              setCurrentUser(null);
+              setIsAuthenticated(false);
+              setAuthLoading(false);
+              return;
+            }
+          }
+
+          // جلب بيانات العرض للمستخدم مع تثبيت الصلاحيات والشركة من claims
+          let resolvedUser = {
+            id: firebaseUser.uid,
+            email: firebaseUser.email,
+            name: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مستخدم'),
+            role: role,
+            companyId: companyId,
+            isSuperAdmin: isSuperAdmin,
+          };
+
+          try {
+            const tenantRes = await resolveTenantUserByEmail(firebaseUser.email, firebaseUser.uid, claims);
+            if (tenantRes?.success && tenantRes.user) {
+              resolvedUser = {
+                ...tenantRes.user,
+                id: firebaseUser.uid,
+                email: firebaseUser.email,
+                role: role, // تأكيد مطلق: الصلاحية تأتي من الـ claims السحابية
+                companyId: companyId, // تأكيد مطلق: الشركة تأتي من الـ claims السحابية
+                isSuperAdmin: isSuperAdmin,
+              };
+            }
+          } catch (e) {
+            console.warn("Tenant resolution fallback warning:", e);
+          }
+
+          setCurrentUser(resolvedUser);
+          setIsAuthenticated(true);
+          setActiveTenantId(companyId);
+          // ملحوظة: تم حذف loadTenantWorkspace(companyId) المكررة هنا لمنع التحميل المزدوج والسباق؛ لأن useEffect([activeCompanyId, isAuthenticated]) يقوم بالتحميل تلقائياً
+
+          const requestedTab = getTabFromPath();
+          if (requestedTab) {
+            setTab(requestedTab);
+          } else if (role === 'super_admin' || isSuperAdmin) {
+            setTab('tenants');
+          } else {
+            const allowedTabs = NAV_PERMISSIONS[role] || ['overview'];
+            const initialTab = DEFAULT_TAB[role] || 'overview';
+            setTab(prev => (allowedTabs.includes(prev) && prev !== 'tenants' ? prev : initialTab));
+          }
+        } catch (err) {
+          console.error("Error evaluating Firebase auth token:", err);
+          setCurrentUser(null);
+          setIsAuthenticated(false);
+        } finally {
+          setAuthLoading(false);
         }
-      } catch (e) {
-        localStorage.removeItem('isAdmin');
+      } else {
+        if (!isDemoUser) {
+          setCurrentUser(null);
+          setIsAuthenticated(false);
+        }
+        setAuthLoading(false);
       }
-    }
-  }, []);
+    });
 
-  // Listen for browser forward/back buttons
-  useEffect(() => {
-    function handlePopState() {
-      const target = getTabFromPath();
-      if (target) setTab(target);
-    }
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [isDemoUser]);
 
-  // Sync browser URL with active tab
+  // Sync browser URL with active tab (استخدام pushState لتمكين التنقل بزر الرجوع بالمتصفح)
   useEffect(() => {
     if (!isAuthenticated) return;
     const pathMap = {
@@ -808,7 +1111,7 @@ export default function App() {
     };
     const targetPath = pathMap[tab] || '/overview';
     if (window.location.pathname !== targetPath) {
-      window.history.replaceState(null, '', targetPath);
+      window.history.pushState({ tab }, '', targetPath);
     }
   }, [tab, isAuthenticated]);
 
@@ -821,21 +1124,18 @@ export default function App() {
   }, [currentUser, tab]);
 
   const handleLogin = (userData, tenantData, isSuperAdmin) => {
-    const roleIsSuperAdmin = isSuperAdmin || userData.role === 'super_admin' || userData.isSuperAdmin;
-    const defaultTab = roleIsSuperAdmin ? 'tenants' : (DEFAULT_TAB[userData.role] || 'overview');
+    const roleIsSuperAdmin = isSuperAdmin || userData?.role === 'super_admin' || userData?.isSuperAdmin;
+    const defaultTab = roleIsSuperAdmin ? 'tenants' : (DEFAULT_TAB[userData?.role] || 'overview');
     
     setCurrentUser(userData);
     setIsAuthenticated(true);
     setTab(defaultTab);
     setView('list');
     setActiveId(null);
-    // حذف كلمة المرور قبل الحفظ في localStorage لأسباب أمنية
-    const { password: _pw, ...safeUser } = userData;
-    localStorage.setItem('isAdmin', JSON.stringify(safeUser));
 
-    const compId = tenantData?.id || userData.companyId || getActiveTenantId() || 'comp_alain';
+    const compId = tenantData?.id || userData?.companyId || getActiveTenantId() || 'comp_alain';
     setActiveTenantId(compId);
-    loadTenantWorkspace(compId);
+    // تم حذف استدعاء loadTenantWorkspace المزدوج هنا لأن تغيير activeCompanyId و isAuthenticated يُشغّل الـ Effect تلقائياً
   };
 
   const handleStartLiveDemo = () => {
@@ -844,20 +1144,46 @@ export default function App() {
       name: 'مهندس زائر (Demo Mode)',
       role: 'owner',
       isDemo: true,
-      companyId: 'comp_cairo',
+      companyId: 'comp_demo',
     };
     setCurrentUser(demoUser);
     setIsAuthenticated(true);
     setIsDemoUser(true);
-    setActiveTenantId('comp_cairo');
-    loadTenantWorkspace('comp_cairo');
+    setActiveTenantId('comp_demo');
+    // توليد مشاريع تجريبية محلية أوفلاين معزولة 100% دون أي مزامنة سحابية
+    const demoProjects = generateSeedProjects().map(p => ({ ...p, companyId: 'comp_demo' }));
+    setProjects(demoProjects);
+    setTeam({
+      engineers: ['م. أحمد تجريبي', 'م. سارة تجريبية'],
+      accountants: ['أ. محمد تجريبي'],
+      techOffice: ['م. محمود تجريبي'],
+      customerService: [],
+    });
+    setLeads([]);
+    setCompanySettings({
+      companyName: 'شركة التجربة الحية (Demo)',
+      companySubtitle: 'نسخة تجريبية معزولة تماماً أوفلاين',
+      currency: 'ج.م',
+      primaryColor: '#1877F2',
+      accentColor: '#166FE5',
+    });
     setTab('overview');
     setView('list');
     setActiveId(null);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('isAdmin');
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+    } catch (e) {
+      console.error('Logout error:', e);
+    }
+    // مسح أمني شامل لكافة مفاتيح الشركات وقواعد البيانات المحلية لمنع التسريب على الأجهزة المشتركة
+    try {
+      Object.keys(localStorage)
+        .filter(k => k.startsWith('tenant_') || k.startsWith('db-') || k === 'isAdmin' || k === 'active_tenant_id')
+        .forEach(k => localStorage.removeItem(k));
+    } catch (e) {}
     setCurrentUser(null);
     setIsAuthenticated(false);
     setIsDemoUser(false);
@@ -869,7 +1195,7 @@ export default function App() {
   const handleSwitchToCompany = (companyId) => {
     setActiveTenantId(companyId);
     setCurrentUser(prev => prev ? { ...prev, companyId } : { role: 'owner', companyId });
-    loadTenantWorkspace(companyId);
+    // تم حذف استدعاء loadTenantWorkspace المزدوج هنا؛ لأن تغيير activeCompanyId يُشغّل الـ Effect تلقائياً
     setTab('overview');
     setView('list');
   };
@@ -901,25 +1227,83 @@ export default function App() {
 
     if (publicPortalProject) {
       return (
-        <React.Suspense fallback={<PageLoadingFallback />}>
-          <ClientPortal
-            project={publicPortalProject}
-            companySettings={publicPortalCompanySettings || companySettings}
-            userRole="client"
-            currentUser={{ role: 'client', name: publicPortalProject.client || 'العميل' }}
-            onBack={() => {
-              setPortalRouteInfo(null);
-              window.history.pushState(null, '', '/');
-            }}
-            onUpdateProject={async (id, patch) => {
-              setPublicPortalProject(prev => prev ? { ...prev, ...patch } : prev);
-              const cId = portalRouteInfo.companyId || publicPortalProject.companyId || activeCompanyId;
-              try {
-                await syncSingleProjectToCloud(cId, id, patch);
-              } catch (e) {}
-            }}
-          />
-        </React.Suspense>
+        <ErrorBoundary title="تعذر تحميل بوابة العميل">
+          <React.Suspense fallback={<PageLoadingFallback />}>
+            <ClientPortal
+              project={publicPortalProject}
+              companySettings={publicPortalCompanySettings || companySettings}
+              userRole="client"
+              currentUser={{ role: 'client', name: publicPortalProject.client || 'العميل' }}
+              onBack={() => {
+                setPortalRouteInfo(null);
+                window.history.pushState(null, '', '/');
+              }}
+              onUpdateProject={async (id, patch) => {
+                const previous = publicPortalProject;
+                // تحديث متفائل لحالة العرض بمتصفح العميل
+                setPublicPortalProject(prev => prev ? { ...prev, ...patch } : prev);
+                try {
+                  const token = portalRouteInfo?.token || publicPortalProject?.clientPortalToken || id;
+                  const res = await submitClientPortalApproval(token, patch);
+                  if (res && res.error) {
+                    throw new Error(res.error);
+                  }
+                } catch (err) {
+                  console.error('[ClientPortal] Error submitting portal approval:', err);
+                  alert('تعذر حفظ الاعتماد والتوقيع سحابياً بسبب انقطاع الاتصال. يرجى إعادة المحاولة.');
+                  setPublicPortalProject(previous);
+                }
+              }}
+            />
+          </React.Suspense>
+        </ErrorBoundary>
+      );
+    } else {
+      // مشروع غير صالح أو محذوف أو الرابط منتهي
+      return (
+        <div className="app-root" style={{ alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#0F172A", padding: 24 }}>
+          <div style={{
+            background: "rgba(30, 41, 59, 0.75)",
+            backdropFilter: "blur(16px)",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+            borderRadius: 20,
+            padding: "40px 32px",
+            maxWidth: 480,
+            width: "100%",
+            textAlign: "center",
+            boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
+            fontFamily: "'Cairo', sans-serif"
+          }}>
+            <div style={{ fontSize: 52, marginBottom: 16 }}>🔍</div>
+            <h2 style={{ color: "#F8FAFC", fontSize: 22, fontWeight: 800, marginBottom: 12 }}>
+              رابط المشروع غير صالح أو تم إيقافه
+            </h2>
+            <p style={{ color: "#94A3B8", fontSize: 14, lineHeight: 1.7, marginBottom: 28 }}>
+              تعذر العثور على بيانات المشروع المرتبطة بهذا الرابط. قد يكون المعرف غير صحيح أو تم إيقاف مشاركة الرابط من قِبل إدارة الشركة.
+            </p>
+            <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+              <button
+                onClick={() => {
+                  setPortalRouteInfo(null);
+                  window.history.pushState(null, '', '/');
+                }}
+                style={{
+                  background: "#1877F2",
+                  color: "#FFFFFF",
+                  border: "none",
+                  padding: "12px 24px",
+                  borderRadius: 12,
+                  fontWeight: 700,
+                  fontSize: 14,
+                  cursor: "pointer",
+                  transition: "background 0.2s"
+                }}
+              >
+                العودة للصفحة الرئيسية
+              </button>
+            </div>
+          </div>
+        </div>
       );
     }
   }
@@ -939,34 +1323,53 @@ export default function App() {
     );
   }
 
+  // ─── 0.2 AUTH CHECKING LOADING STATE ───
+  if (authLoading && !portalRouteInfo && !intakeRouteInfo) {
+    return (
+      <div className="app-root" style={{ alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#0F172A" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+          <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid rgba(255,255,255,0.15)", borderTopColor: "#10B981", animation: "spin 0.8s linear infinite" }}></div>
+          <div style={{ color: "#94A3B8", fontFamily: "Cairo", fontSize: 14, fontWeight: 600 }}>
+            جاري التحقق من الجلسة والصلاحيات... 🔐
+          </div>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     if (!isLoginMode) {
       return (
+        <AdminProvider value={adminContextValue}>
+          <React.Suspense fallback={<PageLoadingFallback />}>
+            <LandingPage
+              onGoToLogin={(targetMode = 'login') => {
+                setLoginInitialMode(targetMode);
+                setIsLoginMode(true);
+                window.history.replaceState(null, '', targetMode === 'register' ? '/register' : '/login');
+              }}
+              onStartLiveDemo={handleStartLiveDemo}
+            />
+          </React.Suspense>
+        </AdminProvider>
+      );
+    }
+    return (
+      <AdminProvider value={adminContextValue}>
         <React.Suspense fallback={<PageLoadingFallback />}>
-          <LandingPage
-            onGoToLogin={(targetMode = 'login') => {
-              setLoginInitialMode(targetMode);
-              setIsLoginMode(true);
-              window.history.replaceState(null, '', targetMode === 'register' ? '/register' : '/login');
+          <Login
+            onLogin={handleLogin}
+            companySettings={companySettings}
+            initialMode={loginInitialMode}
+            onBackToLanding={() => {
+              setIsLoginMode(false);
+              window.history.replaceState(null, '', '/landing');
             }}
             onStartLiveDemo={handleStartLiveDemo}
           />
         </React.Suspense>
-      );
-    }
-    return (
-      <React.Suspense fallback={<PageLoadingFallback />}>
-        <Login
-          onLogin={handleLogin}
-          companySettings={companySettings}
-          initialMode={loginInitialMode}
-          onBackToLanding={() => {
-            setIsLoginMode(false);
-            window.history.replaceState(null, '', '/landing');
-          }}
-          onStartLiveDemo={handleStartLiveDemo}
-        />
-      </React.Suspense>
+      </AdminProvider>
     );
   }
 
@@ -974,16 +1377,18 @@ export default function App() {
   if (activeClientPortalProjectId && projects) {
     const portalProject = projects.find(p => p.id === activeClientPortalProjectId) || projects[0];
     return (
-      <React.Suspense fallback={<PageLoadingFallback />}>
-        <ClientPortal
-          project={portalProject}
-          companySettings={companySettings}
-          onBack={() => setActiveClientPortalProjectId(null)}
-          onUpdateProject={(id, patch) => updateProject(id, patch)}
-          userRole={userRole}
-          currentUser={currentUser}
-        />
-      </React.Suspense>
+      <AdminProvider value={adminContextValue}>
+        <React.Suspense fallback={<PageLoadingFallback />}>
+          <ClientPortal
+            project={portalProject}
+            companySettings={companySettings}
+            onBack={() => setActiveClientPortalProjectId(null)}
+            onUpdateProject={(id, patch) => updateProject(id, patch)}
+            userRole={userRole}
+            currentUser={currentUser}
+          />
+        </React.Suspense>
+      </AdminProvider>
     );
   }
 
@@ -1000,7 +1405,8 @@ export default function App() {
   }
 
   return (
-    <div dir="rtl" className="app-root" style={{ display: 'flex', flexDirection: 'column' }}>
+    <AdminProvider value={adminContextValue}>
+      <div dir="rtl" className="app-root" style={{ display: 'flex', flexDirection: 'column' }}>
 
 
 
@@ -1198,132 +1604,155 @@ export default function App() {
         </div>
 
         <div className="content tab-fade">
-          <React.Suspense fallback={<PageLoadingFallback />}>
-            {tab === "tenants" && currentUser?.role === 'super_admin' && (
-              <SuperAdminDashboard onSwitchToCompany={handleSwitchToCompany} currentUser={currentUser} />
-            )}
+          <ErrorBoundary title="تعذر تحميل محتوى هذه الصفحة">
+            <React.Suspense fallback={<PageLoadingFallback />}>
+              {tab === "tenants" && currentUser?.role === 'super_admin' && (
+                <SuperAdminDashboard onSwitchToCompany={handleSwitchToCompany} currentUser={currentUser} />
+              )}
 
+              {tab === "overview" && (
+                <div>
+                  <React.Suspense fallback={null}>
+                    <QuickWinChecklist onNavigate={(t) => setTab(t)} />
+                  </React.Suspense>
+                  <Overview projects={displayedProjects} />
+                </div>
+              )}
 
-            {tab === "overview" && (
-              <div>
-                <React.Suspense fallback={null}>
-                  <QuickWinChecklist onNavigate={(t) => setTab(t)} />
-                </React.Suspense>
-                <Overview projects={displayedProjects} />
-              </div>
-            )}
-
-            {tab === "crm" && (
-
-              <CrmPipeline
-                leads={leads || []}
-                onAddLead={addLead}
-                onUpdateLead={updateLead}
-                onDeleteLead={deleteLead}
-                onConvertToProject={(projDraft) => {
-                  setFormInitial(projDraft);
-                  setTab("projects");
-                  setView("form");
-                }}
-                companySettings={companySettings}
-                userRole={userRole}
-                activeCompanyId={activeCompanyId}
-              />
-            )}
-
-            {tab === "finance" && can(currentUser || userRole, 'finance_view') && (
-              <CompanyFinance projects={projects} activeCompanyId={activeCompanyId} />
-            )}
-
-            {tab === "team" && can(currentUser || userRole, 'team_view') && (
-              <TeamPerformance
-                projects={projects}
-                team={team}
-                onAddMember={addMember}
-                onUpdateMember={updateMember}
-                onRemoveMember={removeMember}
-              />
-            )}
-
-            {tab === "suppliers" && (
-              <SuppliersTab
-                projects={projects}
-                companySettings={companySettings}
-                userRole={userRole}
-                currentUser={currentUser}
-                activeCompanyId={activeCompanyId}
-              />
-            )}
-
-            {tab === "quotations" && (
-              <QuotationBuilder
-                onConvertToProject={(projDraft) => {
-                  setFormInitial(projDraft);
-                  setTab("projects");
-                  setView("form");
-                }}
-              />
-            )}
-
-            {(tab === "settings" || tab === "automations") && can(currentUser || userRole, 'company_settings_view') && (
-              <CompanySettings
-                companySettings={companySettings}
-                onCompanySettingsChange={(updated) => {
-                  setCompanySettings(updated);
-                  applyCompanyBranding(updated);
-                  if (updated?.currency) {
-                    setGlobalCurrency(updated.currency);
-                  }
-                  syncSettingsToCloud(activeCompanyId, updated).catch(e => console.warn("Cloud sync error for company settings:", e));
-                }}
-                team={team}
-                onTeamChange={(nextTeam) => {
-                  persistTeam(nextTeam);
-                }}
-                currentUser={currentUser}
-                activeCompanyId={activeCompanyId}
-                projects={projects || []}
-                leads={leads || []}
-                userRole={userRole}
-                onNavigateToProject={(projId, subTab) => openDetail(projId, subTab)}
-                onNavigateToTab={handleNavigateToTab}
-                activeSubTab={tab === 'automations' ? 'automations' : settingsSubTab}
-                onSubTabChange={(sub) => {
-                  setSettingsSubTab(sub);
-                  if (tab !== 'settings') setTab('settings');
-                }}
-              />
-            )}
-
-            {tab === "projects" && view === "list" && (
-              <ProjectsTab projects={displayedProjects} onOpenDetail={openDetail} onOpenEdit={openEdit} onDelete={deleteProject} userRole={userRole} />
-            )}
-            {tab === "projects" && view === "detail" && (
-              activeProject ? (
-                <ProjectDetail
-                  project={activeProject}
-                  team={team}
+              {tab === "crm" && (
+                <CrmPipeline
+                  leads={leads || []}
+                  onAddLead={addLead}
+                  onUpdateLead={updateLead}
+                  onDeleteLead={deleteLead}
+                  onConvertToProject={(projDraft) => {
+                    setFormInitial(projDraft);
+                    setTab("projects");
+                    setView("form");
+                  }}
+                  companySettings={companySettings}
                   userRole={userRole}
-                  onBack={backToList}
-                  onEdit={() => openEdit(activeProject)}
-                  onDelete={() => deleteProject(activeProject.id)}
-                  onUpdate={(patch) => updateProject(activeProject.id, patch)}
-                  initialSub={initialProjectSub}
+                  activeCompanyId={activeCompanyId}
+                />
+              )}
+
+              {tab === "finance" && can(currentUser || userRole, 'finance_view') && (
+                <CompanyFinance projects={projects} activeCompanyId={activeCompanyId} />
+              )}
+
+              {tab === "team" && can(currentUser || userRole, 'team_view') && (
+                <TeamPerformance
+                  projects={projects}
+                  team={team}
+                  onAddMember={addMember}
+                  onUpdateMember={updateMember}
+                  onRemoveMember={removeMember}
+                />
+              )}
+
+              {tab === "subcontractors" && (
+                <SubcontractorsTab
+                  projects={displayedProjects}
+                  userRole={userRole}
+                  companySettings={companySettings}
                   currentUser={currentUser}
                   activeCompanyId={activeCompanyId}
-                  onOpenClientPortal={(projId) => setActiveClientPortalProjectId(projId)}
                 />
-              ) : (
-                <div className="panel" style={{ textAlign: "center", padding: 40 }}>
-                  <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>لم يتم العثور على الموقع المطلوب</div>
-                  <button className="btn btn-primary" onClick={backToList}>العودة إلى قائمة المواقع</button>
-                </div>
-              )
-            )}
-            {tab === "projects" && view === "form" && (
-              <ProjectForm initial={formInitial} team={team} areas={allAreas} onSave={saveProject} onCancel={() => setView(formInitial ? "detail" : "list")} />
-            )}
-          </React.Suspense>
+              )}
+
+              {tab === "suppliers" && (
+                <SuppliersTab
+                  projects={projects}
+                  companySettings={companySettings}
+                  userRole={userRole}
+                  currentUser={currentUser}
+                  activeCompanyId={activeCompanyId}
+                />
+              )}
+
+              {tab === "quotations" && (
+                <QuotationBuilder
+                  activeCompanyId={activeCompanyId}
+                  onConvertToProject={(projDraft) => {
+                    setFormInitial(projDraft);
+                    setTab("projects");
+                    setView("form");
+                  }}
+                />
+              )}
+
+              {tab === "specs" && (
+                <SpecsAssistant
+                  userRole={userRole}
+                />
+              )}
+
+              {(tab === "settings" || tab === "automations") && can(currentUser || userRole, 'company_settings_view') && (
+                <CompanySettings
+                  companySettings={companySettings}
+                  onCompanySettingsChange={(updated) => {
+                    setCompanySettings(updated);
+                    applyCompanyBranding(updated);
+                    if (updated?.currency) {
+                      setGlobalCurrency(updated.currency);
+                    }
+                    syncSettingsToCloud(activeCompanyId, updated).catch(e => console.warn("Cloud sync error for company settings:", e));
+                  }}
+                  team={team}
+                  onTeamChange={(nextTeam) => {
+                    persistTeam(nextTeam);
+                  }}
+                  currentUser={currentUser}
+                  activeCompanyId={activeCompanyId}
+                  projects={projects || []}
+                  leads={leads || []}
+                  userRole={userRole}
+                  onNavigateToProject={(projId, subTab) => openDetail(projId, subTab)}
+                  onNavigateToTab={handleNavigateToTab}
+                  activeSubTab={tab === 'automations' ? 'automations' : settingsSubTab}
+                  onSubTabChange={(sub) => {
+                    setSettingsSubTab(sub);
+                    if (tab !== 'settings') setTab('settings');
+                  }}
+                />
+              )}
+
+              {tab === "projects" && view === "list" && (
+                <ProjectsTab projects={displayedProjects} onOpenDetail={openDetail} onOpenEdit={openEdit} onDelete={deleteProject} userRole={userRole} />
+              )}
+              {tab === "projects" && view === "detail" && (
+                activeProject ? (
+                  <ProjectDetail
+                    project={activeProject}
+                    team={team}
+                    userRole={userRole}
+                    onBack={backToList}
+                    onEdit={() => openEdit(activeProject)}
+                    onDelete={() => deleteProject(activeProject.id)}
+                    onUpdate={(idOrPatch, maybePatch) => {
+                      if (maybePatch) {
+                        updateProject(idOrPatch, maybePatch);
+                      } else {
+                        updateProject(activeProject.id, idOrPatch);
+                      }
+                    }}
+                    initialSub={initialProjectSub}
+                    currentUser={currentUser}
+                    activeCompanyId={activeCompanyId}
+                    onOpenClientPortal={(tokenOrId) => window.open('/portal/' + tokenOrId, '_blank')}
+                  />
+                ) : (
+                  <div className="panel" style={{ textAlign: "center", padding: 40 }}>
+                    <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>لم يتم العثور على الموقع المطلوب</div>
+                    <button className="btn btn-primary" onClick={backToList}>العودة إلى قائمة المواقع</button>
+                  </div>
+                )
+              )}
+              {tab === "projects" && view === "form" && (
+                <ProjectForm initial={formInitial} team={team} areas={allAreas} onSave={saveProject} onCancel={() => setView(formInitial ? "detail" : "list")} />
+              )}
+            </React.Suspense>
+          </ErrorBoundary>
         </div>
       </div>
 
@@ -1343,5 +1772,6 @@ export default function App() {
       {/* ─── Floating WhatsApp Support & Sales Widget ─── */}
       <WhatsAppSupportWidget companySettings={companySettings} />
     </div>
+    </AdminProvider>
   );
 }

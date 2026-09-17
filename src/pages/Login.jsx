@@ -5,9 +5,14 @@ import {
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import {
-  authenticateTenantUserAsync,
-  authenticateTenantUser,
-  registerNewTenant
+  loginWithEmail,
+  sendPasswordReset,
+  registerWithEmail,
+  getUserClaims,
+} from "../services/auth";
+import {
+  resolveTenantUserByEmail,
+  registerNewTenant,
 } from "../services/tenantsManager";
 
 export default function Login({
@@ -34,6 +39,8 @@ export default function Login({
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(null);
 
   // Register Fields
   const [companyTitle, setCompanyTitle] = useState("");
@@ -43,33 +50,72 @@ export default function Login({
   const handleLogin = async (e) => {
     e.preventDefault();
     setError(null);
+    setResetSuccess(null);
     setLoading(true);
 
     try {
-      const authResult = await authenticateTenantUserAsync(email, password);
+      // 1. المصادقة عبر Firebase Authentication الرسمي
+      const authResult = await loginWithEmail(email, password);
       if (authResult.success) {
-        onLogin(authResult.user, authResult.tenant, authResult.isSuperAdmin);
+        // قراءة الـ Custom Claims المشفرة من Google
+        const claims = await getUserClaims(authResult.user);
+        // 2. تحديد بيانات الشركة والمستخدم والصلاحيات
+        const tenantResult = await resolveTenantUserByEmail(email, authResult.user?.uid, claims);
+        if (tenantResult.success) {
+          onLogin(tenantResult.user, tenantResult.tenant, tenantResult.isSuperAdmin);
+        } else {
+          setError(tenantResult.error || "تعذر تحديد بيانات الشركة المرتبطة بهذا الحساب.");
+        }
       } else {
         setError(authResult.error || "البريد الإلكتروني أو كلمة المرور غير صحيحة.");
       }
     } catch (err) {
-      const localResult = authenticateTenantUser(email, password);
-      if (localResult.success) {
-        onLogin(localResult.user, localResult.tenant, localResult.isSuperAdmin);
-      } else {
-        setError(localResult.error || "البريد الإلكتروني أو كلمة المرور غير صحيحة.");
-      }
+      console.error("Login unexpected error:", err);
+      setError("حدث خطأ أثناء الاتصال بنظام المصادقة. يرجى المحاولة لاحقاً.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email || !email.trim()) {
+      setError("يرجى إدخال بريدك الإلكتروني أولاً في الحقل المخصص، ثم الضغط على 'نسيت كلمة المرور؟'.");
+      return;
+    }
+    setError(null);
+    setResetSuccess(null);
+    setResetLoading(true);
+
+    try {
+      const res = await sendPasswordReset(email);
+      if (res.success) {
+        setResetSuccess(res.message);
+      } else {
+        setError(res.error || "تعذر إرسال رابط إعادة تعيين كلمة المرور.");
+      }
+    } catch (err) {
+      setError("حدث خطأ أثناء طلب إعادة تعيين كلمة المرور.");
+    } finally {
+      setResetLoading(false);
     }
   };
 
   const handleRegister = async (e) => {
     e.preventDefault();
     setError(null);
+    setResetSuccess(null);
     setLoading(true);
 
     try {
+      // 1. إنشاء الحساب في Firebase Auth الرسمي
+      const authRes = await registerWithEmail(email, password);
+      if (!authRes.success && authRes.code !== 'auth/email-already-in-use') {
+        setError(authRes.error || 'تعذر إنشاء الحساب في نظام المصادقة.');
+        setLoading(false);
+        return;
+      }
+
+      // 2. تسجيل بيانات الشركة والمستخدم في المنصة
       const res = await registerNewTenant({
         companyName: companyTitle,
         adminName: adminName,
@@ -344,8 +390,29 @@ export default function Login({
                 border: "1px solid rgba(239,68,68,0.2)",
               }}
             >
-              <AlertTriangle size={15} />
+              <AlertTriangle size={15} style={{ flexShrink: 0 }} />
               <span>{error}</span>
+            </div>
+          )}
+
+          {/* رسالة نجاح إعادة تعيين كلمة المرور إن وجدت */}
+          {resetSuccess && (
+            <div
+              style={{
+                background: "rgba(16,185,129,0.1)",
+                color: "#10B981",
+                padding: "10px 14px",
+                borderRadius: 10,
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+                fontSize: 13,
+                marginBottom: 18,
+                border: "1px solid rgba(16,185,129,0.25)",
+              }}
+            >
+              <CheckCircle2 size={16} style={{ flexShrink: 0 }} />
+              <span>{resetSuccess}</span>
             </div>
           )}
 
@@ -378,9 +445,29 @@ export default function Login({
 
               {/* كلمة المرور */}
               <div>
-                <label style={{ display: "block", marginBottom: 7, color: "var(--muted)", fontSize: 13, fontWeight: 700 }}>
-                  كلمة المرور
-                </label>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
+                  <label style={{ margin: 0, color: "var(--muted)", fontSize: 13, fontWeight: 700 }}>
+                    كلمة المرور
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    disabled={resetLoading}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: primaryColor,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: resetLoading ? "wait" : "pointer",
+                      padding: 0,
+                      textDecoration: "underline",
+                      fontFamily: "'Cairo', sans-serif",
+                    }}
+                  >
+                    {resetLoading ? "جاري الإرسال..." : "نسيت كلمة المرور؟"}
+                  </button>
+                </div>
                 <div style={{ position: "relative" }}>
                   <Lock size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
                   <input

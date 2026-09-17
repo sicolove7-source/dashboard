@@ -4,6 +4,11 @@ import {
   Building2, User, Phone, CheckCircle2, ArrowRight, Download, Sparkles, Copy, RefreshCw, Layers
 } from 'lucide-react';
 import { fmtDate, getGlobalCurrency } from '../utils/helpers';
+import {
+  syncQuotationsToCloud,
+  subscribeToCloudCompanyField,
+} from '../services/cloudSync';
+import { getActiveTenantId } from '../services/tenantsManager';
 
 const STORE_QUOTATIONS = 'db-quotations-v1';
 
@@ -34,15 +39,28 @@ function loadQuotations() {
   } catch { return []; }
 }
 
-function saveQuotations(data) {
+function saveQuotations(data, companyId) {
   try { localStorage.setItem(STORE_QUOTATIONS, JSON.stringify(data)); } catch {}
+  const cId = companyId || getActiveTenantId() || 'comp_alain';
+  syncQuotationsToCloud(cId, data);
 }
 
-export default function QuotationBuilder({ onConvertToProject }) {
+export default function QuotationBuilder({ onConvertToProject, activeCompanyId }) {
   const curr = getGlobalCurrency();
   const [quotations, setQuotations] = useState(loadQuotations);
   const [activeView, setActiveView] = useState('list'); // 'list' | 'editor' | 'print'
   const [activeQuotation, setActiveQuotation] = useState(null);
+
+  useEffect(() => {
+    const cId = activeCompanyId || getActiveTenantId() || 'comp_alain';
+    const unsub = subscribeToCloudCompanyField(cId, 'quotations', (cloudQuotations) => {
+      if (Array.isArray(cloudQuotations)) {
+        setQuotations(cloudQuotations);
+        try { localStorage.setItem(STORE_QUOTATIONS, JSON.stringify(cloudQuotations)); } catch {}
+      }
+    });
+    return () => unsub();
+  }, [activeCompanyId]);
 
   // Form State
   const [form, setForm] = useState({
@@ -155,7 +173,7 @@ export default function QuotationBuilder({ onConvertToProject }) {
       nextList = [qData, ...quotations];
     }
     setQuotations(nextList);
-    saveQuotations(nextList);
+    saveQuotations(nextList, activeCompanyId);
     setActiveQuotation(qData);
     alert('تم حفظ المقايسة بنجاح!');
   };
@@ -164,7 +182,7 @@ export default function QuotationBuilder({ onConvertToProject }) {
     if (window.confirm('هل أنت تأكد من حذف هذه المقايسة؟')) {
       const nextList = quotations.filter(q => q.id !== id);
       setQuotations(nextList);
-      saveQuotations(nextList);
+      saveQuotations(nextList, activeCompanyId);
       if (activeQuotation?.id === id) {
         setActiveView('list');
       }

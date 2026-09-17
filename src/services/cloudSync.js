@@ -86,7 +86,7 @@ export async function syncCompanyDataToCloud(companyId, partialData) {
   try {
     const docRef = doc(db, 'companies', cId);
     await setDoc(docRef, {
-      ...partialData,
+      ...stripUndefined(partialData),
       companyId: cId,
       updatedAt: new Date().toISOString(),
     }, { merge: true });
@@ -611,6 +611,59 @@ export function subscribeToCloudLeads(companyId, onUpdate) {
  */
 export async function syncCompanyUsersToCloud(companyId, users) {
   return syncCompanyDataToCloud(companyId, { users });
+}
+
+/**
+ * حفظ ومزامنة مصاريف الشركة في السحابة
+ */
+export async function syncExpensesToCloud(companyId, expenses) {
+  return syncCompanyDataToCloud(companyId, { expenses });
+}
+
+/**
+ * حفظ ومزامنة العمالة في السحابة
+ */
+export async function syncWorkersToCloud(companyId, workers) {
+  return syncCompanyDataToCloud(companyId, { workers });
+}
+
+/**
+ * حفظ ومزامنة الموردين في السحابة
+ */
+export async function syncSuppliersToCloud(companyId, suppliers) {
+  return syncCompanyDataToCloud(companyId, { suppliers });
+}
+
+/**
+ * حفظ ومزامنة عروض الأسعار في السحابة
+ */
+export async function syncQuotationsToCloud(companyId, quotations) {
+  return syncCompanyDataToCloud(companyId, { quotations });
+}
+
+/**
+ * الاستماع الفوري والتحديث اللحظي لأي حقل محدد في وثيقة الشركة
+ */
+export function subscribeToCloudCompanyField(companyId, fieldName, onUpdate) {
+  const cId = cleanCompanyId(companyId);
+  if (!cId || typeof onUpdate !== 'function') return () => {};
+  try {
+    const docRef = doc(db, 'companies', cId);
+    const unsub = onSnapshot(docRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (Array.isArray(data?.[fieldName])) {
+          onUpdate(data[fieldName]);
+        }
+      }
+    }, (err) => {
+      console.warn(`Cloud snapshot error (${fieldName}):`, err.message);
+    });
+    return unsub;
+  } catch (e) {
+    console.warn(`Could not subscribe to cloud ${fieldName}:`, e);
+    return () => {};
+  }
 }
 
 /**

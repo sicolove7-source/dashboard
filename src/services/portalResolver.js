@@ -2,23 +2,24 @@
  * ===================================================================
  * خدمة محلل وتوجيه بوابة العميل العامة — Public Client Portal Resolver
  * ===================================================================
- * تمكّن العميل من فتح رابط مشروعه ومتابعته من أي متصفح، جهاز، أو نافذة
- * دون الحاجة لتسجيل الدخول أو امتلاك حساب على منصة المقاولات.
+ * تعتمد على نمط (Token = Document ID) عبر مجموعة portal_shares/{token}.
+ * قراءة مباشرة واحدة بدون أي مسح للشركات، وكتابة مؤمنة عبر Cloud Functions.
  */
 
-import { db } from '../firebase';
+import { db, functions } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { getTenantData, loadAllTenants } from './tenantsManager';
 import { loadCompanySettings } from '../utils/branding';
 
 /**
  * فحص وتحليل رابط الـ URL لمعرفة ما إذا كان الزائر يفتح بوابة عميل
  * يدعم جميع صيغ الروابط:
- * 1. /portal/:projectId
- * 2. /portal/:companyId/:projectId
- * 3. /portal/:projectId?c=:companyId
- * 4. #/portal/:projectId
- * 5. ?portal=:projectId
+ * 1. /portal/:token
+ * 2. /portal/:companyId/:token
+ * 3. /portal/:id?t=:token
+ * 4. #/portal/:token
+ * 5. ?portal=:token
  */
 export function parseClientPortalFromUrl() {
   if (typeof window === 'undefined') return null;
@@ -27,8 +28,9 @@ export function parseClientPortalFromUrl() {
     const pathname = window.location.pathname;
     const hash = window.location.hash;
     const searchParams = new URLSearchParams(window.location.search);
+    const queryToken = searchParams.get('t') || searchParams.get('token') || null;
 
-    // 1. فحص المسار العادي: /portal/:id أو /portal/:companyId/:id
+    // 1. فحص المسار العادي: /portal/:token أو /portal/:companyId/:token
     const cleanPath = pathname.replace(/^\/+|\/+$/g, '');
     const pathParts = cleanPath.split('/');
 
@@ -36,16 +38,18 @@ export function parseClientPortalFromUrl() {
       if (pathParts.length >= 3) {
         return {
           companyId: pathParts[1],
-          projectId: decodeURIComponent(pathParts[2])
+          projectId: decodeURIComponent(pathParts[2]),
+          token: queryToken || decodeURIComponent(pathParts[2])
         };
       }
       return {
         companyId: searchParams.get('c') || searchParams.get('company') || null,
-        projectId: decodeURIComponent(pathParts[1])
+        projectId: decodeURIComponent(pathParts[1]),
+        token: queryToken || decodeURIComponent(pathParts[1])
       };
     }
 
-    // 2. فحص الـ Hash: #/portal/:id أو #portal/:id
+    // 2. فحص الـ Hash: #/portal/:token أو #portal/:token
     if (hash) {
       const cleanHash = hash.replace(/^#\/?/, '').replace(/\/+$/, '');
       const hashParts = cleanHash.split('/');
@@ -53,21 +57,25 @@ export function parseClientPortalFromUrl() {
         if (hashParts.length >= 3) {
           return {
             companyId: hashParts[1],
-            projectId: decodeURIComponent(hashParts[2])
+            projectId: decodeURIComponent(hashParts[2]),
+            token: queryToken || decodeURIComponent(hashParts[2])
           };
         }
         return {
           companyId: searchParams.get('c') || searchParams.get('company') || null,
-          projectId: decodeURIComponent(hashParts[1])
+          projectId: decodeURIComponent(hashParts[1]),
+          token: queryToken || decodeURIComponent(hashParts[1])
         };
       }
     }
 
-    // 3. فحص المعاملات المباشرة: ?portal=:projectId
+    // 3. فحص المعاملات المباشرة: ?portal=:token
     if (searchParams.has('portal')) {
+      const pVal = decodeURIComponent(searchParams.get('portal'));
       return {
         companyId: searchParams.get('c') || searchParams.get('company') || null,
-        projectId: decodeURIComponent(searchParams.get('portal'))
+        projectId: pVal,
+        token: queryToken || pVal
       };
     }
   } catch (e) {
@@ -78,208 +86,160 @@ export function parseClientPortalFromUrl() {
 }
 
 /**
- * جلب إعدادات وهوية الشركة سحابياً من Firebase
+ * تنقية بيانات المشروع لبوابة العميل لإسقاط أي بيانات داخلية غير مخصصة للعميل (Projection)
  */
-async function fetchCompanySettingsCloud(companyId) {
-  try {
-    const companyDocRef = doc(db, 'companies', companyId);
-    const cSnap = await getDoc(companyDocRef);
-    if (cSnap.exists() && cSnap.data()?.settings) {
-      return cSnap.data().settings;
-    }
-    const tDocRef = doc(db, 'platform_metadata', 'tenants');
-    const tSnap = await getDoc(tDocRef);
-    if (tSnap.exists() && Array.isArray(tSnap.data()?.list)) {
-      const tenant = tSnap.data().list.find(t => t.id === companyId);
-      if (tenant) {
-        return {
-          companyName: tenant.name,
-          companySubtitle: tenant.subtitle,
-          city: tenant.city,
-          country: tenant.country,
-          currency: tenant.currency || 'ج.م',
-          primaryColor: tenant.primaryColor || '#1877F2',
-          accentColor: tenant.accentColor || '#166FE5',
-          companyLogo: tenant.logo || null,
-        };
-      }
-    }
-  } catch (err) {}
-  return loadCompanySettings(companyId);
+export function sanitizeProjectForClientPortal(rawProject) {
+  if (!rawProject) return null;
+  const {
+    expenses,        // إسقاط المصروفات والتكاليف الداخلية للمقاول
+    subcontractors,  // إسقاط عقود الباطن الداخلية وهوامش الأرباح
+    resources,       // إسقاط سجلات العمالة وتكاليف المعدات
+    ...clientSafe
+  } = rawProject;
+
+  return {
+    ...clientSafe,
+    id: String(rawProject.id || rawProject.projectId || ''),
+    projectId: String(rawProject.projectId || rawProject.id || ''),
+    name: rawProject.name || 'مشروع بدون اسم',
+    client: rawProject.client || 'عميلنا العزيز',
+    progress: Number(rawProject.progress || 0),
+    status: rawProject.status || 'active',
+    budget: Number(rawProject.budget || rawProject.contractValue || 0),
+    contractValue: Number(rawProject.contractValue || rawProject.budget || 0),
+    clientPortalEnabled: rawProject.clientPortalEnabled === true,
+    clientPortalToken: rawProject.clientPortalToken || rawProject.token || null,
+    dailyLogs: Array.isArray(rawProject.dailyLogs) ? rawProject.dailyLogs : [],
+    workItems: Array.isArray(rawProject.workItems) ? rawProject.workItems : [],
+    payments: Array.isArray(rawProject.payments) ? rawProject.payments : (rawProject.clientPayments || []),
+    clientPayments: Array.isArray(rawProject.clientPayments) ? rawProject.clientPayments : (rawProject.payments || []),
+    photos: Array.isArray(rawProject.photos) ? rawProject.photos : [],
+    sitePhotos: Array.isArray(rawProject.sitePhotos) ? rawProject.sitePhotos : [],
+  };
 }
 
 /**
- * جلب بيانات المشروع وإعدادات الشركة الخاصة ببوابة العميل
- * يبحث في الكاش المحلي، ثم السحابة (Firestore)، مع عزل تام يمنع تداخل الشركات
+ * جلب بيانات المشروع وإعدادات الشركة الخاصة ببوابة العميل بالتوكن السري فقط
+ * قراءة مباشرة واحدة وسريعة من portal_shares/{token}
  */
-export async function resolveClientPortalProject(projectId, companyIdHint = null) {
-  if (!projectId) return null;
-  const pIdStr = String(projectId).trim();
-  const cIdHint = (companyIdHint && companyIdHint !== 'undefined' && companyIdHint !== 'null')
-    ? String(companyIdHint).trim()
-    : null;
+export async function resolveClientPortalProject(token) {
+  if (!token || typeof token !== 'string') return null;
+  const cleanToken = token.trim();
+  if (!cleanToken) return null;
 
-  // 1. فحص الكاش المحلي إذا حُددت الشركة (في نفس المتصفح)
-  if (cIdHint) {
-    try {
-      const raw = localStorage.getItem(`tenant_${cIdHint}_projects`);
-      if (raw) {
-        const list = JSON.parse(raw);
-        const match = list.find(p => String(p.id) === pIdStr || p.clientPortalToken === pIdStr);
-        if (match) {
-          const settingsRaw = localStorage.getItem(`tenant_${cIdHint}_settings`);
-          const settings = settingsRaw ? JSON.parse(settingsRaw) : loadCompanySettings(cIdHint);
-          return { project: { ...match, companyId: cIdHint }, companyId: cIdHint, companySettings: settings };
-        }
-      }
-    } catch (e) {}
-  }
-
-  // 2. البحث السحابي في Firebase Firestore فوراً (لأن فتح الرابط في متصفح جديد/جهاز آخر لا يحتوي على كاش محلي)
+  // 1. القراءة السحابية المباشرة من portal_shares/{token}
   try {
-    const cloudFetchPromise = async () => {
-      // أ. إذا حُددت الشركة في الرابط، ابحث في تلك الشركة تحديداً في السحابة
-      if (cIdHint) {
-        // 1. فحص الـ projects subcollection
-        try {
-          const projectRef = doc(db, 'companies', cIdHint, 'projects', pIdStr);
-          const snap = await getDoc(projectRef);
-          if (snap.exists()) {
-            const pData = snap.data();
-            const cSettings = await fetchCompanySettingsCloud(cIdHint);
-            return {
-              project: { ...pData, id: pIdStr, companyId: cIdHint },
-              companyId: cIdHint,
-              companySettings: cSettings
-            };
-          }
-        } catch (err) {}
-
-        // 2. فحص وثيقة الشركة الرئيسية (legacy projects array)
-        try {
-          const companyDocRef = doc(db, 'companies', cIdHint);
-          const cSnap = await getDoc(companyDocRef);
-          if (cSnap.exists()) {
-            const cData = cSnap.data();
-            if (Array.isArray(cData?.projects)) {
-              const legacyMatch = cData.projects.find(p => String(p.id) === pIdStr || p.clientPortalToken === pIdStr);
-              if (legacyMatch) {
-                const cSettings = cData.settings || await fetchCompanySettingsCloud(cIdHint);
-                return {
-                  project: { ...legacyMatch, id: pIdStr, companyId: cIdHint },
-                  companyId: cIdHint,
-                  companySettings: cSettings
-                };
-              }
-            }
-          }
-        } catch (err) {}
-      }
-
-      // ب. إذا لم تحدد الشركة، أو لم يتم العثور عليها في الشركة المحددة، ابحث عبر باقي الشركات في السحابة
-      try {
-        const tenantsDocRef = doc(db, 'platform_metadata', 'tenants');
-        const tSnap = await getDoc(tenantsDocRef);
-        const tenantIds = tSnap.exists() && Array.isArray(tSnap.data()?.list)
-          ? tSnap.data().list.map(t => t.id).filter(id => id && id !== cIdHint)
-          : ['comp_alain', 'comp_dhabi', 'comp_cairo'].filter(id => id !== cIdHint);
-
-        for (const cId of tenantIds) {
-          try {
-            const projectRef = doc(db, 'companies', cId, 'projects', pIdStr);
-            const snap = await getDoc(projectRef);
-            if (snap.exists()) {
-              const pData = snap.data();
-              const cSettings = await fetchCompanySettingsCloud(cId);
-              return {
-                project: { ...pData, id: pIdStr, companyId: cId },
-                companyId: cId,
-                companySettings: cSettings
-              };
-            }
-          } catch (e) {}
-        }
-      } catch (err) {}
-
-      return null;
-    };
-
-    // مهلة للبحث السحابي
-    const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 2500));
-    const cloudResult = await Promise.race([cloudFetchPromise(), timeoutPromise]);
-    if (cloudResult) return cloudResult;
-  } catch (e) {
-    console.warn('[PortalResolver] Cloud lookup error:', e);
+    const shareDocRef = doc(db, 'portal_shares', cleanToken);
+    const snap = await getDoc(shareDocRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      const sanitized = sanitizeProjectForClientPortal(data);
+      return {
+        project: sanitized,
+        companyId: data.companyId || null,
+        companySettings: data.companySettings || null
+      };
+    }
+  } catch (err) {
+    console.warn('[PortalResolver] Direct portal_shares read warning:', err.message);
   }
 
-  // 3. فحص جميع الكاشات المحلية المخزنة في المتصفح الحالي
+  // 2. فحص الكاش المحلي في المتصفح الحالي (دعم العمل أوفلاين وأثناء التطوير)
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && key.startsWith('tenant_') && key.endsWith('_projects')) {
         const cId = key.replace(/^tenant_/, '').replace(/_projects$/, '');
-        // إذا حدد الرابط شركة وكان هذا الكاش لشركة أخرى، تخطاه تماماً لمنع تداخل الشركات!
-        if (cIdHint && cId !== cIdHint) continue;
         const raw = localStorage.getItem(key);
         if (raw) {
           const list = JSON.parse(raw);
-          const match = list.find(p => String(p.id) === pIdStr || p.clientPortalToken === pIdStr);
-          if (match) {
+          const match = list.find(p => p.clientPortalToken === cleanToken || String(p.id) === cleanToken);
+          if (match && match.clientPortalEnabled !== false) {
             const settingsRaw = localStorage.getItem(`tenant_${cId}_settings`);
             const settings = settingsRaw ? JSON.parse(settingsRaw) : loadCompanySettings(cId);
-            return { project: { ...match, companyId: cId }, companyId: cId, companySettings: settings };
+            return {
+              project: sanitizeProjectForClientPortal({ ...match, companyId: cId }),
+              companyId: cId,
+              companySettings: settings
+            };
           }
         }
       }
     }
   } catch (e) {}
 
-  // 4. فحص المشاريع المضمنة حصراً للشركة المحددة في الرابط (وليس أي شركة أخرى)
-  if (cIdHint) {
-    const tData = getTenantData(cIdHint);
+  // 3. فحص المشاريع المضمنة للشركات التجريبية
+  const allTenants = loadAllTenants();
+  for (const tenant of allTenants) {
+    const tData = getTenantData(tenant.id);
     if (tData?.projects && Array.isArray(tData.projects)) {
-      const match = tData.projects.find(p => String(p.id) === pIdStr || p.clientPortalToken === pIdStr);
-      if (match) {
-        return { project: { ...match, companyId: cIdHint }, companyId: cIdHint, companySettings: tData.settings };
+      const match = tData.projects.find(p => p.clientPortalToken === cleanToken || String(p.id) === cleanToken);
+      if (match && match.clientPortalEnabled !== false) {
+        return {
+          project: sanitizeProjectForClientPortal({ ...match, companyId: tenant.id }),
+          companyId: tenant.id,
+          companySettings: tData.settings || null
+        };
       }
     }
   }
 
-  // 5. في حال لم يُعثر على المشروع بالمعرف وتم تحديد شركة في الرابط، نعرض مشروعاً تابعاً لنفس الشركة المحددة
-  if (cIdHint) {
-    const targetTenantData = getTenantData(cIdHint);
-    const proj = targetTenantData?.projects?.[0] || null;
-    if (proj) {
-      return {
-        project: {
-          ...proj,
-          id: pIdStr,
-          companyId: cIdHint,
-        },
-        companyId: cIdHint,
-        companySettings: targetTenantData.settings,
-        isFallback: true
-      };
-    }
-  }
-
-  // 6. الملاذ الأخير إذا فُتح رابط عام تماماً بدون أي شركة محددة
-  const allTenants = loadAllTenants();
-  const fallbackTenant = allTenants[0] || { id: 'comp_alain' };
-  const fallbackData = getTenantData(fallbackTenant.id);
-  const fallbackProj = fallbackData?.projects?.[0] || null;
-
-  if (fallbackProj) {
-    return {
-      project: {
-        ...fallbackProj,
-        id: pIdStr,
-      },
-      companyId: fallbackTenant.id,
-      companySettings: fallbackData.settings,
-      isFallback: true
-    };
-  }
-
   return null;
+}
+
+/**
+ * اعتماد وتوقيع العميل الإلكتروني للمشروع بشكل آمن ومقيد عبر Cloud Function
+ * يمرر التوكن والبيانات المطلوبة فقط للـ Cloud Function التي تكتب بصلاحيات Admin SDK
+ */
+export async function submitClientPortalApproval(token, patch) {
+  if (!token || !patch) {
+    return { success: false, error: 'بيانات غير مكتملة' };
+  }
+
+  const cleanToken = String(token).trim();
+  const sanitizedApproval = {
+    clientSignature: patch.clientSignature ? String(patch.clientSignature) : '',
+    clientApprovalDate: patch.clientApprovalDate ? String(patch.clientApprovalDate) : new Date().toISOString(),
+    clientApprovalNotes: patch.clientApprovalNotes ? String(patch.clientApprovalNotes).slice(0, 1000) : '',
+    updatedAt: new Date().toISOString(),
+  };
+
+  // 1. التحديث الفوري في الكاش المحلي للمتصفح (Optimistic UI)
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('tenant_') && key.endsWith('_projects')) {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const list = JSON.parse(raw);
+          const hasMatch = list.some(p => p.clientPortalToken === cleanToken || String(p.id) === cleanToken);
+          if (hasMatch) {
+            const updatedList = list.map(p => {
+              if (p.clientPortalToken === cleanToken || String(p.id) === cleanToken) {
+                return { ...p, ...sanitizedApproval };
+              }
+              return p;
+            });
+            localStorage.setItem(key, JSON.stringify(updatedList));
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[PortalResolver] Local cache approval save warning:', e);
+  }
+
+  // 2. استدعاء الدالة السحابية الآمنة (submitPortalApproval)
+  try {
+    const submitApprovalFn = httpsCallable(functions, 'submitPortalApproval');
+    const result = await submitApprovalFn({
+      token: cleanToken,
+      ...sanitizedApproval
+    });
+    return { success: true, savedCloud: true, data: result?.data || sanitizedApproval };
+  } catch (err) {
+    console.warn('[PortalResolver] Cloud Function approval notice:', err.message);
+    // إرجاع نجاح محلي أوفلاين في حال انقطاع الاتصال بالسحابة أو غياب الـ emulator
+    return { success: true, savedCloud: false, offline: true, data: sanitizedApproval };
+  }
 }

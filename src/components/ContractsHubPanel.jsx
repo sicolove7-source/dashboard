@@ -14,6 +14,7 @@ export default function ContractsHubPanel({
   currentUser,
   userRole,
   activeCompanyId,
+  onUpdate,
   onOpenCraftsmanContract,
   onOpenClientContract,
   onOpenClientPortal,
@@ -22,13 +23,37 @@ export default function ContractsHubPanel({
   const currency = getGlobalCurrency();
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // Generate public client portal URL with company hint for instant lookup on any device
+  // Generate public client portal URL with token as document identifier
   const companyId = activeCompanyId || project.companyId || currentUser?.companyId || getActiveTenantId() || 'comp_alain';
-  const portalUrl = `${window.location.origin}/portal/${project.id}?c=${companyId}`;
+  const activeToken = project.clientPortalToken || ('cpt_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36));
+  const isPortalActive = project.clientPortalEnabled === true;
+  const portalUrl = `${window.location.origin}/portal/${activeToken}`;
+
+  const handleTogglePortal = (newState) => {
+    try {
+      const patch = {
+        clientPortalEnabled: newState,
+        clientPortalToken: activeToken,
+      };
+      if (onUpdate) {
+        onUpdate(patch);
+      }
+      syncSingleProjectToCloud(companyId, project.id, { ...project, ...patch, companyId }).catch(() => {});
+    } catch (e) {
+      console.warn('Toggle portal failed:', e);
+    }
+  };
 
   const handleCopyLink = () => {
     try {
-      syncSingleProjectToCloud(companyId, project.id, { ...project, companyId }).catch(() => {});
+      const patch = {
+        clientPortalEnabled: true,
+        clientPortalToken: activeToken,
+      };
+      if (onUpdate) {
+        onUpdate(patch);
+      }
+      syncSingleProjectToCloud(companyId, project.id, { ...project, ...patch, companyId }).catch(() => {});
       navigator.clipboard.writeText(portalUrl);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2500);
@@ -38,7 +63,14 @@ export default function ContractsHubPanel({
   };
 
   const handleSharePortalWhatsApp = () => {
-    syncSingleProjectToCloud(companyId, project.id, { ...project, companyId }).catch(() => {});
+    const patch = {
+      clientPortalEnabled: true,
+      clientPortalToken: activeToken,
+    };
+    if (onUpdate) {
+      onUpdate(patch);
+    }
+    syncSingleProjectToCloud(companyId, project.id, { ...project, ...patch, companyId }).catch(() => {});
     const cleanPhone = (project.clientPhone || '').replace(/\D/g, '');
     const clientName = project.client || 'عميلنا العزيز';
     const msg = `السلام عليكم ورحمة الله وبركاته أ. *${clientName}* 🌸\n` +
@@ -266,10 +298,12 @@ export default function ContractsHubPanel({
               </div>
               <span style={{
                 fontSize: 11, fontWeight: 700, padding: '3px 10px',
-                borderRadius: 99, background: '#EFF6FF', color: '#1877F2',
-                border: '1px solid #93C5FD'
+                borderRadius: 99,
+                background: isPortalActive ? '#DCFCE7' : '#F1F5F9',
+                color: isPortalActive ? '#16A34A' : '#64748B',
+                border: '1px solid ' + (isPortalActive ? '#86EFAC' : '#CBD5E1')
               }}>
-                متابعة حية 24/7
+                {isPortalActive ? '🟢 البوابة مفعلة ومحمية' : '🔒 البوابة مقفلة'}
               </span>
             </div>
 
@@ -280,15 +314,42 @@ export default function ContractsHubPanel({
               رابط رقمي خاص بالعميل يتيح له متابعة صور وفيديوهات الموقع لحظة بلحظة، نسب الإنجاز، كشوف الحسابات والمدفوعات، والتوقيع والاعتماد الإلكتروني من أي جهاز.
             </p>
 
-            <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)' }}>
-              <Sparkles size={14} color="#1877F2" />
-              <span>جاهزة للمشاركة مع العميل عبر رابط مخصص</span>
+            <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: isPortalActive ? '#16A34A' : 'var(--muted)' }}>
+                <Sparkles size={14} color={isPortalActive ? '#10B981' : '#64748B'} />
+                <span>{isPortalActive ? 'الرابط مشفر ومحمي بالتوكن السري الخاص بالعميل' : 'البوابة مغلقة — لا يمكن لأي زائر خارجي الوصول للبيانات'}</span>
+              </div>
             </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }}>
+              <span style={{ color: 'var(--muted)', fontWeight: 600 }}>إمكانية وصول العميل:</span>
+              <button
+                onClick={() => handleTogglePortal(!isPortalActive)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: isPortalActive ? '#EF4444' : '#1877F2',
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  padding: 0
+                }}
+              >
+                {isPortalActive ? 'إيقاف البوابة مؤقتاً' : 'تفعيل البوابة الآن'}
+              </button>
+            </div>
+
             <button
-              onClick={onOpenClientPortal}
+              onClick={() => {
+                if (onOpenClientPortal) {
+                  onOpenClientPortal(activeToken);
+                } else {
+                  window.open(portalUrl, '_blank');
+                }
+              }}
               style={{
                 width: '100%',
                 display: 'inline-flex',
@@ -307,7 +368,7 @@ export default function ContractsHubPanel({
                 transition: 'background 0.15s ease'
               }}
             >
-              <ExternalLink size={16} /> <span>فتح بوابة العميل الآن 🌐</span>
+              <ExternalLink size={16} /> <span>معاينة بوابة العميل الآن 🌐</span>
             </button>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>

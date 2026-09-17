@@ -1,32 +1,118 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // 1. عزل وحماية بيانات كل شركة ومشاريعها وعملائها وفريقها
+
+    // =========================================================================
+    // قواعد الحماية المركزية لنظام الـ SaaS وعزل الشركات (Multi-Tenancy)
+    // =========================================================================
+
+    // 1. هل المستخدم مسجل دخوله بحساب موثق من Firebase Authentication؟
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // 2. هل المستخدم هو مالك المنصة الرئيسي (Super Admin)؟
+    function isSuperAdmin() {
+      return isAuthenticated() && request.auth.token.role == 'super_admin';
+    }
+
+    // 3. هل يسمح مالك المنصة بدخول واستخدام الحسابات الفرعية؟
+    // فحص سحابي مباشر على مستوى قواعد Firestore
+    function isSubAccountsAllowed() {
+      return !exists(/databases/$(database)/documents/platform_metadata/platform_settings) ||
+             get(/databases/$(database)/documents/platform_metadata/platform_settings).data.subAccountsAllowed != false;
+    }
+
+    // 4. التحقق الأمني من هوية الشركة المشتركة (عزل الشركات):
+    // يسمح بالوصول فقط إذا كان المستخدم ينتمي لنفس الشركة مع تفعيل الحسابات الفرعية أو كان هو الـ Super Admin
+    function isAuthorized(companyId) {
+      return isAuthenticated() && (
+        isSuperAdmin() || (
+          request.auth.token.companyId == companyId &&
+          isSubAccountsAllowed()
+        )
+      );
+    }
+
+    // 5. فحص سلامة البيانات عند الكتابة:
+    // يمنع أي موظف من تسجيل أو نقل أي بيانات لشركة أخرى
+    function hasValidCompanyPayload(companyId) {
+      return !('companyId' in request.resource.data) ||
+             request.resource.data.companyId == companyId ||
+             isSuperAdmin();
+    }
+
+    // =========================================================================
+    // 1. حماية بيانات كل شركة مشتركة ومشاريعها وعملائها (خزنة معزولة تماماً)
+    // =========================================================================
     match /companies/{companyId} {
-      // التحقق من أن معرف الشركة صالح وغير مزيف
-      allow read, write: if companyId != null && 
-                            companyId != '' && 
-                            companyId != '[object Object]' && 
-                            companyId != 'undefined' && 
-                            companyId != 'null';
-      
-      // حماية المجموعات والوثائق الفرعية التابعة لنفس الشركة
-      match /{allChildren=**} {
-        allow read, write: if companyId != null && 
-                              companyId != '' && 
-                              companyId != '[object Object]' && 
-                              companyId != 'undefined';
+      // قراءة وثيقة الشركة الرئيسية: مقتصرة فقط وحصرياً على موظفي نفس الشركة أو مالك المنصة
+      allow read: if isAuthorized(companyId);
+
+      // إنشاء وتعديل بيانات الشركة: لنفس الشركة فقط مع التأكد من تطابق هوية الشركة
+      allow create, update: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
+
+      // حذف وثيقة الشركة: لنفس الشركة أو مالك المنصة
+      allow delete: if isAuthorized(companyId);
+
+      // -----------------------------------------------------------------------
+      // المجموعات الفرعية للشركة (Projects, Subcontractors, WorkOrders, Extracts)
+      // -----------------------------------------------------------------------
+
+      // 1. مشاريع الشركة: محصورة كلياً بموظفي ومهندسي نفس الشركة المصرح لهم فقط
+      match /projects/{projectId} {
+        allow read, write: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
+      }
+
+      // 2. باقي المجموعات الفرعية للشركة (Subcontractors, WorkOrders, Extracts, Leads, Workers, etc.)
+      match /{subcollection}/{docId} {
+        // قراءة وتعديل وكتابة وحذف: محصورة كلياً بموظفي ومهندسي نفس الشركة المصرح لهم فقط
+        allow read: if isAuthorized(companyId);
+        allow create, update, delete: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
       }
     }
-    
-    // 2. حماية بيانات منصة الإدارة المركزية والشركات المشتركة وحساب المشرف
+
+    // =========================================================================
+    // 2. حماية بيانات منصة الإدارة المركزية (platform_metadata)
+    // =========================================================================
     match /platform_metadata/{docId} {
-      // مقتصر فقط على وثائق النظام المعتمدة
-      allow read, write: if docId in ['tenants', 'superadmin', 'system_config'];
+
+      // بيانات اعتماد المشرف الرئيسي (Super Admin Credentials):
+      // مغلقة بالكامل أمام كل الناس من المتصفح (مستحيل قراءتها أو تعديلها)
+      match /superadmin {
+        allow read, write: if false;
+      }
+
+      // إعدادات المنصة العامة (دخول الحسابات الفرعية وغيرها):
+      // قراءة مسموحة للتحقق، وتعديل محصور بمالك المنصة حصراً
+      match /platform_settings {
+        allow read: if true;
+        allow write: if isSuperAdmin();
+      }
+
+      // دليل الشركات المشتركة (Tenants Directory):
+      // محصور حصرياً بمالك المنصة (Super Admin) فقط لإدارة الاشتراكات والعملاء
+      match /tenants {
+        allow read, write: if isSuperAdmin();
+      }
+
+      // أي وثائق إدارية أخرى تابعة للمنصة
+      allow read, write: if isSuperAdmin();
     }
-    
-    // 3. منع الوصول التلقائي لأي مسارات أخرى غير معرفة
+
+    // =========================================================================
+    // 3. بوابة العميل العامة المعزولة تماماً (Token = Document ID)
+    // =========================================================================
+    // الوثائق في هذه المجموعة تُنشأ وتُدار حصراً عبر الـ Cloud Functions (Admin SDK)
+    // العميل يقرأ مستند نسخته المنقاة فقط بالتوكن السري دون أي إمكانية للكتابة المباشرة
+    match /portal_shares/{token} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // =========================================================================
+    // 4. القاعدة العامة: رفض أي وصول غير مصرح به صراحة (Deny by Default)
+    // =========================================================================
     match /{document=**} {
       allow read, write: if false;
     }

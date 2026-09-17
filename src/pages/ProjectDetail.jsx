@@ -239,12 +239,13 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
                 currentUser={currentUser} 
                 userRole={userRole} 
                 activeCompanyId={activeCompanyId || project.companyId}
+                onUpdate={onUpdate}
                 onOpenCraftsmanContract={(worker = null) => {
                   setSelectedWorkerForContract(worker);
                   setActiveContractView('craftsman');
                 }}
                 onOpenClientContract={() => setActiveContractView('client')}
-                onOpenClientPortal={() => onOpenClientPortal && onOpenClientPortal(project.id)}
+                onOpenClientPortal={(token) => onOpenClientPortal && onOpenClientPortal(token || project.clientPortalToken || project.id)}
                 onOpenClientReport={() => setShowClientReport(true)}
               />
             )

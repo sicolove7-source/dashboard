@@ -11,19 +11,28 @@ export const FIRST_LOGIN_KEY = 'tashteeb-first-login-v1';
 export const QUICK_WIN_KEY = 'tashteeb-quick-win-v1';
 export const USER_ROLE_KEY = 'tashteeb-user-role-v1';
 
-/** هل تم زرع البيانات التجريبية من قبل؟ */
-export function isDemoSeeded() {
-  try { return !!localStorage.getItem(DEMO_SEED_KEY); } catch { return false; }
+/** هل تم زرع البيانات التجريبية من قبل لشركة معينة؟ */
+export function isDemoSeeded(companyId = null) {
+  try {
+    const key = companyId ? `${DEMO_SEED_KEY}_${companyId}` : DEMO_SEED_KEY;
+    return !!localStorage.getItem(key);
+  } catch { return false; }
 }
 
-/** هل هذا أول دخول للمستخدم؟ */
-export function isFirstLogin() {
-  try { return !localStorage.getItem(FIRST_LOGIN_KEY); } catch { return false; }
+/** هل هذا أول دخول لمستخدم هذه الشركة؟ */
+export function isFirstLogin(companyId = null) {
+  try {
+    const key = companyId ? `${FIRST_LOGIN_KEY}_${companyId}` : FIRST_LOGIN_KEY;
+    return !localStorage.getItem(key);
+  } catch { return false; }
 }
 
-/** تسجيل أن المستخدم أكمل الدخول الأول */
-export function markFirstLoginDone() {
-  try { localStorage.setItem(FIRST_LOGIN_KEY, '1'); } catch {}
+/** تسجيل أن المستخدم أكمل الدخول الأول لشركته */
+export function markFirstLoginDone(companyId = null) {
+  try {
+    const key = companyId ? `${FIRST_LOGIN_KEY}_${companyId}` : FIRST_LOGIN_KEY;
+    localStorage.setItem(key, '1');
+  } catch {}
 }
 
 /** الحصول على حالة الخطوات الثلاث */
@@ -66,9 +75,10 @@ export function isQuickWinComplete() {
  * زرع بيانات تجريبية واقعية لمشروع تشطيب كامل
  * @param {string} storageKey - مفتاح localStorage للمشاريع
  * @param {string} teamKey - مفتاح localStorage للفريق
+ * @param {string} companyId - معرّف الشركة لتخصيص الكاش والعزل
  */
-export function seedDemoData(storageKey = 'finishing-projects-v2', teamKey = 'finishing-team-v2') {
-  if (isDemoSeeded()) return false;
+export function seedDemoData(storageKey = 'finishing-projects-v2', teamKey = 'finishing-team-v2', companyId = null) {
+  if (isDemoSeeded(companyId)) return false;
 
   const now = new Date();
   const fmt = (d) => d.toISOString().split('T')[0];
@@ -93,6 +103,7 @@ export function seedDemoData(storageKey = 'finishing-projects-v2', teamKey = 'fi
     area: 320,
     notes: 'فيلا دوبلكس ذات تشطيب سوبر لوكس مع تصميم داخلي عصري. العميل متابع بشكل مستمر.',
     contractValue: 850000,
+    clientPortalEnabled: true,
     clientPortalToken: 'demo-portal-token-001',
     photos: [],
     payments: [
@@ -183,6 +194,7 @@ export function seedDemoData(storageKey = 'finishing-projects-v2', teamKey = 'fi
     area: 185,
     notes: 'تشطيب شقة لعائلة صغيرة. العميلة تهتم بجودة الخامات الأوروبية فقط.',
     contractValue: 320000,
+    clientPortalEnabled: true,
     clientPortalToken: 'demo-portal-token-002',
     photos: [],
     payments: [
@@ -224,6 +236,11 @@ export function seedDemoData(storageKey = 'finishing-projects-v2', teamKey = 'fi
     customerService: [],
   };
 
+  if (companyId) {
+    project1.companyId = companyId;
+    project2.companyId = companyId;
+  }
+
   try {
     const existingProjects = localStorage.getItem(storageKey);
     if (!existingProjects || JSON.parse(existingProjects).length === 0) {
@@ -233,7 +250,8 @@ export function seedDemoData(storageKey = 'finishing-projects-v2', teamKey = 'fi
     if (!existingTeam) {
       localStorage.setItem(teamKey, JSON.stringify(demoTeam));
     }
-    localStorage.setItem(DEMO_SEED_KEY, '1');
+    const seedKey = companyId ? `${DEMO_SEED_KEY}_${companyId}` : DEMO_SEED_KEY;
+    localStorage.setItem(seedKey, '1');
     return true;
   } catch (e) {
     console.error('seedDemoData error:', e);

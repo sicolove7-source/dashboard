@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Bar,
   LineChart, Line, PieChart, Pie, Cell, Legend, AreaChart, Area
@@ -10,6 +10,11 @@ import {
   Calendar, Filter, X, Save, Percent
 } from 'lucide-react';
 import { money, fmtDate, todayISO } from '../utils/helpers';
+import {
+  syncExpensesToCloud,
+  subscribeToCloudCompanyField,
+  fetchCompanyDataFromCloud,
+} from '../services/cloudSync';
 
 /* ───── helpers ───── */
 const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
@@ -180,25 +185,92 @@ export default function CompanyFinance({ projects = [], onUpdateProject, activeC
   const [companyExpenses, setCompanyExpenses] = useState(() => {
     try {
       const saved = localStorage.getItem(expenseStorageKey) || localStorage.getItem('amlak_company_expenses');
-      return saved ? JSON.parse(saved) : [
-        { id: 'exp-1', date: '2025-01-05', category: 'رواتب', amount: 35000, description: 'رواتب المهندسين والمشرفين' },
-        { id: 'exp-2', date: '2025-01-10', category: 'إيجارات', amount: 8000, description: 'إيجار مقر الشركة' },
-        { id: 'exp-3', date: '2025-01-15', category: 'مصاريف تسويق', amount: 4500, description: 'حملات إعلانات فيسبوك وإنستجرام' },
-        { id: 'exp-4', date: '2025-02-05', category: 'رواتب', amount: 35000, description: 'رواتب المهندسين والمشرفين' },
-        { id: 'exp-5', date: '2025-02-12', category: 'مصاريف إدارية', amount: 2200, description: 'فواتير إنترنت وكهرباء وبوفيه' },
-        { id: 'exp-6', date: '2025-03-05', category: 'رواتب', amount: 38000, description: 'رواتب المهندسين والمشرفين' },
-      ];
+      return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
     }
   });
 
-  React.useEffect(() => {
-    try {
-      const saved = localStorage.getItem(expenseStorageKey);
-      if (saved) setCompanyExpenses(JSON.parse(saved));
-    } catch (e) {}
-  }, [expenseStorageKey]);
+  // الاستماع اللحظي لمصاريف الشركة سحابياً عبر Firestore
+  useEffect(() => {
+    const cId = activeCompanyId || 'comp_alain';
+    let isMounted = true;
+
+    const unsub = subscribeToCloudCompanyField(cId, 'expenses', (cloudExpenses) => {
+      if (!isMounted) return;
+      if (Array.isArray(cloudExpenses)) {
+        setCompanyExpenses(cloudExpenses);
+        try {
+          localStorage.setItem(expenseStorageKey, JSON.stringify(cloudExpenses));
+        } catch (e) {}
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      if (unsub) unsub();
+    };
+  }, [activeCompanyId, expenseStorageKey]);
+
+  // ترحيل البيانات تلقائياً (Migration) من المفاتيح القديمة إلى Firestore مرة واحدة مع إزالة التكرار
+  const migrationRanRef = useRef(false);
+  useEffect(() => {
+    const cId = activeCompanyId || 'comp_alain';
+    if (migrationRanRef.current) return;
+    migrationRanRef.current = true;
+
+    async function migrateLocalExpenses() {
+      try {
+        const rawCurrent = localStorage.getItem(expenseStorageKey);
+        const rawFallback = localStorage.getItem('amlak_company_expenses');
+        const localCurrent = rawCurrent ? JSON.parse(rawCurrent) : [];
+        const localFallback = rawFallback ? JSON.parse(rawFallback) : [];
+
+        // دمج البيانات المحلية مع إزالة التكرار حسب id
+        const localMap = new Map();
+        (Array.isArray(localFallback) ? localFallback : []).forEach(item => {
+          if (item && item.id) localMap.set(item.id, item);
+        });
+        (Array.isArray(localCurrent) ? localCurrent : []).forEach(item => {
+          if (item && item.id) localMap.set(item.id, item);
+        });
+        const localMerged = Array.from(localMap.values());
+
+        if (localMerged.length === 0) return;
+
+        // فحص ما هو موجود سحابياً في Firestore
+        const cloudData = await fetchCompanyDataFromCloud(cId);
+        const cloudExpenses = Array.isArray(cloudData?.expenses) ? cloudData.expenses : [];
+        const cloudIds = new Set(cloudExpenses.map(e => e.id));
+
+        const missingInCloud = localMerged.filter(e => !cloudIds.has(e.id));
+        if (missingInCloud.length > 0 || cloudExpenses.length === 0) {
+          const finalMap = new Map();
+          cloudExpenses.forEach(e => { if (e && e.id) finalMap.set(e.id, e); });
+          localMerged.forEach(e => { if (e && e.id) finalMap.set(e.id, e); });
+          const mergedFinal = Array.from(finalMap.values());
+
+          const ok = await syncExpensesToCloud(cId, mergedFinal);
+          if (ok) {
+            setCompanyExpenses(mergedFinal);
+            try {
+              localStorage.setItem(expenseStorageKey, JSON.stringify(mergedFinal));
+              localStorage.removeItem('amlak_company_expenses');
+            } catch (e) {}
+          }
+        } else {
+          // البيانات موجودة بالفعل في Firestore — تنظيف مفتاح الـ fallback القديم
+          if (rawFallback) {
+            try { localStorage.removeItem('amlak_company_expenses'); } catch (e) {}
+          }
+        }
+      } catch (err) {
+        console.warn('Expenses migration error:', err);
+      }
+    }
+
+    migrateLocalExpenses();
+  }, [activeCompanyId, expenseStorageKey]);
 
   const availableYears = useMemo(() => {
     const currentYr = new Date().getFullYear();
@@ -235,15 +307,19 @@ export default function CompanyFinance({ projects = [], onUpdateProject, activeC
   const [expandedProject, setExpandedProject] = useState(null);
 
   function saveExpense(form) {
+    const cId = activeCompanyId || 'comp_alain';
     const next = [{ ...form, id: 'exp-' + Date.now() }, ...companyExpenses];
     setCompanyExpenses(next);
-    localStorage.setItem(expenseStorageKey, JSON.stringify(next));
+    try { localStorage.setItem(expenseStorageKey, JSON.stringify(next)); } catch (e) {}
+    syncExpensesToCloud(cId, next);
   }
 
   function deleteExpense(id) {
+    const cId = activeCompanyId || 'comp_alain';
     const next = companyExpenses.filter(e => e.id !== id);
     setCompanyExpenses(next);
-    localStorage.setItem(expenseStorageKey, JSON.stringify(next));
+    try { localStorage.setItem(expenseStorageKey, JSON.stringify(next)); } catch (e) {}
+    syncExpensesToCloud(cId, next);
   }
 
   /* ── Computed KPIs ── */

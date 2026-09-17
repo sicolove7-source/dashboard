@@ -60,12 +60,12 @@ export const ROLES = {
 
 // ─── التبويبات المتاحة لكل دور ───────────────────────
 export const NAV_PERMISSIONS = {
-  super_admin:      ['tenants', 'overview', 'automations', 'crm', 'finance', 'team', 'projects', 'suppliers', 'quotations', 'settings'],
-  owner:            ['overview', 'automations', 'crm', 'finance', 'team', 'projects', 'suppliers', 'quotations', 'settings'],
-  procurement:      ['projects', 'suppliers', 'overview'],
-  accountant:       ['overview', 'automations', 'finance', 'projects', 'suppliers', 'quotations'],
-  engineer:         ['projects', 'suppliers'],
-  tech_office:      ['overview', 'crm', 'projects', 'suppliers', 'quotations'],
+  super_admin:      ['tenants', 'overview', 'automations', 'crm', 'finance', 'team', 'projects', 'subcontractors', 'suppliers', 'quotations', 'specs', 'settings'],
+  owner:            ['overview', 'automations', 'crm', 'finance', 'team', 'projects', 'subcontractors', 'suppliers', 'quotations', 'specs', 'settings'],
+  procurement:      ['projects', 'subcontractors', 'suppliers', 'overview'],
+  accountant:       ['overview', 'automations', 'finance', 'projects', 'subcontractors', 'suppliers', 'quotations'],
+  engineer:         ['projects', 'subcontractors', 'suppliers', 'specs'],
+  tech_office:      ['overview', 'crm', 'projects', 'subcontractors', 'suppliers', 'quotations', 'specs'],
   customer_service: ['overview', 'crm', 'projects'],
 };
 

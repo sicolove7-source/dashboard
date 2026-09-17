@@ -8,6 +8,8 @@ import {
 import { STAGES, PROJECT_PHASES, QUALITY_GATES } from '../utils/constants';
 import { fmtDate, todayISO, getGlobalCurrency } from '../utils/helpers';
 import InteractiveGantt from './InteractiveGantt';
+import { syncWorkersToCloud } from '../services/cloudSync';
+import { getActiveTenantId } from '../services/tenantsManager';
 
 /* ── Storage helpers ──────────────────────────────── */
 function getWorkers() {
@@ -16,8 +18,10 @@ function getWorkers() {
 function getSuppliers() {
   try { return JSON.parse(localStorage.getItem('db-suppliers-v1') || '[]'); } catch { return []; }
 }
-function saveWorkers(arr) {
+function saveWorkers(arr, companyId) {
   try { localStorage.setItem('db-workers-v1', JSON.stringify(arr)); } catch {}
+  const cId = companyId || getActiveTenantId() || 'comp_alain';
+  syncWorkersToCloud(cId, arr);
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────── */

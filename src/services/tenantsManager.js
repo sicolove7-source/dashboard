@@ -27,6 +27,8 @@ import {
   mergeUsersPreservingLocal,
   sanitizeProjectForCloud,
 } from './cloudSync';
+import { db } from '../firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 export const PLATFORM_TENANTS_KEY = 'platform-tenants-master-v1';
 export const ACTIVE_TENANT_ID_KEY = 'platform-active-tenant-id';
@@ -49,10 +51,33 @@ export function isSubAccountsLoginAllowed() {
   return true; // متاح ومفتوح لجميع الشركات والموظفين والمهندسين تلقائياً
 }
 
+/**
+ * جلب وتحديث حالة السماح بدخول الحسابات الفرعية سحابياً من Firestore
+ */
+export async function fetchPlatformSettingsFromCloud() {
+  try {
+    const snap = await getDoc(doc(db, 'platform_metadata', 'platform_settings'));
+    if (snap.exists()) {
+      const data = snap.data();
+      if (typeof data.subAccountsAllowed === 'boolean') {
+        localStorage.setItem(SUB_ACCOUNTS_ACCESS_KEY, JSON.stringify(data.subAccountsAllowed));
+        return data;
+      }
+    }
+  } catch (e) {
+    console.warn('[TenantsManager] Cloud platform settings fetch warning:', e);
+  }
+  return null;
+}
+
 export function setSubAccountsLoginAllowed(allowed) {
   try {
     localStorage.setItem(SUB_ACCOUNTS_ACCESS_KEY, JSON.stringify(!!allowed));
     window.dispatchEvent(new Event('storage'));
+    setDoc(doc(db, 'platform_metadata', 'platform_settings'), {
+      subAccountsAllowed: !!allowed,
+      updatedAt: new Date().toISOString()
+    }, { merge: true }).catch(err => console.warn('[TenantsManager] Cloud platform settings save error:', err));
     return true;
   } catch (e) {
     console.error("Error setting sub-accounts access:", e);
@@ -923,6 +948,129 @@ export async function authenticateTenantUserAsync(email, password) {
   }
 
   return { success: false, error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' };
+}
+
+/**
+ * مطابقة وتحديد بيانات الشركة وصلاحيات المستخدم بعد نجاح Firebase Authentication
+ */
+export async function resolveTenantUserByEmail(email, firebaseUid = '', claims = {}) {
+  const cleanEmail = (email || '').toLowerCase().trim();
+  const superAdmin = getSuperAdminAccount();
+
+  // 1. فحص هل هو حساب الـ Super Admin (عبر Custom Claims الموثقة فقط)
+  if (claims.role === 'super_admin' || claims.isSuperAdmin) {
+    return {
+      success: true,
+      user: {
+        ...superAdmin,
+        id: firebaseUid || superAdmin.id,
+        role: 'super_admin',
+        isSuperAdmin: true,
+      },
+      tenant: null,
+      isSuperAdmin: true,
+    };
+  }
+
+  // 2. فحص سحابي ومحلي لجميع الشركات والمستخدمين
+  let tenants = [];
+  try {
+    tenants = await loadAllTenantsAsync();
+  } catch (e) {
+    tenants = loadAllTenants();
+  }
+
+  // إذا كانت الشركة محددة بدقة داخل الـ Custom Claims
+  if (claims.companyId) {
+    const claimTenant = tenants.find(t => t.id === claims.companyId);
+    if (claimTenant) {
+      return {
+        success: true,
+        user: {
+          id: firebaseUid || `u_${claimTenant.id}_${claims.role || 'user'}`,
+          email: cleanEmail,
+          name: cleanEmail === claimTenant.adminEmail ? claimTenant.adminName : cleanEmail.split('@')[0],
+          role: claims.role || 'owner',
+          companyId: claimTenant.id,
+          companyName: claimTenant.name,
+          currency: claimTenant.currency || 'ج.م',
+        },
+        tenant: claimTenant,
+        isSuperAdmin: false,
+      };
+    }
+  }
+
+  for (const t of tenants) {
+    // هل هو مالك الشركة (Owner / Admin)
+    if (t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail) {
+      return {
+        success: true,
+        user: {
+          id: firebaseUid || `u_${t.id}_admin`,
+          email: t.adminEmail,
+          name: t.adminName || 'مدير الشركة',
+          role: 'owner',
+          companyId: t.id,
+          companyName: t.name,
+          currency: t.currency || 'ج.م',
+        },
+        tenant: t,
+        isSuperAdmin: false,
+      };
+    }
+
+    // هل هو عضو في فريق العمل داخل الشركة
+    let users = null;
+    try {
+      const rawUsers = localStorage.getItem(`tenant_${t.id}_users`);
+      if (rawUsers) users = JSON.parse(rawUsers);
+    } catch (e) {}
+
+    if (!users) {
+      try {
+        const cloudData = await fetchCompanyDataFromCloud(t.id);
+        if (cloudData && Array.isArray(cloudData.users)) {
+          users = cloudData.users;
+        }
+      } catch (e) {}
+    }
+
+    if (Array.isArray(users)) {
+      const match = users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
+      if (match) {
+        return {
+          success: true,
+          user: {
+            ...match,
+            id: firebaseUid || match.id,
+            companyId: t.id,
+            companyName: t.name,
+            currency: t.currency || 'ج.م',
+          },
+          tenant: t,
+          isSuperAdmin: false,
+        };
+      }
+    }
+  }
+
+  // في حال لم يتم العثور على شركة محددة، نربطه بأول شركة موجودة تلقائياً
+  const defaultTenant = tenants[0] || (typeof INITIAL_PLATFORM_TENANTS !== 'undefined' ? INITIAL_PLATFORM_TENANTS[0] : DEFAULT_TENANTS[0]);
+  return {
+    success: true,
+    user: {
+      id: firebaseUid || `u_${Date.now()}`,
+      email: cleanEmail,
+      name: cleanEmail.split('@')[0],
+      role: 'owner',
+      companyId: defaultTenant?.id || 'comp_alain',
+      companyName: defaultTenant?.name || 'مؤسسة التشطيبات',
+      currency: defaultTenant?.currency || 'ج.م',
+    },
+    tenant: defaultTenant,
+    isSuperAdmin: false,
+  };
 }
 
 export function generateWhatsAppWelcomeMessage(tenant) {

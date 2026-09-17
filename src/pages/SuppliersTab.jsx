@@ -7,6 +7,12 @@ import {
 import { getGlobalCurrency } from '../utils/helpers';
 import CraftsmanContractModal from '../components/CraftsmanContractModal';
 import SubcontractorsTab from './SubcontractorsTab';
+import {
+  syncWorkersToCloud,
+  syncSuppliersToCloud,
+  subscribeToCloudCompanyField,
+} from '../services/cloudSync';
+import { getActiveTenantId } from '../services/tenantsManager';
 
 const STORE_SUPPLIERS = 'db-suppliers-v1';
 const STORE_WORKERS   = 'db-workers-v1';
@@ -75,7 +81,7 @@ function EmptyState({ icon: Icon, title, sub }) {
 }
 
 /* ── Suppliers ─────────────────────────────────────── */
-function SuppliersSection() {
+function SuppliersSection({ activeCompanyId }) {
   const [items, setItems] = useState(() => loadOrSeed(STORE_SUPPLIERS, SEED_SUPPLIERS));
   const [search, setSearch]         = useState('');
   const [filterCat, setFilterCat]   = useState('');
@@ -96,7 +102,23 @@ function SuppliersSection() {
     );
   }, [items, search, filterCat, filterSt]);
 
-  const commit = (next) => { setItems(next); saveLS(STORE_SUPPLIERS, next); };
+  const commit = (next) => {
+    setItems(next);
+    saveLS(STORE_SUPPLIERS, next);
+    const cId = activeCompanyId || getActiveTenantId() || 'comp_alain';
+    syncSuppliersToCloud(cId, next);
+  };
+
+  React.useEffect(() => {
+    const cId = activeCompanyId || getActiveTenantId() || 'comp_alain';
+    const unsub = subscribeToCloudCompanyField(cId, 'suppliers', (cloudSuppliers) => {
+      if (Array.isArray(cloudSuppliers)) {
+        setItems(cloudSuppliers);
+        saveLS(STORE_SUPPLIERS, cloudSuppliers);
+      }
+    });
+    return () => unsub();
+  }, [activeCompanyId]);
   const openAdd  = () => { setEditing(null); setForm(blank); setMatInput(''); setShowForm(true); };
   const openEdit = (it) => { setEditing(it.id); setForm({...it}); setMatInput(''); setShowForm(true); };
   const del      = (id) => commit(items.filter(i => i.id !== id));
@@ -370,7 +392,7 @@ function SuppliersSection() {
 }
 
 /* ── Workers ───────────────────────────────────────── */
-function WorkersSection() {
+function WorkersSection({ activeCompanyId }) {
   const [items, setItems]             = useState(() => loadOrSeed(STORE_WORKERS, SEED_WORKERS));
   const [search, setSearch]           = useState('');
   const [filterTrade, setFilterTrade] = useState('');
@@ -397,7 +419,23 @@ function WorkersSection() {
     );
   }, [items, search, filterTrade, filterSt]);
 
-  const commit   = (next) => { setItems(next); saveLS(STORE_WORKERS, next); };
+  const commit = (next) => {
+    setItems(next);
+    saveLS(STORE_WORKERS, next);
+    const cId = activeCompanyId || getActiveTenantId() || 'comp_alain';
+    syncWorkersToCloud(cId, next);
+  };
+
+  React.useEffect(() => {
+    const cId = activeCompanyId || getActiveTenantId() || 'comp_alain';
+    const unsub = subscribeToCloudCompanyField(cId, 'workers', (cloudWorkers) => {
+      if (Array.isArray(cloudWorkers)) {
+        setItems(cloudWorkers);
+        saveLS(STORE_WORKERS, cloudWorkers);
+      }
+    });
+    return () => unsub();
+  }, [activeCompanyId]);
   const openAdd  = () => { setEditing(null); setForm(blank); setSpecInput(''); setShowForm(true); };
   const openEdit = (it) => { setEditing(it.id); setForm({ ...it, specialties: it.specialties || [] }); setSpecInput(''); setShowForm(true); };
   const del      = (id) => { commit(items.filter(i => i.id !== id)); setConfirmDel(null); };
@@ -754,8 +792,8 @@ export default function SuppliersTab({ projects = [], companySettings, userRole,
       </div>
 
       <div className="tab-fade" style={{ width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
-        {activeTab==='suppliers'      && <SuppliersSection/>}
-        {activeTab==='workers'        && <WorkersSection/>}
+        {activeTab==='suppliers'      && <SuppliersSection activeCompanyId={activeCompanyId}/>}
+        {activeTab==='workers'        && <WorkersSection activeCompanyId={activeCompanyId}/>}
         {activeTab==='subcontractors' && (
           <SubcontractorsTab
             projects={projects}
