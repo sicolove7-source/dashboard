@@ -480,7 +480,7 @@ export function setActiveTenantId(companyId) {
  */
 export function getTenantData(companyId) {
   const tenants = loadAllTenants();
-  const tenant = tenants.find(t => t.id === companyId) || tenants[0] || DEFAULT_TENANTS[0];
+  const tenant = tenants.find(t => t.id === companyId);
 
   // 1. الإعدادات والعملة
   let settings = null;
@@ -490,14 +490,14 @@ export function getTenantData(companyId) {
   } catch (e) {}
   if (!settings) {
     settings = {
-      companyName: tenant.name,
-      companySubtitle: tenant.subtitle,
-      city: tenant.city,
-      country: tenant.country,
-      currency: tenant.currency || 'د.إ',
-      phone: tenant.phone,
-      primaryColor: tenant.primaryColor,
-      accentColor: tenant.accentColor,
+      companyName: tenant ? tenant.name : 'شركة المقاولات والتشطيبات',
+      companySubtitle: tenant ? tenant.subtitle : 'نظام إدارة المشاريع المتكامل',
+      city: tenant?.city || '',
+      country: tenant?.country || 'مصر',
+      currency: tenant?.currency || 'ج.م',
+      phone: tenant?.phone || '',
+      primaryColor: tenant?.primaryColor || '#1877F2',
+      accentColor: tenant?.accentColor || '#166FE5',
       companyLogo: null,
     };
     try { localStorage.setItem(`tenant_${companyId}_settings`, JSON.stringify(settings)); } catch (e) {}

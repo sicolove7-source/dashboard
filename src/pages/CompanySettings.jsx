@@ -171,14 +171,17 @@ export default function CompanySettings({
   const [teamErrors, setTeamErrors] = useState({});
   const [teamSuccess, setTeamSuccess] = useState({});
 
-  // Sync state if external companySettings changes without wiping current logo
+  // مزامنة حالة الإعدادات عند تغيير الشركة النشطة أو استلام إعدادات محدثة مع عزل تام يمنع وراثة بيانات شركة سابقة
   useEffect(() => {
-    if (companySettings && Object.keys(companySettings).length > 0) {
-      setSettings(prev => {
-        const preservedLogo = prev.companyLogo || companySettings.companyLogo || null;
-        return { ...prev, ...companySettings, companyLogo: preservedLogo };
-      });
-    }
+    const fresh = (companySettings && Object.keys(companySettings).length > 0)
+      ? companySettings
+      : loadCompanySettings(activeCompanyId);
+
+    setSettings({
+      ...DEFAULT_COMPANY_SETTINGS,
+      ...fresh,
+      companyLogo: fresh?.companyLogo || null,
+    });
   }, [companySettings, activeCompanyId]);
 
   // Apply branding on load & settings change

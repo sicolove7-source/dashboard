@@ -66,45 +66,50 @@ export function compressLogoImage(fileOrBlob, maxDim = 512, quality = 0.92) {
 }
 
 export const DEFAULT_COMPANY_SETTINGS = {
-  companyName: 'دار الظبي للديكور والتصميم الداخلي',
-  companySubtitle: 'نظام إدارة المشاريع والتشطيبات المتكامل',
+  companyName: 'شركة المقاولات والتشطيبات',
+  companySubtitle: 'إدارة المشاريع والتشطيبات المتكاملة',
   companyLogo: null,
   primaryColor: '#1877F2',
   accentColor: '#166FE5',
-  currency: 'د.إ',
-  city: 'أبوظبي',
-  country: 'الإمارات',
-  phone: '+201018160582',
-  supportPhone: '+201018160582',
-  email: 'contact@daraldhabi.ae',
-  taxNumber: '100-245-890-0003',
-  commercialRegister: 'CN-1049281',
-  address: 'شارع المرور - برج النور - الطابق 4',
-  website: 'www.daraldhabi.ae',
-  subdomain: 'daraldhabi',
-  customDomain: 'portal.daraldhabi.com',
-  customDomainVerified: true,
+  currency: 'ج.م',
+  city: '',
+  country: 'مصر',
+  phone: '',
+  supportPhone: '',
+  email: '',
+  taxNumber: '',
+  commercialRegister: '',
+  address: '',
+  website: '',
+  subdomain: '',
+  customDomain: '',
+  customDomainVerified: false,
 };
 
 export function loadCompanySettings(companyId) {
-  const cId = companyId || getActiveTenantId() || 'comp_alain';
-  try {
-    const tenantRaw = localStorage.getItem(`tenant_${cId}_settings`);
-    if (tenantRaw) {
-      const parsed = JSON.parse(tenantRaw);
-      if (parsed.currency) setGlobalCurrency(parsed.currency);
-      return { ...DEFAULT_COMPANY_SETTINGS, ...parsed };
-    }
-  } catch (e) {}
+  const cId = companyId || getActiveTenantId();
+  if (cId) {
+    try {
+      const tenantRaw = localStorage.getItem(`tenant_${cId}_settings`);
+      if (tenantRaw) {
+        const parsed = JSON.parse(tenantRaw);
+        if (parsed.currency) setGlobalCurrency(parsed.currency);
+        return { ...DEFAULT_COMPANY_SETTINGS, ...parsed };
+      }
+    } catch (e) {}
+  }
 
-  try {
-    const raw = localStorage.getItem(COMPANY_SETTINGS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed.currency) setGlobalCurrency(parsed.currency);
-      return { ...DEFAULT_COMPANY_SETTINGS, ...parsed };
-    }
-  } catch (e) {}
+  // لا نقرأ من الكاش العام القديم إطلاقاً إذا كان هناك companyId محدد لمنع تسريب بيانات وشعار شركة سابقة
+  if (!cId) {
+    try {
+      const raw = localStorage.getItem(COMPANY_SETTINGS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.currency) setGlobalCurrency(parsed.currency);
+        return { ...DEFAULT_COMPANY_SETTINGS, ...parsed };
+      }
+    } catch (e) {}
+  }
 
   return { ...DEFAULT_COMPANY_SETTINGS };
 }

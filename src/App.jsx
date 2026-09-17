@@ -631,7 +631,7 @@ export default function App() {
           const mergedSettings = {
             ...localData.settings,
             ...cloudData.settings,
-            companyLogo: cloudData.settings.companyLogo || localData.settings?.companyLogo || null,
+            companyLogo: cloudData.settings.companyLogo !== undefined ? cloudData.settings.companyLogo : (localData.settings?.companyLogo || null),
           };
           setCompanySettings(mergedSettings);
           applyCompanyBranding(mergedSettings);
@@ -653,11 +653,7 @@ export default function App() {
     const handleSettingsUpdated = () => {
       const fresh = loadCompanySettings(activeCompanyId);
       if (fresh) {
-        setCompanySettings(prev => ({
-          ...prev,
-          ...fresh,
-          companyLogo: fresh.companyLogo || prev?.companyLogo || null,
-        }));
+        setCompanySettings(fresh);
         applyCompanyBranding(fresh);
       }
     };
