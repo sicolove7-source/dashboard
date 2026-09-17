@@ -78,15 +78,61 @@ export async function fetchCompanyDataFromCloud(companyId) {
 }
 
 /**
- * حفظ ومزامنة بيانات الشركة الشاملة في السحابة
+ * تطهير كائنات المستخدمين لحذف أي كلمات مرور بصيغة نص صريح (Plaintext) نهائياً
+ * الاعتماد الأمني المطلق يكون حصراً على Firebase Authentication المشفر
+ */
+export function sanitizeCompanyUsersForCloud(users) {
+  if (!Array.isArray(users)) return users;
+  return users.map(u => {
+    if (!u || typeof u !== 'object') return u;
+    const cleanUser = { ...u };
+    delete cleanUser.password;
+    delete cleanUser.adminPassword;
+    return cleanUser;
+  });
+}
+
+/**
+ * تطهير حمولة بيانات الشركة الشاملة قبل الرفع لمنع تسريب أي كلمات سر
+ * ولمنع تلوث البيانات بين الشركات (Cross-Tenant Contamination)
+ */
+export function sanitizeCompanyPayloadForCloud(cId, partialData) {
+  if (!partialData || typeof partialData !== 'object') return {};
+  const payload = { ...partialData };
+
+  // 1. منع تسريب كلمات السر من المستوى الأول نهائياً
+  delete payload.password;
+  delete payload.adminPassword;
+
+  // 2. تطهير قائمة المستخدمين من أي كلمات سر
+  if (Array.isArray(payload.users)) {
+    payload.users = sanitizeCompanyUsersForCloud(payload.users);
+  }
+
+  // 3. تطهير قائمة الفريق
+  if (Array.isArray(payload.team)) {
+    payload.team = sanitizeCompanyUsersForCloud(payload.team);
+  }
+
+  // 4. منع التلوث المتقاطع: فلترة المشاريع لتقتصر حصراً على مشاريع هذه الشركة فقط
+  if (Array.isArray(payload.projects)) {
+    payload.projects = payload.projects.filter(p => !p.companyId || cleanCompanyId(p.companyId) === cId);
+  }
+
+  return payload;
+}
+
+/**
+ * حفظ ومزامنة بيانات الشركة الشاملة في السحابة مع التطهير الأمني التام
  */
 export async function syncCompanyDataToCloud(companyId, partialData) {
   const cId = cleanCompanyId(companyId);
   if (!cId || !partialData) return false;
   try {
+    const sanitized = sanitizeCompanyPayloadForCloud(cId, partialData);
     const docRef = doc(db, 'companies', cId);
     await setDoc(docRef, {
-      ...stripUndefined(partialData),
+      ...stripUndefined(sanitized),
       companyId: cId,
       updatedAt: new Date().toISOString(),
     }, { merge: true });
@@ -235,20 +281,30 @@ export function sanitizeProjectForCloud(project) {
  * دمج المشاريع السحابية والمحلية بذكاء مع الحفاظ الكامل على اليوميات والاستلامات الأحدث
  * لمنع أي ضياع للبيانات عند بطء الاتصال أو إعادة التحميل (Zero-Data-Loss Merge)
  */
-export function mergeProjectsPreservingLocal(localProjects, incomingProjects) {
-  if (!Array.isArray(localProjects) || localProjects.length === 0) {
-    return Array.isArray(incomingProjects) ? incomingProjects : [];
+export function mergeProjectsPreservingLocal(localProjects, incomingProjects, targetCompanyId) {
+  const cleanTarget = targetCompanyId ? cleanCompanyId(targetCompanyId) : null;
+  const filterByTarget = (list) => {
+    if (!Array.isArray(list)) return [];
+    if (!cleanTarget) return list;
+    return list.filter(p => !p.companyId || cleanCompanyId(p.companyId) === cleanTarget);
+  };
+
+  const safeLocal = filterByTarget(localProjects);
+  const safeIncoming = filterByTarget(incomingProjects);
+
+  if (safeLocal.length === 0) {
+    return safeIncoming;
   }
-  if (!Array.isArray(incomingProjects) || incomingProjects.length === 0) {
-    return localProjects;
+  if (safeIncoming.length === 0) {
+    return safeLocal;
   }
 
   const localMap = new Map();
-  localProjects.forEach(p => {
+  safeLocal.forEach(p => {
     if (p && p.id) localMap.set(p.id, p);
   });
 
-  const merged = incomingProjects.map(incoming => {
+  const merged = safeIncoming.map(incoming => {
     if (!incoming || !incoming.id) return incoming;
     const local = localMap.get(incoming.id);
     if (!local) return incoming;
@@ -332,9 +388,9 @@ export function mergeProjectsPreservingLocal(localProjects, incomingProjects) {
     };
   });
 
-  // إضافة أي مشاريع أُنشئت محلياً فقط ولم تُرفع بعد إلى السحابة
-  localProjects.forEach(local => {
-    if (local && local.id && !incomingProjects.some(inc => inc.id === local.id)) {
+  // إضافة أي مشاريع أُنشئت محلياً فقط ولم تُرفع بعد إلى السحابة مع التأكد من ملكيتها لنفس الشركة
+  safeLocal.forEach(local => {
+    if (local && local.id && !safeIncoming.some(inc => inc.id === local.id)) {
       merged.push(local);
     }
   });

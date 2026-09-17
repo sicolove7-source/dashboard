@@ -24,6 +24,7 @@ import {
   mergeTeamsPreservingLocal,
   mergeUsersPreservingLocal,
   sanitizeProjectForCloud,
+  sanitizeCompanyUsersForCloud,
 } from './cloudSync';
 import { db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -154,7 +155,6 @@ export const DEFAULT_TENANTS = [
     primaryColor: '#1877F2',
     accentColor: '#166FE5',
     adminEmail: 'ceo@alain-contract.ae',
-    adminPassword: '123456',
     adminName: 'أ. هزاع الشامسي',
     projectsCount: 3,
     createdAt: '2026-08-20',
@@ -175,7 +175,6 @@ export const DEFAULT_TENANTS = [
     primaryColor: '#4338CA',
     accentColor: '#6366F1',
     adminEmail: 'admin@dar-dhabi.ae',
-    adminPassword: '123456',
     adminName: 'م. عبد الله الظاهري',
     projectsCount: 3,
     createdAt: '2026-01-10',
@@ -196,7 +195,6 @@ export const DEFAULT_TENANTS = [
     primaryColor: '#1B3A4B',
     accentColor: '#C4622D',
     adminEmail: 'admin@al-ofok.com',
-    adminPassword: '123456',
     adminName: 'م. شريف عزمي',
     projectsCount: 2,
     createdAt: '2026-03-01',
@@ -261,7 +259,6 @@ export function createTenant(data) {
     primaryColor: data.primaryColor || '#1877F2',
     accentColor: data.accentColor || '#166FE5',
     adminEmail: data.adminEmail?.toLowerCase().trim() || `admin@${id}.ae`,
-    adminPassword: data.adminPassword || '123456',
     adminName: data.adminName?.trim() || 'مدير الشركة',
     projectsCount: data.seedDemoProject ? 1 : 0,
     createdAt: new Date().toISOString().slice(0, 10),
@@ -270,12 +267,11 @@ export function createTenant(data) {
   const updated = [newTenant, ...tenants];
   saveAllTenants(updated);
 
-  // إعداد مستخدمي الشركة
+  // إعداد مستخدمي الشركة (بدون أي كلمات سر كنص صريح - الاعتماد كلياً على Firebase Auth)
   const companyUsers = [
     {
       id: `u_${id}_admin`,
       email: newTenant.adminEmail,
-      password: newTenant.adminPassword,
       role: 'owner',
       name: newTenant.adminName,
       engineerName: null,
@@ -284,7 +280,6 @@ export function createTenant(data) {
     {
       id: `u_${id}_eng1`,
       email: `eng@${newTenant.adminEmail.split('@')[1] || 'site.ae'}`,
-      password: '123456',
       role: 'engineer',
       name: 'م. مهندس الموقع',
       engineerName: 'م. مهندس الموقع',
@@ -399,7 +394,6 @@ export async function registerNewTenant(formData) {
     currency: 'ج.م',
     phone,
     adminEmail: cleanEmail,
-    adminPassword: hashedPassword,
     adminName,
     plan: 'trial',
     seedDemoProject: true, // لتوفير مشروع عينة واقعي يبدأ به
@@ -507,14 +501,13 @@ export function getTenantData(companyId) {
   let users = null;
   try {
     const raw = localStorage.getItem(`tenant_${companyId}_users`);
-    if (raw) users = JSON.parse(raw);
+    if (raw) users = sanitizeCompanyUsersForCloud(JSON.parse(raw));
   } catch (e) {}
   if (!users || users.length === 0) {
     users = [
       {
         id: `u_${companyId}_admin`,
         email: tenant.adminEmail,
-        password: tenant.adminPassword,
         role: 'owner',
         name: tenant.adminName,
         engineerName: null,
@@ -523,7 +516,6 @@ export function getTenantData(companyId) {
       {
         id: `u_${companyId}_eng1`,
         email: `eng@${tenant.adminEmail.split('@')[1] || 'site.ae'}`,
-        password: '123456',
         role: 'engineer',
         name: companyId === 'comp_alain' ? 'م. هزاع المنصوري' : (companyId === 'comp_dhabi' ? 'م. عبد الله الظاهري' : 'م. أحمد كامل'),
         engineerName: companyId === 'comp_alain' ? 'م. هزاع المنصوري' : (companyId === 'comp_dhabi' ? 'م. عبد الله الظاهري' : 'م. أحمد كامل'),
@@ -653,7 +645,7 @@ export async function getTenantDataAsync(companyId) {
         try { syncSettingsToCloud(companyId, settings); } catch (e) {}
       }
       const rawUsers = Array.isArray(cloud.users) && cloud.users.length > 0 ? cloud.users : null;
-      const mergedUsers = mergeUsersPreservingLocal(localFallback.users, rawUsers);
+      const mergedUsers = sanitizeCompanyUsersForCloud(mergeUsersPreservingLocal(localFallback.users, rawUsers));
       const mergedTeam = mergeTeamsPreservingLocal(localFallback.team, cloud.team, mergedUsers);
       const leads = Array.isArray(cloud.leads) ? cloud.leads : null;
       const subProjects = await fetchProjectsFromCloud(companyId);
@@ -661,7 +653,7 @@ export async function getTenantDataAsync(companyId) {
         ? subProjects
         : (Array.isArray(cloud.projects) ? cloud.projects : null);
 
-      const projects = mergeProjectsPreservingLocal(localFallback.projects, cloudProjects);
+      const projects = mergeProjectsPreservingLocal(localFallback.projects, cloudProjects, companyId);
 
       // تحديث الـ LocalStorage Cache
       if (settings) try { localStorage.setItem(`tenant_${companyId}_settings`, JSON.stringify(settings)); } catch (e) {}
@@ -842,7 +834,7 @@ export function generateWhatsAppWelcomeMessage(tenant) {
 🏢 *اسم الشركة:* ${tenant.name}
 🌐 *رابط الدخول:* ${window.location.origin || 'http://localhost:5173'}
 👤 *البريد الإلكتروني:* ${tenant.adminEmail}
-🔑 *كلمة المرور:* ${tenant.adminPassword}
+🔑 *كلمة المرور:* يتم تعيينها وتشفيرها عبر رابط الأمان السحابي المرسل للبريد
 📦 *نوع الباقة:* ${tenant.planName}
 📅 *تاريخ الصلاحية:* ${tenant.expiryDate}
 

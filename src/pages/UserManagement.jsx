@@ -9,7 +9,8 @@ import {
   CUSTOMIZABLE_NAV_TABS, CUSTOMIZABLE_ACTIONS
 } from '../utils/permissions';
 import { getActiveTenantId } from '../services/tenantsManager';
-import { syncCompanyUsersToCloud, syncTeamToCloud } from '../services/cloudSync';
+import { syncCompanyUsersToCloud, syncTeamToCloud, sanitizeCompanyUsersForCloud } from '../services/cloudSync';
+import { sendPasswordReset } from '../services/auth';
 
 // أدوار الشركة المشتركة فقط (استبعاد Super Admin الخاص بالمنصة)
 const COMPANY_ROLES = Object.fromEntries(
@@ -30,37 +31,37 @@ export function loadUsers(companyId) {
     const raw = localStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) return sanitizeCompanyUsersForCloud(parsed);
     }
   } catch (e) {}
   
-  // إذا لم توجد مستخدمين للشركة، ننشئ الافتراضيين بما فيهم مسؤول التوريدات
+  // إذا لم توجد مستخدمين للشركة، ننشئ الافتراضيين بما فيهم مسؤول التوريدات (بدون أي كلمات سر كنص صريح)
   const cId = companyId || getActiveTenantId() || 'comp_alain';
   let defaults = [];
   if (cId === 'comp_alain') {
     defaults = [
-      { id: 'u_alain_1', email: 'ceo@alain-contract.ae', password: '123456', role: 'owner', name: 'أ. هزاع الشامسي', engineerName: null, companyId: 'comp_alain' },
-      { id: 'u_alain_2', email: 'eng@alain-contract.ae', password: '123456', role: 'engineer', name: 'م. هزاع المنصوري', engineerName: 'م. هزاع المنصوري', companyId: 'comp_alain' },
-      { id: 'u_alain_3', email: 'supply@alain-contract.ae', password: '123456', role: 'procurement', name: 'أ. محمود فوزي (مسؤول التوريدات)', engineerName: null, companyId: 'comp_alain' },
+      { id: 'u_alain_1', email: 'ceo@alain-contract.ae', role: 'owner', name: 'أ. هزاع الشامسي', engineerName: null, companyId: 'comp_alain' },
+      { id: 'u_alain_2', email: 'eng@alain-contract.ae', role: 'engineer', name: 'م. هزاع المنصوري', engineerName: 'م. هزاع المنصوري', companyId: 'comp_alain' },
+      { id: 'u_alain_3', email: 'supply@alain-contract.ae', role: 'procurement', name: 'أ. محمود فوزي (مسؤول التوريدات)', engineerName: null, companyId: 'comp_alain' },
     ];
   } else if (cId === 'comp_dhabi') {
     defaults = [
-      { id: 'u_dhabi_1', email: 'admin@dar-dhabi.ae', password: '123456', role: 'owner', name: 'م. عبد الله الظاهري', engineerName: null, companyId: 'comp_dhabi' },
-      { id: 'u_dhabi_2', email: 'eng@dar-dhabi.ae', password: '123456', role: 'engineer', name: 'م. ناصر الهاشمي', engineerName: 'م. ناصر الهاشمي', companyId: 'comp_dhabi' },
-      { id: 'u_dhabi_3', email: 'supply@dar-dhabi.ae', password: '123456', role: 'procurement', name: 'أ. راشد الكعبي (مسؤول التوريدات)', engineerName: null, companyId: 'comp_dhabi' },
+      { id: 'u_dhabi_1', email: 'admin@dar-dhabi.ae', role: 'owner', name: 'م. عبد الله الظاهري', engineerName: null, companyId: 'comp_dhabi' },
+      { id: 'u_dhabi_2', email: 'eng@dar-dhabi.ae', role: 'engineer', name: 'م. ناصر الهاشمي', engineerName: 'م. ناصر الهاشمي', companyId: 'comp_dhabi' },
+      { id: 'u_dhabi_3', email: 'supply@dar-dhabi.ae', role: 'procurement', name: 'أ. راشد الكعبي (مسؤول التوريدات)', engineerName: null, companyId: 'comp_dhabi' },
     ];
   } else if (cId === 'comp_cairo') {
     defaults = [
-      { id: 'u_cairo_1', email: 'admin@al-ofok.com', password: '123456', role: 'owner', name: 'م. شريف عزمي', engineerName: null, companyId: 'comp_cairo' },
-      { id: 'u_cairo_2', email: 'eng@al-ofok.com', password: '123456', role: 'engineer', name: 'م. أحمد كامل', engineerName: 'م. أحمد كامل', companyId: 'comp_cairo' },
-      { id: 'u_cairo_3', email: 'supply@al-ofok.com', password: '123456', role: 'procurement', name: 'أ. مصطفى ممدوح (مسؤول التوريدات)', engineerName: null, companyId: 'comp_cairo' },
+      { id: 'u_cairo_1', email: 'admin@al-ofok.com', role: 'owner', name: 'م. شريف عزمي', engineerName: null, companyId: 'comp_cairo' },
+      { id: 'u_cairo_2', email: 'eng@al-ofok.com', role: 'engineer', name: 'م. أحمد كامل', engineerName: 'م. أحمد كامل', companyId: 'comp_cairo' },
+      { id: 'u_cairo_3', email: 'supply@al-ofok.com', role: 'procurement', name: 'أ. مصطفى ممدوح (مسؤول التوريدات)', engineerName: null, companyId: 'comp_cairo' },
     ];
   } else {
     const cleanComp = cId.replace(/^comp_/, '');
     defaults = [
-      { id: `u_${cId}_admin`, email: `admin@${cleanComp}.com`, password: '123456', role: 'owner', name: 'مدير الشركة', engineerName: null, companyId: cId },
-      { id: `u_${cId}_eng1`, email: `eng@${cleanComp}.com`, password: '123456', role: 'engineer', name: 'مهندس الموقع', engineerName: 'مهندس الموقع', companyId: cId },
-      { id: `u_${cId}_supply`, email: `supply@${cleanComp}.com`, password: '123456', role: 'procurement', name: 'مسؤول التوريدات', engineerName: null, companyId: cId },
+      { id: `u_${cId}_admin`, email: `admin@${cleanComp}.com`, role: 'owner', name: 'مدير الشركة', engineerName: null, companyId: cId },
+      { id: `u_${cId}_eng1`, email: `eng@${cleanComp}.com`, role: 'engineer', name: 'مهندس الموقع', engineerName: 'مهندس الموقع', companyId: cId },
+      { id: `u_${cId}_supply`, email: `supply@${cleanComp}.com`, role: 'procurement', name: 'مسؤول التوريدات', engineerName: null, companyId: cId },
     ];
   }
   try { localStorage.setItem(key, JSON.stringify(defaults)); } catch (e) {}
@@ -69,7 +70,8 @@ export function loadUsers(companyId) {
 
 export function saveUsers(users, companyId) {
   const key = getCompanyUsersKey(companyId);
-  try { localStorage.setItem(key, JSON.stringify(users)); } catch (e) {}
+  const clean = sanitizeCompanyUsersForCloud(users);
+  try { localStorage.setItem(key, JSON.stringify(clean)); } catch (e) {}
 }
 
 export function mergeTeamWithUsers(teamObj, companyUsers) {
@@ -145,14 +147,11 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
   const [form, setForm] = useState({
     name: user?.name || '',
     email: user?.email || '',
-    password: user?.password || '123456',
     role: initialRole,
     engineerName: user?.engineerName || '',
   });
 
-  const [showPass, setShowPass] = useState(false);
   const [errors, setErrors] = useState({});
-  const [copied, setCopied] = useState(false);
 
   // ── حالة تخصيص الصلاحيات يدوياً ──
   const [isCustom, setIsCustom] = useState(() => {
@@ -246,7 +245,6 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
       cleanEmail = `${cleanEmail}@company.com`;
     }
 
-    const finalPassword = (form.password && form.password.trim().length >= 4) ? form.password.trim() : '123456';
     const effectiveEngName = form.role === 'engineer' ? ((form.engineerName || form.name).trim()) : null;
 
     onSave({
@@ -254,7 +252,6 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
       id: user?.id || 'u_' + Date.now(),
       name: form.name.trim(),
       email: cleanEmail,
-      password: finalPassword,
       role: form.role,
       engineerName: effectiveEngName,
       hasCustomPermissions: isCustom,
@@ -374,60 +371,21 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
             {isEdit && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>⚠️ لا يمكن تغيير البريد بعد الإنشاء لربط البيانات</div>}
           </Field>
 
-          <Field label="كلمة المرور *" error={errors.password}>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <input
-                type={showPass ? 'text' : 'password'}
-                className="filter-input"
-                style={{
-                  width: '100%',
-                  direction: 'ltr',
-                  textAlign: 'left',
-                  paddingLeft: 38,
-                  paddingRight: 40,
-                  fontSize: 13.5
-                }}
-                placeholder="••••••••"
-                value={form.password}
-                onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-              />
-              <div style={{
-                position: 'absolute',
-                left: 12,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: 'var(--muted)',
-                pointerEvents: 'none',
-                display: 'flex',
-                alignItems: 'center'
-              }}>
-                <KeyRound size={16} />
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowPass(s => !s)}
-                style={{
-                  position: 'absolute',
-                  right: 12,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--muted)',
-                  cursor: 'pointer',
-                  padding: 4,
-                  display: 'flex',
-                  alignItems: 'center'
-                }}
-                title={showPass ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
-              >
-                {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
+          {/* Security & Authentication Info Badge */}
+          <div style={{
+            padding: '12px 14px',
+            borderRadius: 10,
+            background: 'rgba(16, 185, 129, 0.08)',
+            border: '1px solid rgba(16, 185, 129, 0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+          }}>
+            <Shield size={20} color="#10B981" style={{ flexShrink: 0 }} />
+            <div style={{ fontSize: 12, color: '#065F46', lineHeight: 1.5 }}>
+              <strong>أمان مشفر بمعايير Firebase Auth:</strong> يتم إدارة وتشفير كلمات المرور حصرياً عبر خوادم Google Firebase الآمنة. لن يتم حفظ أي كلمة سر بصيغة نص صريح. يمكن للمستخدم تعيين أو تغيير كلمة المرور فوراً عبر رابط التعيين السحابي.
             </div>
-          </Field>
+          </div>
 
           <Field label="الدور الوظيفي الأساسي *" error={errors.role}>
             <select
@@ -691,8 +649,28 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
   const [deleteId, setDeleteId] = useState(null);
   const [saved, setSaved] = useState(false);
   const [filterRole, setFilterRole] = useState('all');
-  const [showPassFor, setShowPassFor] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  const [resetSentEmail, setResetSentEmail] = useState(null);
+  const [resetFeedback, setResetFeedback] = useState(null);
+
+  async function handleSendResetEmail(email) {
+    if (!email) return;
+    try {
+      const res = await sendPasswordReset(email);
+      if (res.success) {
+        setResetSentEmail(email);
+        setResetFeedback(`تم إرسال رابط تعيين كلمة المرور إلى ${email} بنجاح عبر Firebase ✉️`);
+        setTimeout(() => {
+          setResetSentEmail(null);
+          setResetFeedback(null);
+        }, 5000);
+      } else {
+        alert(res.error || 'تعذر إرسال الرابط');
+      }
+    } catch (e) {
+      alert(e.message || 'حدث خطأ غير متوقع أثناء إرسال الرابط');
+    }
+  }
 
   // تحديث المستخدمين عند تغيير الشركة
   useEffect(() => {
@@ -795,7 +773,7 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
   }
 
   function copyCredentials(user) {
-    const text = `البريد: ${user.email}\nكلمة المرور: ${user.password}`;
+    const text = `البريد الإلكتروني: ${user.email}\nالاسم: ${user.name}\nالدور: ${COMPANY_ROLES[user.role]?.label || user.role}`;
     navigator.clipboard?.writeText(text).then(() => {
       setCopiedId(user.id);
       setTimeout(() => setCopiedId(null), 2000);
@@ -855,6 +833,18 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
         </div>
       )}
 
+      {/* ─── Reset Password Feedback Banner ─── */}
+      {resetFeedback && (
+        <div style={{
+          background: 'rgba(59, 130, 246, 0.12)', border: '1px solid rgba(59, 130, 246, 0.3)',
+          color: '#2563EB', padding: '10px 16px', borderRadius: 10,
+          display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700,
+          animation: 'fadeIn 0.2s ease',
+        }}>
+          <CheckCircle2 size={16} /> {resetFeedback}
+        </div>
+      )}
+
       {/* ─── Role Filters ─── */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button
@@ -886,7 +876,7 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
                 <th>البريد الإلكتروني</th>
                 <th>الدور والصلاحيات</th>
                 <th>المهندس المرتبط</th>
-                <th>كلمة المرور</th>
+                <th>حالة الأمان والتوثيق</th>
                 <th style={{ textAlign: 'center' }}>الإجراءات</th>
               </tr>
             </thead>
@@ -977,33 +967,51 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
                         )}
                       </td>
 
-                      {/* Password */}
+                      {/* Security Status */}
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span className="font-mono" style={{ fontSize: 12, letterSpacing: isPassVisible ? 0 : 2 }}>
-                            {isPassVisible ? u.password : '••••••••'}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            padding: '3px 9px',
+                            borderRadius: 12,
+                            background: '#10B98115',
+                            color: '#059669',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            border: '1px solid #10B98130',
+                          }}>
+                            <Shield size={12} /> موثق سحابياً
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => setShowPassFor(s => s === u.id ? null : u.id)}
-                            style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: 2 }}
-                            title={isPassVisible ? 'إخفاء' : 'إظهار'}
-                          >
-                            {isPassVisible ? <EyeOff size={14} /> : <Eye size={14} />}
-                          </button>
                         </div>
                       </td>
 
                       {/* Actions */}
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                          {/* Send Reset Email */}
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            style={{
+                              padding: '6px 8px', fontSize: 12,
+                              color: resetSentEmail === u.email ? '#10B981' : 'var(--muted)',
+                              background: resetSentEmail === u.email ? '#10B98118' : 'transparent'
+                            }}
+                            onClick={() => handleSendResetEmail(u.email)}
+                            title="إرسال رابط إعادة تعيين كلمة المرور إلى بريده الإلكتروني عبر Firebase"
+                          >
+                            {resetSentEmail === u.email ? <Check size={14} color="#10B981" /> : <Mail size={14} />}
+                          </button>
+
                           {/* Copy */}
                           <button
                             type="button"
                             className="btn btn-ghost"
                             style={{ padding: '6px 8px', fontSize: 12 }}
                             onClick={() => copyCredentials(u)}
-                            title="نسخ بيانات الدخول"
+                            title="نسخ بيانات الحساب"
                           >
                             {isCopied ? <Check size={14} color="#10B981" /> : <Copy size={14} />}
                           </button>

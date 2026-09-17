@@ -564,8 +564,9 @@ export default function App() {
       const cloudData = await getTenantDataAsync(companyId);
       if (cloudData) {
         if (Array.isArray(cloudData.projects)) {
-          setProjects((prev) => {
-            const merged = mergeProjectsPreservingLocal(prev || scopedLocalProjects, cloudData.projects).map(p => ({
+          setProjects(() => {
+            const safeLocal = (scopedLocalProjects || []).filter(p => !p.companyId || p.companyId === companyId);
+            const merged = mergeProjectsPreservingLocal(safeLocal, cloudData.projects, companyId).map(p => ({
               ...p,
               companyId: companyId
             }));
@@ -668,7 +669,7 @@ export default function App() {
     const unsub = subscribeToCloudProjects(activeCompanyId, (cloudProjects) => {
       if (Array.isArray(cloudProjects) && cloudProjects.length > 0) {
         setProjects((prev) => {
-          const merged = mergeProjectsPreservingLocal(prev, cloudProjects);
+          const merged = mergeProjectsPreservingLocal(prev, cloudProjects, activeCompanyId);
           try {
             const lean = merged.map(p => sanitizeProjectForCloud(p));
             localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(lean));
