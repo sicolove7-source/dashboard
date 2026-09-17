@@ -342,28 +342,6 @@ export default function Sidebar({
             </div>
           </div>
         </div>
-        {onLogout && (
-          <button
-            onClick={onLogout}
-            title="تسجيل الخروج"
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "var(--muted)",
-              cursor: "pointer",
-              padding: 5,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 6,
-              transition: "all 0.15s"
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = '#EF4444'; e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent'; }}
-          >
-            <LogOut size={16} />
-          </button>
-        )}
       </div>
 
       {/* ─── التنقل ─── */}
@@ -379,16 +357,6 @@ export default function Sidebar({
             </div>
           );
         })}
-        {/* ── إعدادات الشركة — مدير فقط أو من لديه صلاحية مخصصة ── */}
-        {can(currentUser || userRole, 'company_settings_view') && (
-          <div
-            className={`nav-item ${tab === 'settings' ? 'active' : ''}`}
-            onClick={() => { setTab('settings'); setView('list'); setSidebarOpen?.(false); }}
-          >
-            <Settings size={18} />
-            إعدادات الشركة
-          </div>
-        )}
       </nav>
 
       {/* Onboarding Tour Button */}

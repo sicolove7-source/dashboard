@@ -374,30 +374,6 @@ export default function MobileLayout({
                   </div>
                 );
               })}
-
-              {/* Company Settings — Owner only or custom permission */}
-              {can(currentUser || userRole, 'company_settings_view') && (
-                <div
-                  onClick={() => handleNavClick('settings')}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    padding: '12px 16px',
-                    borderRadius: 10,
-                    fontSize: 14,
-                    fontWeight: tab === 'settings' ? 700 : 600,
-                    color: tab === 'settings' ? 'var(--sidebar-active-text, #2563EB)' : 'var(--sidebar-text, #475569)',
-                    background: tab === 'settings' ? 'var(--sidebar-active-bg, #EFF6FF)' : 'transparent',
-                    cursor: 'pointer',
-                    marginTop: 4,
-                  }}
-                >
-                  <Settings size={18} />
-                  <span>إعدادات الشركة والمستخدمين</span>
-                  {tab === 'settings' && <ChevronLeft size={16} style={{ marginRight: 'auto' }} />}
-                </div>
-              )}
             </div>
 
             {/* Footer actions in Drawer */}

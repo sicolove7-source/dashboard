@@ -161,12 +161,11 @@ export const NAV = [
   { key: "finance",        label: "المالية الشاملة",         icon: "TrendingUp" },
   { key: "team",           label: "أداء المهندسين",          icon: "Users" },
   { key: "projects",       label: "مواقع العمل",             icon: "Building2" },
-  { key: "subcontractors", label: "مقابلو الباطن والمستخلصات", icon: "Hammer" },
+  { key: "subcontractors", label: "مقاولو الباطن والمستخلصات", icon: "Hammer" },
   { key: "suppliers",      label: "الموردون والصنايعية",     icon: "Truck" },
   { key: "quotations",     label: "حاسبة المقايسات",        icon: "Calculator" },
   { key: "specs",          label: "المواصفات الفنية",          icon: "FileText" },
   { key: "settings",       label: "إعدادات الشركة",           icon: "Settings" },
-  { key: "automations",    label: "الأتمتة والتنبيهات",        icon: "Zap" },
 ];
 
 

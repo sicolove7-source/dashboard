@@ -6,7 +6,6 @@ import {
 } from 'lucide-react';
 import { getGlobalCurrency } from '../utils/helpers';
 import CraftsmanContractModal from '../components/CraftsmanContractModal';
-import SubcontractorsTab from './SubcontractorsTab';
 import {
   syncWorkersToCloud,
   syncSuppliersToCloud,
@@ -756,14 +755,13 @@ export default function SuppliersTab({ projects = [], companySettings, userRole,
     try {
       const p = new URLSearchParams(window.location.search);
       const target = p.get('subtab') || p.get('tab');
-      if (target === 'subcontractors' || target === 'workers') return target;
+      if (target === 'workers') return target;
     } catch {}
     return 'suppliers';
   });
   const tabs = [
     { key:'suppliers',      label:'الموردون والمواد',          shortLabel:'الموردون',        icon:Truck },
     { key:'workers',        label:'الصنايعية والعمالة',         shortLabel:'الصنايعية',       icon:Wrench },
-    { key:'subcontractors', label:'مقاولو الباطن والمستخلصات', shortLabel:'مقاولو الباطن',   icon:HardHat },
   ];
   return (
     <div className="tab-fade suppliers-page-container" style={{ display: 'flex', flexDirection: 'column', gap:20, paddingBottom:60, width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
@@ -774,13 +772,13 @@ export default function SuppliersTab({ projects = [], companySettings, userRole,
             <Package size={22} color="#0F172A"/>
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <h2 className="banner-title" style={{ margin: 0, fontFamily: 'Tajawal', fontSize: 20, color: 'var(--ink)', lineHeight: 1.3 }}>إدارة الموردين والصنايعية ومقاولي الباطن</h2>
-            <div className="banner-sub" style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4, lineHeight: 1.4 }}>سجل موردي الخامات والمواد وعمالة التشطيبات ومقاولي الباطن والمستخلصات</div>
+            <h2 className="banner-title" style={{ margin: 0, fontFamily: 'Tajawal', fontSize: 20, color: 'var(--ink)', lineHeight: 1.3 }}>إدارة الموردين والصنايعية</h2>
+            <div className="banner-sub" style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4, lineHeight: 1.4 }}>سجل موردي الخامات والمواد وفنيي وعمالة التشطيبات والمصنعيات</div>
           </div>
         </div>
       </div>
 
-      {/* Sub-tabs: 3 equal columns on mobile */}
+      {/* Sub-tabs: 2 equal columns on mobile */}
       <div className="subtabs suppliers-main-subtabs" style={{ marginBottom:0, width: '100%', boxSizing: 'border-box' }}>
         {tabs.map(t => (
           <div key={t.key} className={`subtab ${activeTab===t.key ? 'active' : ''}`} onClick={() => setActiveTab(t.key)}>
@@ -792,17 +790,8 @@ export default function SuppliersTab({ projects = [], companySettings, userRole,
       </div>
 
       <div className="tab-fade" style={{ width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
-        {activeTab==='suppliers'      && <SuppliersSection activeCompanyId={activeCompanyId}/>}
-        {activeTab==='workers'        && <WorkersSection activeCompanyId={activeCompanyId}/>}
-        {activeTab==='subcontractors' && (
-          <SubcontractorsTab
-            projects={projects}
-            userRole={userRole}
-            companySettings={companySettings}
-            currentUser={currentUser}
-            activeCompanyId={activeCompanyId}
-          />
-        )}
+        {activeTab==='suppliers' && <SuppliersSection activeCompanyId={activeCompanyId}/>}
+        {activeTab==='workers'   && <WorkersSection activeCompanyId={activeCompanyId}/>}
       </div>
     </div>
   );
