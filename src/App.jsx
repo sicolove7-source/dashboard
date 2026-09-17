@@ -37,7 +37,8 @@ const QuickWinChecklist = React.lazy(() => import('./components/QuickWinChecklis
 import ErrorBoundary from './components/ErrorBoundary';
 import { isFirstLogin, markFirstLoginDone, seedDemoData } from './utils/seedDemoData';
 
-import { loadCompanySettings, applyCompanyBranding, COMPANY_SETTINGS_KEY } from './utils/branding';
+import { loadCompanySettings, applyCompanyBranding } from './utils/branding';
+try { if (typeof localStorage !== 'undefined') localStorage.removeItem('company-settings-v1'); } catch (e) {}
 import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail } from './services/tenantsManager';
 import { onAuthChange, logoutUser } from './services/auth';
 import { AdminProvider } from './context/AdminContext';
@@ -421,11 +422,11 @@ export default function App() {
     }
   }, [companySettings]);
 
-  // Listen for company settings changes from CompanySettings page
+  // Listen for company settings changes from other tabs for the active company
   useEffect(() => {
     function onStorageChange(e) {
-      if (e.key === COMPANY_SETTINGS_KEY) {
-        const updated = loadCompanySettings();
+      if (e.key === `tenant_${activeCompanyId}_settings`) {
+        const updated = loadCompanySettings(activeCompanyId);
         setCompanySettings(updated);
         applyCompanyBranding(updated);
         if (updated?.currency) {
@@ -435,7 +436,7 @@ export default function App() {
     }
     window.addEventListener('storage', onStorageChange);
     return () => window.removeEventListener('storage', onStorageChange);
-  }, []);
+  }, [activeCompanyId]);
 
   // Update theme when toggled by user
   useEffect(() => {

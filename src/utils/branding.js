@@ -99,30 +99,22 @@ export function loadCompanySettings(companyId) {
     } catch (e) {}
   }
 
-  // لا نقرأ من الكاش العام القديم إطلاقاً إذا كان هناك companyId محدد لمنع تسريب بيانات وشعار شركة سابقة
-  if (!cId) {
-    try {
-      const raw = localStorage.getItem(COMPANY_SETTINGS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.currency) setGlobalCurrency(parsed.currency);
-        return { ...DEFAULT_COMPANY_SETTINGS, ...parsed };
-      }
-    } catch (e) {}
-  }
-
   return { ...DEFAULT_COMPANY_SETTINGS };
 }
 
 export function saveCompanySettings(settings, companyId) {
-  const cId = companyId || getActiveTenantId() || 'comp_alain';
-  try {
-    localStorage.setItem(`tenant_${cId}_settings`, JSON.stringify(settings));
-  } catch (e) {
-    console.warn("LocalStorage error saving tenant settings:", e);
+  const cId = companyId || getActiveTenantId();
+  if (cId) {
+    try {
+      localStorage.setItem(`tenant_${cId}_settings`, JSON.stringify(settings));
+    } catch (e) {
+      console.warn("LocalStorage error saving tenant settings:", e);
+    }
   }
+
+  // تنظيف المفتاح القديم لمنع أي تداخل بين الشركات
   try {
-    localStorage.setItem(COMPANY_SETTINGS_KEY, JSON.stringify(settings));
+    localStorage.removeItem(COMPANY_SETTINGS_KEY);
   } catch (e) {}
 
   if (settings.currency) {
@@ -136,11 +128,13 @@ export function saveCompanySettings(settings, companyId) {
   } catch (e) {}
 
   // المزامنة الفورية مع سحابة Firestore في الخلفية لضمان عدم ضياع الشعار أو الإعدادات
-  try {
-    syncSettingsToCloud(cId, settings).catch((err) => {
-      console.warn("Cloud sync error for company settings:", err);
-    });
-  } catch (e) {}
+  if (cId) {
+    try {
+      syncSettingsToCloud(cId, settings).catch((err) => {
+        console.warn("Cloud sync error for company settings:", err);
+      });
+    } catch (e) {}
+  }
 }
 
 export function applyCompanyBranding(settings) {
