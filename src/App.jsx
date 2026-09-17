@@ -238,6 +238,11 @@ function hasCollectionChanged(prev, next) {
 
 function getInitialCompanyId() {
   try {
+    const session = localStorage.getItem('active_session_user');
+    if (session) {
+      const parsed = JSON.parse(session);
+      if (parsed?.companyId) return parsed.companyId;
+    }
     const saved = localStorage.getItem('isAdmin');
     if (saved) {
       const parsed = JSON.parse(saved);
@@ -318,9 +323,28 @@ export default function App() {
   const [formInitial, setFormInitial] = useState(null); // null=new, object=edit
   const [initialProjectSub, setInitialProjectSub] = useState(null);
   const [saveState, setSaveState] = useState(null); // null | 'saved' | 'offline'
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null); // { role, name, engineerName, email }
-  const [authLoading, setAuthLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const cached = localStorage.getItem('active_session_user');
+      return cached ? JSON.parse(cached) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    try {
+      return !!localStorage.getItem('active_session_user');
+    } catch (e) {
+      return false;
+    }
+  });
+  const [authLoading, setAuthLoading] = useState(() => {
+    try {
+      return !localStorage.getItem('active_session_user');
+    } catch (e) {
+      return true;
+    }
+  });
   const userRole = currentUser?.role || 'engineer';
 
   // Landing Page vs Login state
@@ -989,27 +1013,40 @@ export default function App() {
         }
 
         try {
-          // قراءة الـ Custom Claims المشفرة من Google
-          const idTokenResult = await firebaseUser.getIdTokenResult();
-          const claims = idTokenResult.claims || {};
+          // قراءة الـ Custom Claims المشفرة من Google إن وُجدت
+          let claims = {};
+          try {
+            const idTokenResult = await firebaseUser.getIdTokenResult();
+            claims = idTokenResult?.claims || {};
+          } catch (e) {
+            console.warn("Could not fetch claims:", e);
+          }
 
-          // استخراج role و companyId حصرياً من claims (بدون backdoor لإيميل محدد)
           const claimRole = claims.role;
           const isSuperAdminClaim = claimRole === 'super_admin' || !!claims.isSuperAdmin;
 
-          // إذا كان المستخدم لا يملك claims مسجلة لشركة وليس سوبر أدمن -> إنهاء الجلسة ورفض الدخول
-          if (!isSuperAdminClaim && (!claimRole || !claims.companyId)) {
-            console.warn("Unassigned user attempted login without company claims:", firebaseUser.email);
+          // جلب ومطابقة بيانات المستخدم والشركة (من Claims السحابية أو سجلات الشركة عبر الإيميل)
+          let tenantRes = null;
+          try {
+            tenantRes = await resolveTenantUserByEmail(firebaseUser.email, firebaseUser.uid, claims);
+          } catch (e) {
+            console.warn("Tenant resolution warning:", e);
+          }
+
+          if (!tenantRes?.success || !tenantRes.user) {
+            console.warn("Unassigned user attempted login without company affiliation:", firebaseUser.email);
             await logoutUser();
+            try { localStorage.removeItem('active_session_user'); } catch (e) {}
             setCurrentUser(null);
             setIsAuthenticated(false);
             setAuthLoading(false);
             return;
           }
 
-          const role = claimRole || (isSuperAdminClaim ? 'super_admin' : 'engineer');
-          const companyId = claims.companyId || (isSuperAdminClaim ? (getActiveTenantId() || 'comp_alain') : null);
-          const isSuperAdmin = role === 'super_admin' || isSuperAdminClaim;
+          const resolvedUser = tenantRes.user;
+          const role = claimRole || resolvedUser.role || (isSuperAdminClaim ? 'super_admin' : 'engineer');
+          const companyId = claims.companyId || resolvedUser.companyId || (isSuperAdminClaim ? (getActiveTenantId() || 'comp_alain') : null);
+          const isSuperAdmin = role === 'super_admin' || isSuperAdminClaim || !!resolvedUser.isSuperAdmin;
 
           // إذا كان الحساب فرعياً (ليس سوبر أدمن) ودخول الحسابات الفرعية مقفل سحابياً أو محلياً -> إنهاء الجلسة فوراً
           if (role !== 'super_admin' && !isSuperAdmin) {
@@ -1023,6 +1060,7 @@ export default function App() {
 
             if (!allowed) {
               await logoutUser();
+              try { localStorage.removeItem('active_session_user'); } catch (e) {}
               setCurrentUser(null);
               setIsAuthenticated(false);
               setAuthLoading(false);
@@ -1030,36 +1068,23 @@ export default function App() {
             }
           }
 
-          // جلب بيانات العرض للمستخدم مع تثبيت الصلاحيات والشركة من claims
-          let resolvedUser = {
-            id: firebaseUser.uid,
-            email: firebaseUser.email,
-            name: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مستخدم'),
-            role: role,
-            companyId: companyId,
-            isSuperAdmin: isSuperAdmin,
+          const finalUser = {
+            ...resolvedUser,
+            id: firebaseUser.uid || resolvedUser.id,
+            email: firebaseUser.email || resolvedUser.email,
+            role,
+            companyId,
+            isSuperAdmin,
           };
 
-          try {
-            const tenantRes = await resolveTenantUserByEmail(firebaseUser.email, firebaseUser.uid, claims);
-            if (tenantRes?.success && tenantRes.user) {
-              resolvedUser = {
-                ...tenantRes.user,
-                id: firebaseUser.uid,
-                email: firebaseUser.email,
-                role: role, // تأكيد مطلق: الصلاحية تأتي من الـ claims السحابية
-                companyId: companyId, // تأكيد مطلق: الشركة تأتي من الـ claims السحابية
-                isSuperAdmin: isSuperAdmin,
-              };
-            }
-          } catch (e) {
-            console.warn("Tenant resolution fallback warning:", e);
-          }
-
-          setCurrentUser(resolvedUser);
+          setCurrentUser(finalUser);
           setIsAuthenticated(true);
-          setActiveTenantId(companyId);
-          // ملحوظة: تم حذف loadTenantWorkspace(companyId) المكررة هنا لمنع التحميل المزدوج والسباق؛ لأن useEffect([activeCompanyId, isAuthenticated]) يقوم بالتحميل تلقائياً
+          try {
+            localStorage.setItem('active_session_user', JSON.stringify(finalUser));
+          } catch (e) {}
+          if (companyId) {
+            setActiveTenantId(companyId);
+          }
 
           const requestedTab = getTabFromPath();
           if (requestedTab) {
@@ -1073,6 +1098,7 @@ export default function App() {
           }
         } catch (err) {
           console.error("Error evaluating Firebase auth token:", err);
+          try { localStorage.removeItem('active_session_user'); } catch (e) {}
           setCurrentUser(null);
           setIsAuthenticated(false);
         } finally {
@@ -1080,6 +1106,7 @@ export default function App() {
         }
       } else {
         if (!isDemoUser) {
+          try { localStorage.removeItem('active_session_user'); } catch (e) {}
           setCurrentUser(null);
           setIsAuthenticated(false);
         }
@@ -1129,6 +1156,9 @@ export default function App() {
     
     setCurrentUser(userData);
     setIsAuthenticated(true);
+    try {
+      localStorage.setItem('active_session_user', JSON.stringify(userData));
+    } catch (e) {}
     setTab(defaultTab);
     setView('list');
     setActiveId(null);
@@ -1146,6 +1176,7 @@ export default function App() {
     }
     // مسح أمني شامل لكافة مفاتيح الشركات وقواعد البيانات المحلية لمنع التسريب على الأجهزة المشتركة
     try {
+      localStorage.removeItem('active_session_user');
       Object.keys(localStorage)
         .filter(k => k.startsWith('tenant_') || k.startsWith('db-') || k === 'isAdmin' || k === 'active_tenant_id')
         .forEach(k => localStorage.removeItem(k));

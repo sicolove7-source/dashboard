@@ -42,11 +42,15 @@ export const db = firestoreDb;
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
 
-// تفعيل المصادقة الفورية غير المعطلة لتخويل رفع الوسائط إلى Firebase Storage
-if (typeof window !== 'undefined' && auth) {
-  signInAnonymously(auth).catch((e) => {
-    // Non-blocking if anonymous auth is not enabled in console
-  });
+// المصادقة المجهولة لا تُطلب إلا عند الحاجة فقط (مثل رفع وسائط لزائر غير مسجل)
+export async function ensureAnonymousAuth() {
+  if (typeof window !== 'undefined' && auth && !auth.currentUser) {
+    try {
+      await signInAnonymously(auth);
+    } catch (e) {
+      // Non-blocking if anonymous auth is not enabled in console
+    }
+  }
 }
 
 export default app;
