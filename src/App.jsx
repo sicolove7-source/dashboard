@@ -23,8 +23,6 @@ const ProjectDetail = React.lazy(() => import('./pages/ProjectDetail'));
 const TeamPerformance = React.lazy(() => import('./pages/TeamPerformance'));
 const SuppliersTab = React.lazy(() => import('./pages/SuppliersTab'));
 const SubcontractorsTab = React.lazy(() => import('./pages/SubcontractorsTab'));
-const SpecsAssistant = React.lazy(() => import('./pages/SpecsAssistant'));
-
 const QuotationBuilder = React.lazy(() => import('./pages/QuotationBuilder'));
 const CompanyFinance = React.lazy(() => import('./pages/CompanyFinance'));
 const Login = React.lazy(() => import('./pages/Login'));
@@ -214,7 +212,6 @@ function getTabFromPath() {
     if (path === 'team') return 'team';
     if (path === 'suppliers') return 'suppliers';
     if (path === 'quotations') return 'quotations';
-    if (path === 'specs') return 'specs';
     if (path === 'automations') return 'automations';
     if (path === 'settings') return 'settings';
     if (path === 'tenants' || path === 'superadmin') return 'tenants';
@@ -473,7 +470,6 @@ export default function App() {
       import('./pages/QuotationBuilder');
       import('./pages/SuppliersTab');
       import('./pages/SubcontractorsTab');
-      import('./pages/SpecsAssistant');
       import('./pages/CompanySettings');
     };
     if (typeof window !== 'undefined') {
@@ -1126,7 +1122,6 @@ export default function App() {
       team: '/team',
       suppliers: '/suppliers',
       quotations: '/quotations',
-      specs: '/specs',
       automations: '/automations',
       settings: '/settings',
       tenants: '/tenants',
@@ -1667,12 +1662,6 @@ export default function App() {
                     setTab("projects");
                     setView("form");
                   }}
-                />
-              )}
-
-              {tab === "specs" && (
-                <SpecsAssistant
-                  userRole={userRole}
                 />
               )}
 

@@ -60,7 +60,6 @@ const NAV_ICONS = {
   subcontractors:'HardHat',
   suppliers:     'Truck',
   quotations:    'Calculator',
-  specs:         'BrainCircuit',
   settings:      'Settings',
 };
 
@@ -75,7 +74,6 @@ const NAV_LABELS_SHORT = {
   team:          'الفريق',
   suppliers:     'الموردون',
   quotations:    'المقايسات',
-  specs:         'التوصيف',
   settings:      'الإعدادات',
 };
 

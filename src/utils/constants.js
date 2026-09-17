@@ -171,7 +171,6 @@ export const NAV = [
   { key: "subcontractors", label: "مقاولو الباطن والمستخلصات", icon: "Hammer" },
   { key: "suppliers",      label: "الموردون والصنايعية",     icon: "Truck" },
   { key: "quotations",     label: "حاسبة المقايسات",        icon: "Calculator" },
-  { key: "specs",          label: "المواصفات الفنية",          icon: "FileText" },
   { key: "settings",       label: "إعدادات الشركة",           icon: "Settings" },
 ];
 

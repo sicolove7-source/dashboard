@@ -60,12 +60,12 @@ export const ROLES = {
 
 // ─── التبويبات المتاحة لكل دور ───────────────────────
 export const NAV_PERMISSIONS = {
-  super_admin:      ['tenants', 'overview', 'automations', 'crm', 'finance', 'team', 'projects', 'subcontractors', 'suppliers', 'quotations', 'specs', 'settings'],
-  owner:            ['overview', 'automations', 'crm', 'finance', 'team', 'projects', 'subcontractors', 'suppliers', 'quotations', 'specs', 'settings'],
+  super_admin:      ['tenants', 'overview', 'automations', 'crm', 'finance', 'team', 'projects', 'subcontractors', 'suppliers', 'quotations', 'settings'],
+  owner:            ['overview', 'automations', 'crm', 'finance', 'team', 'projects', 'subcontractors', 'suppliers', 'quotations', 'settings'],
   procurement:      ['projects', 'subcontractors', 'suppliers', 'overview'],
   accountant:       ['overview', 'automations', 'finance', 'projects', 'subcontractors', 'suppliers', 'quotations'],
-  engineer:         ['projects', 'subcontractors', 'suppliers', 'specs'],
-  tech_office:      ['overview', 'crm', 'projects', 'subcontractors', 'suppliers', 'quotations', 'specs'],
+  engineer:         ['projects', 'subcontractors', 'suppliers'],
+  tech_office:      ['overview', 'crm', 'projects', 'subcontractors', 'suppliers', 'quotations'],
   customer_service: ['overview', 'crm', 'projects'],
 };
 
@@ -135,9 +135,6 @@ export const PERMISSIONS = {
   quotations_create:      ['owner', 'accountant', 'tech_office'],
   quotations_edit:        ['owner', 'accountant'],
   quotations_delete:      ['owner'],
-
-  // ── المواصفات ──
-  specs_view:             ['owner', 'engineer', 'tech_office'],
 
   // ── النظام والإعدادات ──
   backup_export:          ['owner'],
