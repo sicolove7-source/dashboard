@@ -7,6 +7,12 @@ import StatusBadge from '../components/StatusBadge';
 
 export default function Overview({ projects }) {
   const stats = useMemo(() => {
+    if (!Array.isArray(projects)) {
+      return {
+        totalSnags: 0, doneSnags: 0, pendingSnags: 0, avgProgress: 0,
+        delayedProjects: [], highSnagProjects: []
+      };
+    }
     let totalSnags = 0;
     let doneSnags = 0;
     let pendingSnags = 0;
@@ -15,16 +21,17 @@ export default function Overview({ projects }) {
     let highSnagProjects = [];
 
     projects.forEach(p => {
-      totalProgress += p.progress;
+      if (!p) return;
+      totalProgress += Number(p.progress || 0);
       
-      const pSnags = p.snags || [];
-      const pDone = pSnags.filter(s => s.status === 'done').length;
+      const pSnags = Array.isArray(p.snags) ? p.snags : [];
+      const pDone = pSnags.filter(s => s && s.status === 'done').length;
       
       totalSnags += pSnags.length;
       doneSnags += pDone;
       pendingSnags += (pSnags.length - pDone);
 
-      if (p.status !== "on_track") {
+      if (p.status === "delayed" || p.status === "at_risk") {
         delayedProjects.push(p);
       }
 
@@ -42,15 +49,31 @@ export default function Overview({ projects }) {
   }, [projects]);
 
   const statusPie = useMemo(() => {
+    if (!Array.isArray(projects) || projects.length === 0) return [];
     const counts = { on_track: 0, at_risk: 0, delayed: 0 };
-    projects.forEach((p) => counts[p.status]++);
-    return Object.entries(counts).map(([k, v]) => ({ name: STATUS_META[k].label, value: v, color: STATUS_META[k].color }));
+    projects.forEach((p) => {
+      if (!p) return;
+      const raw = p.status || 'on_track';
+      const key = (raw === 'delayed' || raw === 'at_risk') ? raw : 'on_track';
+      counts[key] = (counts[key] || 0) + 1;
+    });
+    return Object.entries(counts).map(([k, v]) => {
+      const meta = STATUS_META[k] || STATUS_META.on_track || { label: k, color: '#166534' };
+      return { name: meta?.label || k, value: v, color: meta?.color || '#166534' };
+    });
   }, [projects]);
 
-  const stageBar = useMemo(() => STAGES.map((s) => ({
-    name: s.label.length > 14 ? s.label.slice(0, 14) + "…" : s.label,
-    count: projects.filter((p) => currentStageKey(p.progress) === s.key).length,
-  })), [projects]);
+  const stageBar = useMemo(() => {
+    if (!Array.isArray(projects) || !Array.isArray(STAGES)) return [];
+    return STAGES.map((s) => {
+      if (!s) return { name: '', count: 0 };
+      const label = s.label || s.key || '';
+      return {
+        name: label.length > 14 ? label.slice(0, 14) + "…" : label,
+        count: projects.filter((p) => p && currentStageKey(p.progress) === s.key).length,
+      };
+    });
+  }, [projects]);
 
   return (
     <div className="grid" style={{ gap: 24 }}>

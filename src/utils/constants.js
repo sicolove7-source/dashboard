@@ -35,6 +35,13 @@ export const STATUS_META = {
   on_track: { label: "على المسار", color: "#166534", bg: "#DCFCE7" },
   at_risk: { label: "يحتاج متابعة", color: "#9A3412", bg: "#FFEDD5" },
   delayed: { label: "متأخر", color: "#991B1B", bg: "#FEE2E2" },
+  active: { label: "نشط", color: "#166534", bg: "#DCFCE7" },
+  inprogress: { label: "جاري التنفيذ", color: "#166534", bg: "#DCFCE7" },
+  in_progress: { label: "جاري التنفيذ", color: "#166534", bg: "#DCFCE7" },
+  completed: { label: "مكتمل", color: "#2563EB", bg: "#DBEAFE" },
+  done: { label: "مكتمل", color: "#2563EB", bg: "#DBEAFE" },
+  paused: { label: "متوقف مؤقتاً", color: "#64748B", bg: "#F1F5F9" },
+  pending: { label: "قيد الانتظار", color: "#D97706", bg: "#FEF3C7" },
 };
 
 export const PROJECT_PHASES = [
