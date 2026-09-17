@@ -731,7 +731,6 @@ export function subscribeToCloudProjects(companyId, onUpdate) {
 
 const TENANTS_META_DOC = 'platform_metadata';
 const TENANTS_META_KEY = 'tenants';
-const SUPERADMIN_META_KEY = 'superadmin';
 
 /**
  * جلب قائمة الشركات المركزية من السحابة
@@ -766,40 +765,6 @@ export async function syncTenantsListToCloud(tenants) {
     return true;
   } catch (error) {
     console.warn("Cloud sync (tenants list) error:", error.message);
-    return false;
-  }
-}
-
-/**
- * جلب بيانات المشرف العام (Super Admin) من السحابة
- */
-export async function fetchSuperAdminFromCloud() {
-  try {
-    const docRef = doc(db, TENANTS_META_DOC, SUPERADMIN_META_KEY);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      return snap.data()?.creds || null;
-    }
-  } catch (e) {
-    console.warn("Cloud fetch superadmin error:", e.message);
-  }
-  return null;
-}
-
-/**
- * حفظ بيانات المشرف العام سحابياً
- */
-export async function syncSuperAdminToCloud(creds) {
-  if (!creds) return false;
-  try {
-    const docRef = doc(db, TENANTS_META_DOC, SUPERADMIN_META_KEY);
-    await setDoc(docRef, {
-      creds,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
-    return true;
-  } catch (e) {
-    console.warn("Cloud sync superadmin error:", e.message);
     return false;
   }
 }

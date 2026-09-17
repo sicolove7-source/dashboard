@@ -20,8 +20,6 @@ import {
   deleteCompanyFromCloud,
   fetchTenantsListFromCloud,
   syncTenantsListToCloud,
-  fetchSuperAdminFromCloud,
-  syncSuperAdminToCloud,
   mergeProjectsPreservingLocal,
   mergeTeamsPreservingLocal,
   mergeUsersPreservingLocal,
@@ -127,7 +125,6 @@ export function saveSuperAdminAccount(creds) {
       password: creds.password,
     };
     localStorage.setItem(SUPER_ADMIN_STORAGE_KEY, JSON.stringify(data));
-    try { syncSuperAdminToCloud(data); } catch (e) {}
     return true;
   } catch (e) {
     console.error("Error saving superadmin credentials:", e);
@@ -704,254 +701,13 @@ export async function getTenantDataAsync(companyId) {
   return localData;
 }
 
-export function authenticateTenantUser(email, password) {
-  const cleanEmail = email.toLowerCase().trim();
-  const superAdmin = getSuperAdminAccount();
-
-  // 1. فحص حساب الـ Super Admin (مالك المنصة) - متاح دائماً بدون أي قيود
-  if (cleanEmail === superAdmin.email.toLowerCase().trim() && password === superAdmin.password) {
-    return {
-      success: true,
-      user: superAdmin,
-      tenant: null,
-      isSuperAdmin: true,
-    };
-  }
-
-  // 2. إذا لم يكن الحساب هو المالك، نفحص هل دخول الحسابات الفرعية مفعل أم مقفل
-  if (!isSubAccountsLoginAllowed()) {
-    return {
-      success: false,
-      error: '🔒 تم قفل دخول الحسابات الفرعية من قِبل إدارة المنصة. الدخول مخصص فقط لمالك المنصة الرئيسي.',
-    };
-  }
-
-  // 3. فحص جميع الشركات ومستخدميها (إذا كان الدخول مصرحاً له من المالك)
-  const tenants = loadAllTenants();
-  for (const t of tenants) {
-    if (t.adminEmail.toLowerCase() === cleanEmail && t.adminPassword === password) {
-      if (t.status === 'suspended') {
-        return { success: false, error: 'تم تعليق حساب هذه الشركة. يرجى التواصل مع إدارة المنصة.' };
-      }
-      return {
-        success: true,
-        user: {
-          id: `u_${t.id}_admin`,
-          email: t.adminEmail,
-          name: t.adminName,
-          role: 'owner',
-          companyId: t.id,
-          companyName: t.name,
-          currency: t.currency || 'د.إ',
-        },
-        tenant: t,
-        isSuperAdmin: false,
-      };
-    }
-
-    // فحص فريق الشركة
-    try {
-      const rawUsers = localStorage.getItem(`tenant_${t.id}_users`);
-      if (rawUsers) {
-        const users = JSON.parse(rawUsers);
-        const match = users.find(u => u.email.toLowerCase() === cleanEmail && u.password === password);
-        if (match) {
-          if (t.status === 'suspended') {
-            return { success: false, error: 'تم تعليق حساب هذه الشركة. يرجى التواصل مع إدارة المنصة.' };
-          }
-          return {
-            success: true,
-            user: {
-              ...match,
-              companyId: t.id,
-              companyName: t.name,
-              currency: t.currency || 'د.إ',
-            },
-            tenant: t,
-            isSuperAdmin: false,
-          };
-        }
-      }
-    } catch (e) {}
-  }
-
-  // 4. فحص الحسابات التجريبية السريعة (Demo Accounts)
-  const demoMatch = (DEMO_ACCOUNTS || []).find(a => a.email.toLowerCase() === cleanEmail && a.password === password);
-  if (demoMatch) {
-    const defaultTenant = tenants[0] || INITIAL_PLATFORM_TENANTS[0];
-    return {
-      success: true,
-      user: {
-        id: `demo_${demoMatch.role}_${Date.now()}`,
-        email: demoMatch.email,
-        name: demoMatch.name,
-        role: demoMatch.role,
-        engineerName: demoMatch.engineerName,
-        companyId: defaultTenant.id,
-        companyName: defaultTenant.name,
-        currency: defaultTenant.currency || 'د.إ',
-      },
-      tenant: defaultTenant,
-      isSuperAdmin: false,
-    };
-  }
-
-  return { success: false, error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' };
-}
-
-/**
- * المصادقة السحابية الفورية — تفحص السحابة أولاً لتمكين الدخول من أي هاتف أو جهاز فوراً
- */
-export async function authenticateTenantUserAsync(email, password) {
-  const cleanEmail = (email || '').toLowerCase().trim();
-
-  // 1. مزامنة حساب الـ Super Admin من السحابة أولاً
-  try {
-    const cloudSuperAdmin = await fetchSuperAdminFromCloud();
-    if (cloudSuperAdmin && cloudSuperAdmin.email && cloudSuperAdmin.password) {
-      saveSuperAdminAccount(cloudSuperAdmin);
-    }
-  } catch (e) {}
-
-  const superAdmin = getSuperAdminAccount();
-  if (cleanEmail === superAdmin.email.toLowerCase().trim()) {
-    const check = await verifyPassword(password, superAdmin.password);
-    if (check.match) {
-      if (check.needsUpgrade) {
-        const hashed = await hashPassword(password);
-        saveSuperAdminAccount({ ...superAdmin, password: hashed });
-      }
-      return {
-        success: true,
-        user: superAdmin,
-        tenant: null,
-        isSuperAdmin: true,
-      };
-    }
-  }
-
-  // 2. التحقق من صلاحية دخول الحسابات الفرعية
-  if (!isSubAccountsLoginAllowed()) {
-    return {
-      success: false,
-      error: '🔒 تم قفل دخول الحسابات الفرعية من قِبل إدارة المنصة. الدخول مخصص فقط لمالك المنصة الرئيسي.',
-    };
-  }
-
-  // 3. جلب أحدث قائمة شركات من السحابة
-  let tenants = [];
-  try {
-    tenants = await loadAllTenantsAsync();
-  } catch (e) {
-    tenants = loadAllTenants();
-  }
-
-  for (const t of tenants) {
-    // فحص مالك الشركة (Owner Admin)
-    if (t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail) {
-      const check = await verifyPassword(password, t.adminPassword);
-      if (check.match) {
-        if (t.status === 'suspended') {
-          return { success: false, error: 'تم تعليق حساب هذه الشركة. يرجى التواصل مع إدارة المنصة.' };
-        }
-        if (check.needsUpgrade) {
-          const hashed = await hashPassword(password);
-          t.adminPassword = hashed;
-          updateTenant(t.id, { adminPassword: hashed });
-        }
-        return {
-          success: true,
-          user: {
-            id: `u_${t.id}_admin`,
-            email: t.adminEmail,
-            name: t.adminName,
-            role: 'owner',
-            companyId: t.id,
-            companyName: t.name,
-            currency: t.currency || 'ج.م',
-          },
-          tenant: t,
-          isSuperAdmin: false,
-        };
-      }
-    }
-
-    // فحص مستخدمي الشركة (محلياً وسحابياً)
-    let users = null;
-    try {
-      const rawUsers = localStorage.getItem(`tenant_${t.id}_users`);
-      if (rawUsers) users = JSON.parse(rawUsers);
-    } catch (e) {}
-
-    if (!users) {
-      try {
-        const cloudData = await fetchCompanyDataFromCloud(t.id);
-        if (cloudData && Array.isArray(cloudData.users)) {
-          users = cloudData.users;
-          try { localStorage.setItem(`tenant_${t.id}_users`, JSON.stringify(users)); } catch (e) {}
-        }
-      } catch (e) {}
-    }
-
-    if (Array.isArray(users)) {
-      for (const u of users) {
-        if (u.email && u.email.toLowerCase().trim() === cleanEmail) {
-          const check = await verifyPassword(password, u.password);
-          if (check.match) {
-            if (t.status === 'suspended') {
-              return { success: false, error: 'تم تعليق حساب هذه الشركة. يرجى التواصل مع إدارة المنصة.' };
-            }
-            if (check.needsUpgrade) {
-              const hashed = await hashPassword(password);
-              u.password = hashed;
-              try {
-                localStorage.setItem(`tenant_${t.id}_users`, JSON.stringify(users));
-                syncCompanyUsersToCloud(t.id, users);
-              } catch (e) {}
-            }
-            return {
-              success: true,
-              user: {
-                ...u,
-                companyId: t.id,
-                companyName: t.name,
-                currency: t.currency || 'ج.م',
-              },
-              tenant: t,
-              isSuperAdmin: false,
-            };
-          }
-        }
-      }
-    }
-  }
-
-  // 4. فحص الحسابات التجريبية (Demo Accounts)
-  const demoMatch = (DEMO_ACCOUNTS || []).find(a => a.email.toLowerCase() === cleanEmail && a.password === password);
-  if (demoMatch) {
-    const defaultTenant = tenants[0] || DEFAULT_TENANTS[0];
-    return {
-      success: true,
-      user: {
-        id: `demo_${demoMatch.role}_${Date.now()}`,
-        email: demoMatch.email,
-        name: demoMatch.name,
-        role: demoMatch.role,
-        engineerName: demoMatch.engineerName,
-        companyId: defaultTenant.id,
-        companyName: defaultTenant.name,
-        currency: defaultTenant.currency || 'ج.م',
-      },
-      tenant: defaultTenant,
-      isSuperAdmin: false,
-    };
-  }
-
-  return { success: false, error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' };
-}
-
 /**
  * مطابقة وتحديد بيانات الشركة وصلاحيات المستخدم بعد نجاح Firebase Authentication
+ * 
+ * ملاحظة معمارية هامة (Fallback Mechanism):
+ * هذه الدالة تعمل كطبقة احتياطية ذكية (Fallback) عندما لا تكون الـ Custom Claims مُحقونة مسبقاً
+ * في توكن المستخدم، حيث تقوم بمطابقة البريد الإلكتروني للمستخدم الموثق مع سجلات الشركة المصرح لها
+ * لضمان استمرار الجلسة وسلاسة الدخول والتعرف على الشركة النشطة.
  */
 export async function resolveTenantUserByEmail(email, firebaseUid = '', claims = {}) {
   const cleanEmail = (email || '').toLowerCase().trim();

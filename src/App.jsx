@@ -243,11 +243,6 @@ function getInitialCompanyId() {
       const parsed = JSON.parse(session);
       if (parsed?.companyId) return parsed.companyId;
     }
-    const saved = localStorage.getItem('isAdmin');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed?.companyId) return parsed.companyId;
-    }
   } catch (e) {}
   return getActiveTenantId() || 'comp_alain';
 }
@@ -1178,7 +1173,7 @@ export default function App() {
     try {
       localStorage.removeItem('active_session_user');
       Object.keys(localStorage)
-        .filter(k => k.startsWith('tenant_') || k.startsWith('db-') || k === 'isAdmin' || k === 'active_tenant_id')
+        .filter(k => k.startsWith('tenant_') || k.startsWith('db-') || k === 'active_tenant_id')
         .forEach(k => localStorage.removeItem(k));
     } catch (e) {}
     setCurrentUser(null);

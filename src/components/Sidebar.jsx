@@ -56,15 +56,11 @@ const EXPORT_KEYS = [
   'db-team-meta-v1',
   'db-workers-v1',
   'db-suppliers-v1',
-  'db-subcontractors-v1',
-  'db-subcontractor-orders-v1',
-  'db-subcontractor-extracts-v1',
   'customSpecs',
   'db-quotations-v1',
   'company-settings-v1',
   'company-users-v1',
   'crm-leads-v1',
-  'isAdmin',
 ];
 
 function exportData() {
@@ -73,6 +69,16 @@ function exportData() {
     const v = localStorage.getItem(k);
     if (v) data[k] = v;
   });
+  // تصدير كافة بيانات الشركات المعزولة (Tenant Scoped Workspace)
+  try {
+    Object.keys(localStorage).forEach(k => {
+      if (k.startsWith('tenant_') || k.startsWith('platform-')) {
+        const v = localStorage.getItem(k);
+        if (v) data[k] = v;
+      }
+    });
+  } catch (e) {}
+
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
