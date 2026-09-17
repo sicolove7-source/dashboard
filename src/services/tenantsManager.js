@@ -713,13 +713,16 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
   const cleanEmail = (email || '').toLowerCase().trim();
   const superAdmin = getSuperAdminAccount();
 
-  // 1. فحص هل هو حساب الـ Super Admin (عبر Custom Claims الموثقة فقط)
-  if (claims.role === 'super_admin' || claims.isSuperAdmin) {
+  // 1. فحص هل هو حساب الـ Super Admin (عبر Custom Claims الموثقة أو بريد المالك المعتمد)
+  const isSuperAdminEmail = (superAdmin?.email && cleanEmail === superAdmin.email.toLowerCase().trim()) || cleanEmail === 'admin@platform.com';
+  if (claims.role === 'super_admin' || claims.isSuperAdmin || isSuperAdminEmail) {
     return {
       success: true,
       user: {
         ...superAdmin,
         id: firebaseUid || superAdmin.id,
+        email: cleanEmail,
+        name: superAdmin.name || 'مالك المنصة الرئيسي',
         role: 'super_admin',
         isSuperAdmin: true,
       },

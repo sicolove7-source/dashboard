@@ -12,6 +12,8 @@ import {
   onAuthStateChanged,
   sendPasswordResetEmail,
   createUserWithEmailAndPassword,
+  updatePassword,
+  updateEmail,
 } from 'firebase/auth';
 
 /**
@@ -156,3 +158,57 @@ export async function getUserClaims(user = auth.currentUser, forceRefresh = fals
     return {};
   }
 }
+
+/**
+ * تحديث كلمة المرور للمستخدم المسجل حالياً في Firebase Authentication
+ */
+export async function updateCurrentUserPassword(newPassword) {
+  if (!auth.currentUser) {
+    return { success: false, error: 'لا توجد جلسة مستخدم نشطة حالياً.' };
+  }
+  if (!newPassword || newPassword.length < 6) {
+    return { success: false, error: 'كلمة المرور يجب أن تتكون من 6 أحرف أو أرقام على الأقل.' };
+  }
+  try {
+    await updatePassword(auth.currentUser, newPassword);
+    return { success: true };
+  } catch (error) {
+    let message = 'تعذر تحديث كلمة المرور.';
+    if (error.code === 'auth/requires-recent-login') {
+      message = 'لأسباب أمنية من Google، يتطلب تغيير كلمة المرور إعادة تسجيل الدخول أولاً ثم المحاولة فوراً.';
+    } else if (error.code === 'auth/weak-password') {
+      message = 'كلمة المرور ضعيفة. يرجى اختيار كلمة مرور أقوى.';
+    } else {
+      message = error.message || message;
+    }
+    return { success: false, error: message, code: error.code };
+  }
+}
+
+/**
+ * تحديث البريد الإلكتروني للمستخدم المسجل حالياً في Firebase Authentication
+ */
+export async function updateCurrentUserEmail(newEmail) {
+  if (!auth.currentUser) {
+    return { success: false, error: 'لا توجد جلسة مستخدم نشطة حالياً.' };
+  }
+  const cleanEmail = (newEmail || '').toLowerCase().trim();
+  if (!cleanEmail) {
+    return { success: false, error: 'يرجى إدخال بريد إلكتروني صالح.' };
+  }
+  try {
+    await updateEmail(auth.currentUser, cleanEmail);
+    return { success: true };
+  } catch (error) {
+    let message = 'تعذر تحديث البريد الإلكتروني.';
+    if (error.code === 'auth/requires-recent-login') {
+      message = 'لأسباب أمنية من Google، يتطلب تغيير البريد إعادة تسجيل الدخول أولاً ثم المحاولة فوراً.';
+    } else if (error.code === 'auth/email-already-in-use') {
+      message = 'هذا البريد الإلكتروني مسجل بالفعل بحساب آخر.';
+    } else {
+      message = error.message || message;
+    }
+    return { success: false, error: message, code: error.code };
+  }
+}
+

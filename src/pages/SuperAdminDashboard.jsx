@@ -11,6 +11,7 @@ import {
   getSuperAdminAccount, saveSuperAdminAccount,
   isSubAccountsLoginAllowed, setSubAccountsLoginAllowed
 } from '../services/tenantsManager';
+import { updateCurrentUserPassword, updateCurrentUserEmail } from '../services/auth';
 
 export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) {
   const [tenants, setTenants] = useState([]);
@@ -29,6 +30,8 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
   const [showOwnerModal, setShowOwnerModal] = useState(false);
   const [ownerForm, setOwnerForm] = useState(() => getSuperAdminAccount());
   const [ownerSuccess, setOwnerSuccess] = useState(false);
+  const [ownerLoading, setOwnerLoading] = useState(false);
+  const [ownerMsg, setOwnerMsg] = useState(null);
 
   // Form State for Adding / Editing
   const [form, setForm] = useState({
@@ -947,16 +950,41 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
             {ownerSuccess && (
               <div style={{ padding: '10px 14px', background: '#F0FDF4', color: '#16A34A', borderRadius: 8, fontSize: 13, marginBottom: 16, border: '1px solid #BBF7D0', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <CheckCircle2 size={16} />
-                <span>تم حفظ وتأمين بياناتك بنجاح!</span>
+                <span>{ownerMsg || 'تم حفظ وتأمين بيانات مالك المنصة وتحديثها بنجاح!'}</span>
               </div>
             )}
 
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
-                saveSuperAdminAccount(ownerForm);
-                setOwnerSuccess(true);
-                setTimeout(() => setShowOwnerModal(false), 1200);
+                setOwnerLoading(true);
+                setOwnerMsg(null);
+                try {
+                  let note = '';
+                  // إذا كانت هناك كلمة مرور جديدة مدخلة، نقوم بتحديثها في Firebase Authentication
+                  if (ownerForm.password && ownerForm.password.trim().length >= 6) {
+                    const passRes = await updateCurrentUserPassword(ownerForm.password.trim());
+                    if (!passRes.success) {
+                      if (passRes.code === 'auth/requires-recent-login') {
+                        note = 'تم الحفظ محلياً. لتحديثها سحابياً في Firebase يرجى إعادة تسجيل الدخول.';
+                      } else {
+                        note = passRes.error;
+                      }
+                    }
+                  }
+
+                  saveSuperAdminAccount(ownerForm);
+                  setOwnerSuccess(true);
+                  if (note) setOwnerMsg(note);
+                  setTimeout(() => {
+                    setShowOwnerModal(false);
+                    setOwnerSuccess(false);
+                  }, 1600);
+                } catch (err) {
+                  console.error(err);
+                } finally {
+                  setOwnerLoading(false);
+                }
               }}
               style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
             >
@@ -989,15 +1017,16 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                   style={{ direction: 'ltr', textAlign: 'left' }}
                   value={ownerForm.password || ''}
                   onChange={(e) => setOwnerForm({ ...ownerForm, password: e.target.value })}
+                  placeholder="6 أحرف أو أرقام على الأقل"
                 />
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
-                <button type="button" className="btn btn-ghost" onClick={() => setShowOwnerModal(false)}>
+                <button type="button" className="btn btn-ghost" onClick={() => setShowOwnerModal(false)} disabled={ownerLoading}>
                   إلغاء
                 </button>
-                <button type="submit" className="btn btn-primary" style={{ padding: '9px 22px' }}>
-                  حفظ وتأمين الحساب
+                <button type="submit" className="btn btn-primary" style={{ padding: '9px 22px' }} disabled={ownerLoading}>
+                  {ownerLoading ? 'جاري الحفظ...' : 'حفظ وتأمين الحساب'}
                 </button>
               </div>
             </form>
