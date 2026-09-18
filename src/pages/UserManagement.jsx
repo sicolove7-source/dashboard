@@ -703,6 +703,35 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
     try {
       syncCompanyUsersToCloud(activeCompId, next).catch(e => console.warn("Cloud sync users error:", e));
     } catch (e) {}
+
+    // حفظ وفهرسة فورية في السجل المركزي platform-all-users-registry
+    try {
+      const regRaw = localStorage.getItem('platform-all-users-registry');
+      const reg = regRaw ? JSON.parse(regRaw) : {};
+      next.forEach(u => {
+        if (u.email) {
+          reg[u.email.toLowerCase().trim()] = {
+            ...u,
+            companyId: activeCompId,
+          };
+        }
+      });
+      localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
+    } catch (e) {}
+
+    // تحديث قائمة أعضاء الشركة في platform-tenants-master-v1
+    try {
+      const rawTenants = localStorage.getItem('platform-tenants-master-v1');
+      if (rawTenants) {
+        const tList = JSON.parse(rawTenants);
+        const idx = tList.findIndex(t => t.id === activeCompId);
+        if (idx !== -1) {
+          tList[idx].users = next;
+          localStorage.setItem('platform-tenants-master-v1', JSON.stringify(tList));
+        }
+      }
+    } catch (e) {}
+
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }

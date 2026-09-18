@@ -234,6 +234,35 @@ try {
         }
       } catch(e) {}
     }
+
+    // مزامنة وفهرسة كافة مستخدمي وموظفي الشركات في السجل المركزي platform-all-users-registry
+    try {
+      const reg = JSON.parse(localStorage.getItem('platform-all-users-registry') || '{}');
+      let changed = false;
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith('tenant_') && k.endsWith('_users')) {
+          const cId = k.replace(/^tenant_/, '').replace(/_users$/, '');
+          try {
+            const uList = JSON.parse(localStorage.getItem(k) || '[]');
+            if (Array.isArray(uList)) {
+              uList.forEach(u => {
+                if (u && u.email) {
+                  const cleanE = u.email.toLowerCase().trim();
+                  reg[cleanE] = {
+                    ...u,
+                    companyId: u.companyId || cId,
+                  };
+                  changed = true;
+                }
+              });
+            }
+          } catch(e) {}
+        }
+      });
+      if (changed) {
+        localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
+      }
+    } catch(e) {}
   }
 } catch (e) {}
 
@@ -956,8 +985,6 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
   }
 
   // 3. فحص صلاحيات الشركة المحددة بدقة داخل الـ Custom Claims
-
-  // إذا كانت الشركة محددة بدقة داخل الـ Custom Claims
   if (claims.companyId) {
     const claimTenant = tenants.find(t => t.id === claims.companyId);
     if (claimTenant) {
@@ -966,7 +993,7 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
         user: {
           id: firebaseUid || `u_${claimTenant.id}_${claims.role || 'user'}`,
           email: cleanEmail,
-          name: cleanEmail === claimTenant.adminEmail ? claimTenant.adminName : cleanEmail.split('@')[0],
+          name: cleanEmail === claimTenant.adminEmail ? claimTenant.adminName : (claims.name || cleanEmail.split('@')[0]),
           role: claims.role || 'owner',
           companyId: claimTenant.id,
           companyName: claimTenant.name,
@@ -977,8 +1004,7 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
       };
     }
 
-    // ✅ الشركة في الـ Claims لكن غير موجودة محلياً (مثلاً: جهاز جديد أو شركة حديثة)
-    // نبني الـ user record مباشرة من الـ Claims دون ربطه بشركة أخرى
+    // ✅ الشركة في الـ Claims لكن غير موجودة محلياً
     console.warn('[resolveTenantUserByEmail] Company from claims not in local list, building user from claims:', claims.companyId);
     return {
       success: true,
@@ -996,8 +1022,80 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     };
   }
 
+  // 4. فحص السجل المركزي لكافة مستخدمي وموظفي المنصة أولاً (أسرع وأدق لمطابقة المهندسين والموظفين)
+  try {
+    const regRaw = localStorage.getItem('platform-all-users-registry');
+    if (regRaw) {
+      const reg = JSON.parse(regRaw);
+      if (reg && reg[cleanEmail]) {
+        const u = reg[cleanEmail];
+        const matchTenant = tenants.find(t => t.id === u.companyId) || {
+          id: u.companyId,
+          name: u.companyName || 'الشركة',
+          currency: u.currency || 'ج.م',
+        };
+        console.log('[resolveTenantUserByEmail] Found user in platform-all-users-registry:', cleanEmail, 'role:', u.role, 'company:', matchTenant.id);
+        return {
+          success: true,
+          user: {
+            ...u,
+            id: firebaseUid || u.id,
+            role: u.role || 'engineer',
+            companyId: matchTenant.id,
+            companyName: matchTenant.name || u.companyName,
+            currency: matchTenant.currency || u.currency || 'ج.م',
+          },
+          tenant: matchTenant,
+          isSuperAdmin: false,
+        };
+      }
+    }
+  } catch(e) {}
+
+  // 5. فحص كافة الشركات المسجلة: أولوية البحث لأعضاء الفريق (مهندسون، محاسبون، إلخ) ثم المالك
   for (const t of tenants) {
-    // هل هو مالك الشركة (Owner / Admin)
+    // أ) هل هو عضو في فريق العمل داخل الشركة
+    let users = null;
+    if (Array.isArray(t.users) && t.users.length > 0) {
+      users = t.users;
+    }
+    if (!users) {
+      try {
+        const rawUsers = localStorage.getItem(`tenant_${t.id}_users`);
+        if (rawUsers) users = JSON.parse(rawUsers);
+      } catch (e) {}
+    }
+
+    if (!users) {
+      try {
+        const cloudData = await fetchCompanyDataFromCloud(t.id);
+        if (cloudData && Array.isArray(cloudData.users)) {
+          users = cloudData.users;
+        }
+      } catch (e) {}
+    }
+
+    if (Array.isArray(users)) {
+      const match = users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
+      if (match) {
+        console.log('[resolveTenantUserByEmail] Found employee in company users:', cleanEmail, 'role:', match.role);
+        return {
+          success: true,
+          user: {
+            ...match,
+            id: firebaseUid || match.id,
+            companyId: t.id,
+            companyName: t.name,
+            currency: t.currency || 'ج.م',
+            role: match.role || 'engineer',
+          },
+          tenant: t,
+          isSuperAdmin: false,
+        };
+      }
+    }
+
+    // ب) هل هو مالك الشركة (Owner / Admin)
     if (t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail) {
       return {
         success: true,
@@ -1013,40 +1111,6 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
         tenant: t,
         isSuperAdmin: false,
       };
-    }
-
-    // هل هو عضو في فريق العمل داخل الشركة
-    let users = null;
-    try {
-      const rawUsers = localStorage.getItem(`tenant_${t.id}_users`);
-      if (rawUsers) users = JSON.parse(rawUsers);
-    } catch (e) {}
-
-    if (!users) {
-      try {
-        const cloudData = await fetchCompanyDataFromCloud(t.id);
-        if (cloudData && Array.isArray(cloudData.users)) {
-          users = cloudData.users;
-        }
-      } catch (e) {}
-    }
-
-    if (Array.isArray(users)) {
-      const match = users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
-      if (match) {
-        return {
-          success: true,
-          user: {
-            ...match,
-            id: firebaseUid || match.id,
-            companyId: t.id,
-            companyName: t.name,
-            currency: t.currency || 'ج.م',
-          },
-          tenant: t,
-          isSuperAdmin: false,
-        };
-      }
     }
   }
 

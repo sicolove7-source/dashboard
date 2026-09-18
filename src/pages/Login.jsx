@@ -6,6 +6,7 @@ import {
 import confetti from "canvas-confetti";
 import {
   loginWithEmail,
+  logoutUser,
   sendPasswordReset,
   registerWithEmail,
   getUserClaims,
@@ -54,6 +55,12 @@ export default function Login({
     setLoading(true);
 
     try {
+      // 0. إنهاء أي جلسة مستخدم قديمة لضمان الدخول بالحساب الجديد فقط دون تداخل
+      try {
+        await logoutUser();
+        localStorage.removeItem('active_session_user');
+      } catch (e) {}
+
       // 1. المصادقة عبر Firebase Authentication الرسمي
       const authResult = await loginWithEmail(email, password);
       if (authResult.success) {

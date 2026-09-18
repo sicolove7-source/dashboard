@@ -1145,10 +1145,12 @@ export default function App() {
           }
 
           const requestedTab = getTabFromPath();
-          if (requestedTab) {
-            setTab(requestedTab);
+          if (role === 'engineer') {
+            setTab('projects');
           } else if (role === 'super_admin' || isSuperAdmin) {
             setTab('tenants');
+          } else if (requestedTab && (NAV_PERMISSIONS[role] || []).includes(requestedTab) && requestedTab !== 'tenants') {
+            setTab(requestedTab);
           } else {
             const allowedTabs = NAV_PERMISSIONS[role] || ['overview'];
             const initialTab = DEFAULT_TAB[role] || 'overview';
@@ -1251,12 +1253,13 @@ export default function App() {
     } catch (e) {
       console.error('Logout error:', e);
     }
-    // مسح أمني شامل لكافة مفاتيح الشركات وقواعد البيانات المحلية لمنع التسريب على الأجهزة المشتركة
+    // مسح جلسة المستخدم الحالية فقط دون تدمير بيانات الشركات والمستخدمين المحلية
     try {
       localStorage.removeItem('active_session_user');
-      Object.keys(localStorage)
-        .filter(k => k.startsWith('tenant_') || k.startsWith('db-') || k === 'active_tenant_id')
-        .forEach(k => localStorage.removeItem(k));
+      localStorage.removeItem('active_tenant_id');
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.clear();
+      }
     } catch (e) {}
     setCurrentUser(null);
     setIsAuthenticated(false);
@@ -1276,8 +1279,15 @@ export default function App() {
   // فلترة المشاريع: المهندس يرى مشاريعه فقط (إلا إذا كان لديه صلاحية رؤية الكل)
   const displayedProjects = useMemo(() => {
     if (!projects) return [];
-    if (userRole === 'engineer' && currentUser?.engineerName && !can(currentUser || userRole, 'projects_view_all')) {
-      return projects.filter(p => p.engineer === currentUser.engineerName);
+    if (userRole === 'engineer' && !can(currentUser || userRole, 'projects_view_all')) {
+      const engName = (currentUser?.engineerName || currentUser?.name || '').trim();
+      const cleanEngName = engName.replace(/^م\.\s*/, '').trim();
+      if (!cleanEngName) return projects;
+      return projects.filter(p => {
+        const pEng = (p.engineer || '').trim();
+        const cleanPEng = pEng.replace(/^م\.\s*/, '').trim();
+        return pEng === engName || cleanPEng === cleanEngName || (cleanPEng && cleanEngName && (cleanPEng.includes(cleanEngName) || cleanEngName.includes(cleanPEng)));
+      });
     }
     return projects;
   }, [projects, userRole, currentUser]);
