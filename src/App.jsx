@@ -41,6 +41,7 @@ import { loadCompanySettings, applyCompanyBranding } from './utils/branding';
 try { if (typeof localStorage !== 'undefined') localStorage.removeItem('company-settings-v1'); } catch (e) {}
 import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail } from './services/tenantsManager';
 import { onAuthChange, logoutUser } from './services/auth';
+import { db } from './firebase';
 import { AdminProvider } from './context/AdminContext';
 import {
   syncProjectsToCloud,
@@ -242,10 +243,68 @@ function getInitialCompanyId() {
       if (parsed?.companyId) return parsed.companyId;
     }
   } catch (e) {}
-  return getActiveTenantId() || 'comp_alain';
+  return getActiveTenantId() || 'comp_c_mtyw7mqk';
 }
 
 export default function App() {
+  useEffect(() => {
+    // مزامنة سحابية وتأكيد سلامة بيانات شركة أملاك ومشاريعها الحقيقية
+    import('firebase/firestore').then(async ({ collection, getDocs, doc, getDoc, setDoc, deleteDoc }) => {
+      try {
+        const alainProjDoc = await getDoc(doc(db, 'companies', 'comp_alain', 'projects', 'p_cairo_2'));
+        if (alainProjDoc.exists()) {
+          const cairoData = alainProjDoc.data();
+          // نقل مشروع القاهرة إلى شركة أملاك في السحابة
+          await setDoc(doc(db, 'companies', 'comp_c_mtyw7mqk', 'projects', 'p_cairo_2'), {
+            ...cairoData,
+            companyId: 'comp_c_mtyw7mqk'
+          }, { merge: true });
+          // حذفه من شركة العين الإماراتية
+          await deleteDoc(doc(db, 'companies', 'comp_alain', 'projects', 'p_cairo_2'));
+        }
+
+        // تحديث وتثبيت وثيقة شركة أملاك السحابية
+        await setDoc(doc(db, 'companies', 'comp_c_mtyw7mqk'), {
+          companyId: 'comp_c_mtyw7mqk',
+          name: 'شركة أملاك للمقاولات والتشطيبات',
+          adminEmail: 'sicolove7@gmail.com',
+          adminName: 'احمد',
+          settings: {
+            companyName: 'شركة أملاك للمقاولات والتشطيبات',
+            companySubtitle: 'متخصصون في تشطيب الشقق والقصور والفلل الفاخرة',
+            city: 'القاهرة',
+            country: 'مصر',
+            currency: 'ج.م',
+            phone: '+20 100 123 4567',
+            adminEmail: 'sicolove7@gmail.com',
+            adminName: 'احمد',
+          },
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+
+        // إعادة وثيقة شركة العين لهويتها الإماراتية في السحابة
+        await setDoc(doc(db, 'companies', 'comp_alain'), {
+          companyId: 'comp_alain',
+          name: 'شركة العين للمقاولات العامة',
+          adminEmail: 'ceo@alain-contract.ae',
+          adminName: 'م. سعيد الكعبي',
+          settings: {
+            companyName: 'شركة العين للمقاولات العامة',
+            companySubtitle: 'متخصصون في أعمال البناء والتشطيبات الفاخرة',
+            city: 'العين',
+            country: 'الإمارات',
+            currency: 'د.إ',
+            phone: '+971 3 765 4321',
+            adminEmail: 'ceo@alain-contract.ae',
+            adminName: 'م. سعيد الكعبي',
+          },
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      } catch (e) {
+        console.warn("Cloud reconciliation non-blocking error:", e);
+      }
+    }).catch(() => {});
+  }, []);
   const [projects, setProjects] = useState(() => {
     try {
       const initial = getTenantData(getInitialCompanyId());

@@ -36,13 +36,19 @@ export function loadUsers(companyId) {
   } catch (e) {}
   
   // إذا لم توجد مستخدمين للشركة، ننشئ الافتراضيين بما فيهم مسؤول التوريدات (بدون أي كلمات سر كنص صريح)
-  const cId = companyId || getActiveTenantId() || 'comp_alain';
+  const cId = companyId || getActiveTenantId() || 'comp_c_mtyw7mqk';
   let defaults = [];
-  if (cId === 'comp_alain') {
+  if (cId === 'comp_c_mtyw7mqk') {
     defaults = [
-      { id: 'u_alain_1', email: 'sicolove7@gmail.com', role: 'owner', name: 'أ. مدير شركة أملاك', engineerName: null, companyId: 'comp_alain' },
-      { id: 'u_alain_2', email: 'eng@amlak-contract.com', role: 'engineer', name: 'م. أحمد كامل', engineerName: 'م. أحمد كامل', companyId: 'comp_alain' },
-      { id: 'u_alain_3', email: 'supply@amlak-contract.com', role: 'procurement', name: 'أ. محمود فوزي (مسؤول التوريدات)', engineerName: null, companyId: 'comp_alain' },
+      { id: 'u_mtyw_1', email: 'sicolove7@gmail.com', role: 'owner', name: 'احمد - مدير شركة أملاك', engineerName: null, companyId: 'comp_c_mtyw7mqk' },
+      { id: 'u_mtyw_2', email: 'eng@amlak-contract.com', role: 'engineer', name: 'م. سيف النيادي', engineerName: 'م. سيف النيادي', companyId: 'comp_c_mtyw7mqk' },
+      { id: 'u_mtyw_3', email: 'supply@amlak-contract.com', role: 'procurement', name: 'أ. محمود فوزي (مسؤول التوريدات)', engineerName: null, companyId: 'comp_c_mtyw7mqk' },
+    ];
+  } else if (cId === 'comp_alain') {
+    defaults = [
+      { id: 'u_alain_1', email: 'ceo@alain-contract.ae', role: 'owner', name: 'م. سعيد الكعبي', engineerName: null, companyId: 'comp_alain' },
+      { id: 'u_alain_2', email: 'eng@alain-contract.ae', role: 'engineer', name: 'م. هزاع المنصوري', engineerName: 'م. هزاع المنصوري', companyId: 'comp_alain' },
+      { id: 'u_alain_3', email: 'supply@alain-contract.ae', role: 'procurement', name: 'أ. راشد الكعبي (مسؤول التوريدات)', engineerName: null, companyId: 'comp_alain' },
     ];
   } else if (cId === 'comp_dhabi') {
     defaults = [

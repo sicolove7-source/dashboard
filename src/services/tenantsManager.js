@@ -107,47 +107,132 @@ try {
       }
     }
 
-    // ترقية وتثبيت شركة أملاك للمقاولات والتشطيبات كشركة المالك الأساسية comp_alain
+    // تصحيح وفصل شركة العين (الإمارات) عن شركة أملاك (القاهرة) بشكل جذري وحقيقي
     const rawTenants = localStorage.getItem(PLATFORM_TENANTS_KEY);
     if (rawTenants) {
       let tList = JSON.parse(rawTenants);
       if (Array.isArray(tList)) {
         let changed = false;
+
+        // 1. إعادة شركة العين إلى هويتها الإماراتية الأصلية
         tList = tList.map(t => {
-          if (t.id === 'comp_alain' && (t.name?.includes('العين') || t.name !== 'شركة أملاك للمقاولات والتشطيبات')) {
+          if (t.id === 'comp_alain') {
             changed = true;
             return {
               ...t,
+              name: 'شركة العين للمقاولات العامة',
+              subtitle: 'متخصصون في أعمال البناء والتشطيبات الفاخرة',
+              city: 'العين',
+              country: 'الإمارات',
+              currency: 'د.إ',
+              phone: '+971 3 765 4321',
+              adminEmail: 'ceo@alain-contract.ae',
+              adminName: 'م. سعيد الكعبي',
+            };
+          }
+          if (t.id === 'comp_c_mtyw7mqk' || (t.adminEmail === 'sicolove7@gmail.com' && t.id !== 'comp_alain')) {
+            changed = true;
+            return {
+              ...t,
+              id: 'comp_c_mtyw7mqk',
               name: 'شركة أملاك للمقاولات والتشطيبات',
               subtitle: 'متخصصون في تشطيب الشقق والقصور والفلل الفاخرة',
               city: 'القاهرة',
               country: 'مصر',
               currency: 'ج.م',
-              phone: '+20 100 123 4567',
               adminEmail: 'sicolove7@gmail.com',
-              adminName: 'أ. مدير شركة أملاك',
+              adminName: 'احمد',
+              status: 'active',
+              plan: 'pro_annual',
             };
           }
           return t;
         });
+
+        // إذا لم تكن شركة أملاك موجودة في القائمة، ندرجها في المقدمة
+        if (!tList.some(t => t.id === 'comp_c_mtyw7mqk')) {
+          tList.unshift({
+            id: 'comp_c_mtyw7mqk',
+            name: 'شركة أملاك للمقاولات والتشطيبات',
+            subtitle: 'متخصصون في تشطيب الشقق والقصور والفلل الفاخرة',
+            city: 'القاهرة',
+            country: 'مصر',
+            currency: 'ج.م',
+            phone: '+20 100 123 4567',
+            plan: 'pro_annual',
+            planName: 'باقة المحترفين VIP',
+            status: 'active',
+            startDate: '2026-09-12',
+            expiryDate: '2027-09-12',
+            primaryColor: '#1877F2',
+            accentColor: '#166FE5',
+            adminEmail: 'sicolove7@gmail.com',
+            adminName: 'احمد',
+            projectsCount: 3,
+            createdAt: '2026-09-12',
+          });
+          changed = true;
+        }
+
         if (changed) {
           localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(tList));
         }
       }
     }
 
+    // تصحيح إعدادات شركة العين وإعادتها للإمارات
     const rawAlain = localStorage.getItem('tenant_comp_alain_settings');
     if (rawAlain) {
       let aSettings = JSON.parse(rawAlain);
-      if (aSettings && (aSettings.companyName?.includes('العين') || aSettings.companyName !== 'شركة أملاك للمقاولات والتشطيبات')) {
-        aSettings.companyName = 'شركة أملاك للمقاولات والتشطيبات';
-        aSettings.companySubtitle = 'متخصصون في تشطيب الشقق والقصور والفلل الفاخرة';
-        aSettings.currency = 'ج.م';
-        aSettings.city = 'القاهرة';
-        aSettings.country = 'مصر';
-        aSettings.phone = '+20 100 123 4567';
+      if (aSettings && (aSettings.companyName?.includes('أملاك') || aSettings.currency === 'ج.م')) {
+        aSettings.companyName = 'شركة العين للمقاولات العامة';
+        aSettings.companySubtitle = 'متخصصون في أعمال البناء والتشطيبات الفاخرة';
+        aSettings.currency = 'د.إ';
+        aSettings.city = 'العين';
+        aSettings.country = 'الإمارات';
+        aSettings.phone = '+971 3 765 4321';
         localStorage.setItem('tenant_comp_alain_settings', JSON.stringify(aSettings));
       }
+    }
+
+    // إعداد وضمان إعدادات شركة أملاك الحقيقية
+    let amlakSettings = {
+      companyName: 'شركة أملاك للمقاولات والتشطيبات',
+      companySubtitle: 'متخصصون في تشطيب الشقق والقصور والفلل الفاخرة',
+      city: 'القاهرة',
+      country: 'مصر',
+      currency: 'ج.م',
+      phone: '+20 100 123 4567',
+      primaryColor: '#1877F2',
+      accentColor: '#166FE5',
+      adminEmail: 'sicolove7@gmail.com',
+      adminName: 'احمد',
+    };
+    try {
+      const existingAmlak = localStorage.getItem('tenant_comp_c_mtyw7mqk_settings');
+      if (existingAmlak) {
+        amlakSettings = { ...amlakSettings, ...JSON.parse(existingAmlak), companyName: 'شركة أملاك للمقاولات والتشطيبات', currency: 'ج.م' };
+      }
+      localStorage.setItem('tenant_comp_c_mtyw7mqk_settings', JSON.stringify(amlakSettings));
+    } catch(e) {}
+
+    // توجيه حساب المالك sicolove7@gmail.com إلى شركة أملاك الحقيقية
+    const currentActive = localStorage.getItem(ACTIVE_TENANT_ID_KEY);
+    if (!currentActive || currentActive === 'comp_alain') {
+      localStorage.setItem(ACTIVE_TENANT_ID_KEY, 'comp_c_mtyw7mqk');
+    }
+
+    const sessionRaw = localStorage.getItem('active_session_user');
+    if (sessionRaw) {
+      try {
+        const sUser = JSON.parse(sessionRaw);
+        if (sUser.email === 'sicolove7@gmail.com' && (sUser.companyId === 'comp_alain' || !sUser.companyId)) {
+          sUser.companyId = 'comp_c_mtyw7mqk';
+          sUser.companyName = 'شركة أملاك للمقاولات والتشطيبات';
+          sUser.currency = 'ج.م';
+          localStorage.setItem('active_session_user', JSON.stringify(sUser));
+        }
+      } catch(e) {}
     }
   }
 } catch (e) {}
@@ -192,7 +277,7 @@ export const SUPER_ADMIN_ACCOUNT = DEFAULT_SUPER_ADMIN_ACCOUNT;
 // الشركات الافتراضية
 export const DEFAULT_TENANTS = [
   {
-    id: 'comp_alain',
+    id: 'comp_c_mtyw7mqk',
     name: 'شركة أملاك للمقاولات والتشطيبات',
     subtitle: 'متخصصون في تشطيب الشقق والقصور والفلل الفاخرة',
     city: 'القاهرة',
@@ -202,12 +287,32 @@ export const DEFAULT_TENANTS = [
     plan: 'pro_annual',
     planName: 'باقة المحترفين VIP',
     status: 'active',
-    startDate: '2026-01-01',
-    expiryDate: '2027-01-01',
+    startDate: '2026-09-12',
+    expiryDate: '2027-09-12',
     primaryColor: '#1877F2',
     accentColor: '#166FE5',
     adminEmail: 'sicolove7@gmail.com',
-    adminName: 'أ. مدير شركة أملاك',
+    adminName: 'احمد',
+    projectsCount: 3,
+    createdAt: '2026-09-12',
+  },
+  {
+    id: 'comp_alain',
+    name: 'شركة العين للمقاولات العامة',
+    subtitle: 'متخصصون في أعمال البناء والتشطيبات الفاخرة',
+    city: 'العين',
+    country: 'الإمارات',
+    currency: 'د.إ',
+    phone: '+971 3 765 4321',
+    plan: 'pro_annual',
+    planName: 'باقة النخبة السنوية VIP',
+    status: 'active',
+    startDate: '2026-01-01',
+    expiryDate: '2027-01-01',
+    primaryColor: '#0F766E',
+    accentColor: '#14B8A6',
+    adminEmail: 'ceo@alain-contract.ae',
+    adminName: 'م. سعيد الكعبي',
     projectsCount: 3,
     createdAt: '2026-01-01',
   },
@@ -259,13 +364,9 @@ export function loadAllTenants() {
     if (raw) {
       let parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // ترقية وتثبيت شركة أملاك للمقاولات والتشطيبات كشركة المالك الأساسية comp_alain
-        const alainIdx = parsed.findIndex(t => t.id === 'comp_alain');
-        if (alainIdx !== -1 && (parsed[alainIdx].name?.includes('العين') || parsed[alainIdx].name !== DEFAULT_TENANTS[0].name)) {
-          parsed[alainIdx] = {
-            ...parsed[alainIdx],
-            ...DEFAULT_TENANTS[0],
-          };
+        // ضمان وجود شركة أملاك الحقيقية في الصدارة
+        if (!parsed.some(t => t.id === 'comp_c_mtyw7mqk')) {
+          parsed.unshift(DEFAULT_TENANTS[0]);
           try { localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(parsed)); } catch (e) {}
         }
         return parsed;
@@ -283,15 +384,9 @@ export async function loadAllTenantsAsync() {
   try {
     const cloudTenants = await fetchTenantsListFromCloud();
     if (Array.isArray(cloudTenants) && cloudTenants.length > 0) {
-      // دمج ذكي مع فرض اسم شركة أملاك وتحديثها سحابياً ومحلياً
       const mergedMap = new Map();
       cloudTenants.forEach(t => {
-        if (t?.id) {
-          if (t.id === 'comp_alain' && (t.name?.includes('العين') || t.name !== DEFAULT_TENANTS[0].name)) {
-            t = { ...t, ...DEFAULT_TENANTS[0] };
-          }
-          mergedMap.set(t.id, t);
-        }
+        if (t?.id) mergedMap.set(t.id, t);
       });
       local.forEach(t => {
         if (t?.id) {
@@ -303,12 +398,9 @@ export async function loadAllTenantsAsync() {
           }
         }
       });
-      // تأكيد تثبيت شركة أملاك
-      if (mergedMap.has('comp_alain')) {
-        mergedMap.set('comp_alain', {
-          ...mergedMap.get('comp_alain'),
-          ...DEFAULT_TENANTS[0],
-        });
+      // تأكيد تثبيت شركة أملاك في القائمة
+      if (!mergedMap.has('comp_c_mtyw7mqk')) {
+        mergedMap.set('comp_c_mtyw7mqk', DEFAULT_TENANTS[0]);
       }
       const merged = Array.from(mergedMap.values());
       try { localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(merged)); } catch (e) {}
@@ -556,7 +648,7 @@ export function deleteTenant(id) {
 }
 
 export function getActiveTenantId() {
-  return localStorage.getItem(ACTIVE_TENANT_ID_KEY) || 'comp_alain';
+  return localStorage.getItem(ACTIVE_TENANT_ID_KEY) || 'comp_c_mtyw7mqk';
 }
 
 export function setActiveTenantId(companyId) {
@@ -576,26 +668,18 @@ export function getTenantData(companyId) {
     const raw = localStorage.getItem(`tenant_${companyId}_settings`);
     if (raw) settings = JSON.parse(raw);
   } catch (e) {}
-  if (!settings) {
+    if (!settings) {
     settings = {
-      companyName: tenant ? tenant.name : (companyId === 'comp_alain' ? DEFAULT_TENANTS[0].name : 'شركة المقاولات والتشطيبات'),
-      companySubtitle: tenant ? tenant.subtitle : (companyId === 'comp_alain' ? DEFAULT_TENANTS[0].subtitle : 'نظام إدارة المشاريع المتكامل'),
-      city: tenant?.city || (companyId === 'comp_alain' ? DEFAULT_TENANTS[0].city : ''),
+      companyName: tenant ? tenant.name : (companyId === 'comp_c_mtyw7mqk' ? DEFAULT_TENANTS[0].name : 'شركة المقاولات والتشطيبات'),
+      companySubtitle: tenant ? tenant.subtitle : (companyId === 'comp_c_mtyw7mqk' ? DEFAULT_TENANTS[0].subtitle : 'نظام إدارة المشاريع المتكامل'),
+      city: tenant?.city || (companyId === 'comp_c_mtyw7mqk' ? DEFAULT_TENANTS[0].city : ''),
       country: tenant?.country || 'مصر',
-      currency: tenant?.currency || (companyId === 'comp_alain' ? DEFAULT_TENANTS[0].currency : 'ج.م'),
-      phone: tenant?.phone || (companyId === 'comp_alain' ? DEFAULT_TENANTS[0].phone : ''),
+      currency: tenant?.currency || (companyId === 'comp_c_mtyw7mqk' ? DEFAULT_TENANTS[0].currency : 'ج.م'),
+      phone: tenant?.phone || (companyId === 'comp_c_mtyw7mqk' ? DEFAULT_TENANTS[0].phone : ''),
       primaryColor: tenant?.primaryColor || '#1877F2',
       accentColor: tenant?.accentColor || '#166FE5',
       companyLogo: null,
     };
-    try { localStorage.setItem(`tenant_${companyId}_settings`, JSON.stringify(settings)); } catch (e) {}
-  } else if (companyId === 'comp_alain' && (settings.companyName?.includes('العين') || settings.companyName !== DEFAULT_TENANTS[0].name)) {
-    settings.companyName = DEFAULT_TENANTS[0].name;
-    settings.companySubtitle = DEFAULT_TENANTS[0].subtitle;
-    settings.city = DEFAULT_TENANTS[0].city;
-    settings.country = DEFAULT_TENANTS[0].country;
-    settings.currency = DEFAULT_TENANTS[0].currency;
-    settings.phone = DEFAULT_TENANTS[0].phone;
     try { localStorage.setItem(`tenant_${companyId}_settings`, JSON.stringify(settings)); } catch (e) {}
   }
 
@@ -849,17 +933,20 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
   // 2. فحص هل هو حساب الـ Super Admin (عبر Custom Claims الموثقة أو بريد المالك المعتمد)
   const isSuperAdminEmail = (superAdmin?.email && cleanEmail === superAdmin.email.toLowerCase().trim()) || BUILTIN_SUPERADMIN_EMAILS.includes(cleanEmail);
   if (claims.role === 'super_admin' || claims.isSuperAdmin || isSuperAdminEmail) {
-    const amlakTenant = (tenants && tenants.find(t => t.id === 'comp_alain')) || tenants[0] || DEFAULT_TENANTS[0];
+    const amlakTenant = (tenants && tenants.find(t => t.id === 'comp_c_mtyw7mqk')) ||
+                        (tenants && tenants.find(t => t.adminEmail === cleanEmail && t.id !== 'comp_alain')) ||
+                        (tenants && tenants.find(t => t.name?.includes('أملاك') || t.name?.includes('املاك'))) ||
+                        DEFAULT_TENANTS[0];
     return {
       success: true,
       user: {
         ...superAdmin,
         id: firebaseUid || superAdmin.id,
         email: cleanEmail,
-        name: superAdmin.name || 'مدير شركة أملاك',
+        name: superAdmin.name || 'أحمد - مدير شركة أملاك',
         role: 'super_admin',
         isSuperAdmin: true,
-        companyId: amlakTenant?.id || 'comp_alain',
+        companyId: amlakTenant?.id || 'comp_c_mtyw7mqk',
         companyName: amlakTenant?.name || 'شركة أملاك للمقاولات والتشطيبات',
         currency: amlakTenant?.currency || 'ج.م',
       },
@@ -997,87 +1084,151 @@ function getFutureDate(days) {
 
 // توليد مشاريع واقعية خاصة بكل شركة حسب مدينتها
 function generateCompanySeedProjects(companyId, tenant) {
+  if (companyId === 'comp_c_mtyw7mqk') {
+    return [
+      {
+        id: 'p_cairo_1',
+        companyId: 'comp_c_mtyw7mqk',
+        name: 'تشطيب شقة دوبلكس - بيت الوطن',
+        client: 'د. طارق المنشاوي',
+        area: 'التجمع الخامس - القاهرة',
+        type: 'شقة دوبلكس',
+        engineer: 'م. سيف النيادي',
+        accountant: 'أ. سامح فتحي',
+        techOffice: 'م. علياء رمضان',
+        progress: 60,
+        status: 'on_track',
+        budget: 850000,
+        spent: 510000,
+        startDate: '2026-06-01',
+        dueDate: '2026-10-30',
+        submittals: [
+          { item: 'اعتماد رخام امبرادور للدرج الداخلي', status: 'approved' },
+          { item: 'لوحة قواطع شنايدر الفرنسية', status: 'approved' }
+        ],
+        files: [],
+        snags: [],
+        dailyLogs: [
+          { id: 'd1', date: '2026-09-12', author: 'م. أحمد كامل', work: 'سحب أسلاك السويدي وتشطيب وجه أول معجون', issues: 'لا يوجد', workers: 6 }
+        ]
+      },
+      {
+        id: 'p1789248269598',
+        companyId: 'comp_c_mtyw7mqk',
+        name: 'ررر',
+        client: 'ررر',
+        area: 'الحي الأول',
+        type: 'فيلا',
+        engineer: 'محمد على',
+        accountant: 'أ. سامح فتحي',
+        techOffice: 'م. علياء رمضان',
+        progress: 0,
+        status: 'on_track',
+        budget: 450000,
+        spent: 0,
+        startDate: '2026-09-12',
+        dueDate: '2026-12-31',
+        submittals: [],
+        files: [],
+        snags: [],
+        dailyLogs: [
+          { id: 'd1', date: '2026-09-12', author: 'محمد على', work: 'ءءءءء', issues: '', workers: 5 }
+        ]
+      },
+      {
+        id: 'p_cairo_2',
+        companyId: 'comp_c_mtyw7mqk',
+        name: 'تشطيب فيلا الترا سوبر لوكس - النرجس',
+        client: 'أ. حسام الدين',
+        area: 'النرجس - القاهرة الجديدة',
+        type: 'فيلا مستقلة',
+        engineer: 'م. ياسر فوزي',
+        accountant: 'أ. سامح فتحي',
+        techOffice: 'م. علياء رمضان',
+        progress: 85,
+        status: 'on_track',
+        budget: 1400000,
+        spent: 1220000,
+        startDate: '2026-02-10',
+        dueDate: '2026-09-25',
+        submittals: [
+          { item: 'اعتماد رخام امبرادور للدرج الداخلي', status: 'approved' }
+        ],
+        files: [],
+        snags: [
+          { id: 'snag_1789083440030_q0dk', number: 1, desc: '888', location: 'Room 101', assignee: 'م. ياسر فوزي', status: 'pending', date: '2026-09-10' }
+        ],
+        dailyLogs: [
+          { id: 'd1', date: '2026-09-08', author: 'م. ياسر فوزي', work: 'جلي وتلميع الرخام وتركيب سبوتات الإنارة', issues: 'لا يوجد', workers: 8 }
+        ]
+      }
+    ];
+  }
+
   if (companyId === 'comp_alain') {
     return [
       {
         id: 'p_alain_1',
         companyId: 'comp_alain',
-        name: 'تشطيب فيلا الترا سوبر لوكس - النرجس',
-        client: 'أ. حسام الدين',
-        area: 'النرجس - القاهرة الجديدة',
-        type: 'فيلا مستقلة',
-        engineer: 'م. أحمد كامل',
-        accountant: 'أ. سامح فتحي',
-        techOffice: 'م. علياء رمضان',
-        progress: 65,
+        name: 'تشطيب قصر VIP - حي الفوعة',
+        client: 'سعادة محمد الشامسي',
+        area: 'الفوعة - العين',
+        type: 'قصر VIP',
+        engineer: 'م. سعيد الكعبي',
+        accountant: 'أ. سلطان الظاهري',
+        techOffice: 'م. شيخة المري',
+        progress: 70,
         status: 'on_track',
         budget: 1450000,
-        spent: 870000,
-        startDate: '2026-05-10',
-        dueDate: '2026-11-30',
-        submittals: [
-          { item: 'اعتماد رخام امبرادور للدرج الداخلي', status: 'approved' },
-          { item: 'لوحة قواطع شنايدر الفرنسية', status: 'approved' },
-          { item: 'مخطط الأسقف الجبسية الحديثة', status: 'approved' },
-        ],
+        spent: 980000,
+        startDate: '2026-03-01',
+        dueDate: '2026-11-15',
+        submittals: [],
         files: [],
-        snags: [
-          { id: 's1', room: 'ريسبشن الدور الأول', desc: 'ضبط فواصل تمدد البورسلين', status: 'completed', severity: 'medium' },
-        ],
-        dailyLogs: [
-          { id: 'd1', date: todayISO(), author: 'م. أحمد كامل', work: 'سحب أسلاك السويدي وتشطيب وجه أول معجون', issues: 'لا يوجد', workers: 10 },
-        ],
+        snags: [],
+        dailyLogs: []
       },
       {
         id: 'p_alain_2',
         companyId: 'comp_alain',
-        name: 'تشطيب شقة دوبلكس - بيت الوطن',
-        client: 'د. طارق المنشاوي',
-        area: 'بيت الوطن - التجمع الخامس',
-        type: 'شقة دوبلكس',
-        engineer: 'م. ياسر فوزي',
-        accountant: 'أ. سامح فتحي',
-        techOffice: 'م. علياء رمضان',
-        progress: 40,
-        status: 'on_track',
+        name: 'فيلا مودرن - المرخانية',
+        client: 'أ. راشد الدرعي',
+        area: 'المرخانية - العين',
+        type: 'فيلا سكنية',
+        engineer: 'م. هزاع المنصوري',
+        accountant: 'أ. سلطان الظاهري',
+        techOffice: 'م. شيخة المري',
+        progress: 45,
+        status: 'at_risk',
         budget: 920000,
-        spent: 380000,
-        startDate: '2026-06-01',
-        dueDate: '2026-12-15',
-        submittals: [
-          { item: 'اعتماد قطاعات الألوميتال والزجاج الدبل', status: 'approved' },
-          { item: 'عينة دهانات جوتن فينوماستيك', status: 'pending' },
-        ],
+        spent: 420000,
+        startDate: '2026-04-10',
+        dueDate: '2026-12-01',
+        submittals: [],
         files: [],
         snags: [],
-        dailyLogs: [
-          { id: 'd1', date: todayISO(), author: 'م. ياسر فوزي', work: 'تأسيس شبكة الكهرباء وتركيب شاسيهات الجبس', issues: 'لا يوجد', workers: 8 }
-        ],
+        dailyLogs: []
       },
       {
         id: 'p_alain_3',
         companyId: 'comp_alain',
-        name: 'تشطيب مقر إداري - التسعين الشمالي',
-        client: 'شركة المروة للاستثمار',
-        area: 'التسعين الشمالي - القاهرة',
-        type: 'مقر إداري',
-        engineer: 'م. أحمد كامل',
-        accountant: 'أ. سامح فتحي',
-        techOffice: 'م. علياء رمضان',
-        progress: 88,
+        name: 'مجلس عربي تراثي ومسبح - زاخر',
+        client: 'م. سعيد الكعبي',
+        area: 'زاخر - العين',
+        type: 'مجلس تراثي ومسبح',
+        engineer: 'م. هزاع المنصوري',
+        accountant: 'أ. سلطان الظاهري',
+        techOffice: 'م. شيخة المري',
+        progress: 90,
         status: 'on_track',
-        budget: 680000,
-        spent: 590000,
-        startDate: '2026-04-15',
-        dueDate: '2026-09-30',
-        submittals: [
-          { item: 'اعتماد قواطع الزجاج السيكوريت والشبكات', status: 'approved' },
-        ],
+        budget: 580000,
+        spent: 510000,
+        startDate: '2026-01-15',
+        dueDate: '2026-08-30',
+        submittals: [],
         files: [],
         snags: [],
-        dailyLogs: [
-          { id: 'd1', date: todayISO(), author: 'م. أحمد كامل', work: 'تشطيبات نهائية وتجهيز تسليم المكاتب', issues: 'لا يوجد', workers: 6 }
-        ],
+        dailyLogs: []
       }
     ];
   }
