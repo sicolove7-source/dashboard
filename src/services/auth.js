@@ -33,6 +33,31 @@ export async function callAssignUserClaims({ targetUid, companyId, role, company
   }
 }
 
+/**
+ * إنشاء حساب Firebase Auth لموظف جديد وإرسال رابط تعيين كلمة المرور عبر Cloud Function آمنة
+ */
+export async function callCreateCompanyUser({ email, name, role, companyId }) {
+  try {
+    const fn = httpsCallable(functions, 'createCompanyUser');
+    const result = await fn({ email, name, role, companyId });
+    return result.data;
+  } catch (err) {
+    let message = 'تعذر إنشاء حساب المستخدم.';
+    const errMsg = err?.message || '';
+    if (errMsg.includes('permission-denied') || errMsg.includes('PERMISSION_DENIED')) {
+      message = 'لا تملك صلاحية إنشاء مستخدمين. يجب أن تكون مدير الشركة.';
+    } else if (errMsg.includes('already-exists') || errMsg.includes('email-already-exists')) {
+      message = 'هذا البريد الإلكتروني مسجل بالفعل في تطبيقات أخرى. سيتم إرسال رابط تعيين كلمة المرور إليه.';
+    } else if (errMsg.includes('unauthenticated') || errMsg.includes('UNAUTHENTICATED')) {
+      message = 'يجب تسجيل الدخول أولاً.';
+    } else if (errMsg) {
+      message = errMsg;
+    }
+    console.error('[callCreateCompanyUser] Error:', err);
+    return { success: false, error: message };
+  }
+}
+
 
 /**
  * تسجيل الدخول باستخدام البريد الإلكتروني وكلمة المرور

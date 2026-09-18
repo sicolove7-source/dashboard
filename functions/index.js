@@ -108,6 +108,100 @@ exports.assignUserClaims = onCall(async (request) => {
 });
 
 /**
+ * 0c. دالة إنشاء حساب موظف جديد في الشركة (createCompanyUser)
+ * يستدعيها مدير الشركة لإنشاء حساب Firebase Auth لموظف جديد وإرسال رابط تعيين كلمة المرور
+ * آمنة: مقيدة بأن المتصل يكون owner أو super_admin لنفس الشركة
+ */
+exports.createCompanyUser = onCall(async (request) => {
+  const { email, name, role, companyId } = request.data || {};
+
+  if (!email || !companyId) {
+    throw new HttpsError("invalid-argument", "البريد الإلكتروني ومعرف الشركة مطلوبان.");
+  }
+
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً.");
+  }
+
+  const callerClaims = request.auth?.token || {};
+  const callerEmail = (callerClaims.email || '').toLowerCase().trim();
+  const isMasterOwner = callerEmail === 'sicolove7@gmail.com' || callerEmail === 'admin@platform.com';
+  const isSuperAdmin = callerClaims.role === 'super_admin' || callerClaims.isSuperAdmin === true || isMasterOwner;
+  const isCompanyOwner = callerClaims.role === 'owner' && callerClaims.companyId === companyId;
+
+  if (!isSuperAdmin && !isCompanyOwner && !isMasterOwner) {
+    throw new HttpsError("permission-denied", "لا تملك صلاحية إنشاء مستخدمين لهذه الشركة.");
+  }
+
+  const auth = getAuth();
+  const cleanEmail = email.trim().toLowerCase();
+  let userRecord;
+  let isNew = false;
+
+  try {
+    // محاولة جلب المستخدم إن كان موجوداً بالفعل
+    userRecord = await auth.getUserByEmail(cleanEmail);
+  } catch (err) {
+    if (err.code === 'auth/user-not-found') {
+      // إنشاء حساب جديد بكلمة مرور مؤقتة عشوائية (لن يحتاجها لأننا سنرسل Reset Link)
+      const tempPassword = crypto.randomBytes(16).toString('hex');
+      userRecord = await auth.createUser({
+        email: cleanEmail,
+        password: tempPassword,
+        displayName: name || cleanEmail,
+        emailVerified: false,
+      });
+      isNew = true;
+    } else {
+      throw err;
+    }
+  }
+
+  // تعيين Custom Claims لربط المستخدم بالشركة
+  const safeRole = role && role !== 'super_admin' ? role : 'engineer';
+  await auth.setCustomUserClaims(userRecord.uid, {
+    companyId: companyId,
+    role: safeRole,
+  });
+
+  // إنشاء رابط تعيين كلمة المرور (Action Link)
+  let resetLink = null;
+  try {
+    resetLink = await auth.generatePasswordResetLink(cleanEmail);
+  } catch (e) {
+    console.warn('[createCompanyUser] Could not generate reset link:', e.message);
+  }
+
+  // حفظ بيانات المستخدم في Firestore
+  try {
+    await db.doc(`companies/${companyId}/users/${userRecord.uid}`).set({
+      uid: userRecord.uid,
+      email: cleanEmail,
+      name: name || cleanEmail,
+      role: safeRole,
+      companyId: companyId,
+      createdAt: new Date().toISOString(),
+      invitedAt: new Date().toISOString(),
+    }, { merge: true });
+  } catch (e) {
+    console.warn('[createCompanyUser] Could not save user to Firestore:', e.message);
+  }
+
+  console.log(`[createCompanyUser] User ${cleanEmail} (uid: ${userRecord.uid}) ${isNew ? 'created' : 'updated'} for company ${companyId}`);
+
+  return {
+    success: true,
+    uid: userRecord.uid,
+    isNew,
+    resetLink,
+    message: isNew
+      ? `تم إنشاء حساب ${cleanEmail} بنجاح. أرسل له رابط تعيين كلمة المرور.`
+      : `الحساب موجود مسبقاً. تم تحديث صلاحياته وإنشاء رابط تعيين كلمة المرور.`,
+  };
+});
+
+/**
  * 0b. دالة تعيين Claims للسوبر أدمن (setSuperAdminClaims)
  * تُستخدم من Firebase Console أو من سكريبت إداري مرة واحدة فقط
  * مُقيدة للغاية: يجب أن يكون المتصل سوبر أدمن بالفعل أو المستخدم المُحدد هو المتصل نفسه

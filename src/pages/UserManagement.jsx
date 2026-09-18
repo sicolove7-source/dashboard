@@ -10,7 +10,7 @@ import {
 } from '../utils/permissions';
 import { getActiveTenantId } from '../services/tenantsManager';
 import { syncCompanyUsersToCloud, syncTeamToCloud, sanitizeCompanyUsersForCloud } from '../services/cloudSync';
-import { sendPasswordReset } from '../services/auth';
+import { sendPasswordReset, callCreateCompanyUser } from '../services/auth';
 
 // أدوار الشركة المشتركة فقط (استبعاد Super Admin الخاص بالمنصة)
 const COMPANY_ROLES = Object.fromEntries(
@@ -660,23 +660,49 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
   const [copiedId, setCopiedId] = useState(null);
   const [resetSentEmail, setResetSentEmail] = useState(null);
   const [resetFeedback, setResetFeedback] = useState(null);
+  const [inviteLoading, setInviteLoading] = useState(null); // email being invited
 
   async function handleSendResetEmail(email) {
     if (!email) return;
+    setInviteLoading(email);
     try {
-      const res = await sendPasswordReset(email);
-      if (res.success) {
-        setResetSentEmail(email);
-        setResetFeedback(`تم إرسال رابط تعيين كلمة المرور إلى ${email} بنجاح عبر Firebase ✉️`);
-        setTimeout(() => {
-          setResetSentEmail(null);
-          setResetFeedback(null);
-        }, 5000);
+      // أولاً: نحاول إنشاء الحساب عبر Cloud Function (يعمل حتى لو كان الحساب غير منشأ بعد)
+      const user = users.find(u => u.email === email);
+      const cloudRes = await callCreateCompanyUser({
+        email,
+        name: user?.name || email,
+        role: user?.role || 'engineer',
+        companyId: activeCompId,
+      });
+
+      if (cloudRes?.success) {
+        // بعد التأكد من وجود الحساب، نرسل رابط إعادة التعيين
+        const res = await sendPasswordReset(email);
+        if (res.success) {
+          setResetSentEmail(email);
+          setResetFeedback(`✅ تم إنشاء حساب ${email} وإرسال رابط تعيين كلمة المرور بنجاح ✉️`);
+        } else {
+          setResetFeedback(`تم إنشاء الحساب بنجاح ولكن تعذر إرسال الرابط: ${res.error}`);
+          setResetSentEmail(email);
+        }
       } else {
-        alert(res.error || 'تعذر إرسال الرابط');
+        // الحساب موجود مسبقاً أو فشل Cloud Function — نجرب Reset Email مباشرة
+        const res = await sendPasswordReset(email);
+        if (res.success) {
+          setResetSentEmail(email);
+          setResetFeedback(`✉️ تم إرسال رابط تعيين كلمة المرور إلى ${email}`);
+        } else {
+          alert(`تعذر إنشاء الحساب أو إرسال الرابط. \nتفاصيل: ${cloudRes?.error || res.error}`);
+        }
       }
     } catch (e) {
       alert(e.message || 'حدث خطأ غير متوقع أثناء إرسال الرابط');
+    } finally {
+      setInviteLoading(null);
+      setTimeout(() => {
+        setResetSentEmail(null);
+        setResetFeedback(null);
+      }, 6000);
     }
   }
 
@@ -695,18 +721,48 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
     setTimeout(() => setSaved(false), 2000);
   }
 
-  function handleSaveUser(userData) {
+  async function handleSaveUser(userData) {
     const userWithComp = { ...userData, companyId: activeCompId };
     let nextUsers;
-    if (userData.id && users.find(u => u.id === userData.id)) {
-      // Edit
+    const isNewUser = !(userData.id && users.find(u => u.id === userData.id));
+
+    if (!isNewUser) {
+      // تعديل
       nextUsers = users.map(u => u.id === userData.id ? userWithComp : u);
     } else {
-      // Add (add to top of list for instant visibility)
+      // إضافة (أضف أعلى القائمة للظهور الفوري)
       nextUsers = [userWithComp, ...users];
       setFilterRole('all');
     }
     persist(nextUsers);
+
+    // إنشاء حساب Firebase Auth وإرسال رابط دعوة للمستخدم الجديد
+    if (isNewUser && userData.email) {
+      try {
+        const cloudRes = await callCreateCompanyUser({
+          email: userData.email,
+          name: userData.name,
+          role: userData.role,
+          companyId: activeCompId,
+        });
+        if (cloudRes?.success) {
+          // إرسال رابط تعيين كلمة المرور
+          const resetRes = await sendPasswordReset(userData.email);
+          if (resetRes.success) {
+            setResetFeedback(`✅ تم إنشاء حساب لـ ${userData.name} وإرسال رابط الدخول إلى ${userData.email} ✉️ يجب عليه الضغط على الرابط لتعيين كلمة مروره`);
+            setTimeout(() => setResetFeedback(null), 8000);
+          } else {
+            setResetFeedback(`⚠️ تم إنشاء الحساب ولكن تعذر إرسال رابط الدعوة. ادفع زر ✉️ بجانب المستخدم لإرساله`);
+            setTimeout(() => setResetFeedback(null), 6000);
+          }
+        } else {
+          // Cloud Function غير متاحة أو صلاحيات غير كافية — نتجاهل وندل على UI بصمت
+          console.warn('[handleSaveUser] createCompanyUser failed (non-critical):', cloudRes?.error);
+        }
+      } catch (cloudErr) {
+        console.warn('[handleSaveUser] Cloud create user error (non-critical):', cloudErr);
+      }
+    }
 
     // ── مزامنة فورية وتلقائية مع فريق العمل (team) ──
     try {
@@ -997,19 +1053,30 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
                       {/* Actions */}
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                          {/* Send Reset Email */}
+                          {/* Send Reset Email / Invite */}
                           <button
                             type="button"
                             className="btn btn-ghost"
                             style={{
-                              padding: '6px 8px', fontSize: 12,
-                              color: resetSentEmail === u.email ? '#10B981' : 'var(--muted)',
-                              background: resetSentEmail === u.email ? '#10B98118' : 'transparent'
+                              padding: '6px 10px', fontSize: 11,
+                              display: 'flex', alignItems: 'center', gap: 4,
+                              color: resetSentEmail === u.email ? '#10B981' : '#2563EB',
+                              background: resetSentEmail === u.email ? '#10B98118' : '#EFF6FF',
+                              border: `1px solid ${resetSentEmail === u.email ? '#10B98140' : '#BFDBFE'}`,
+                              borderRadius: 8,
+                              opacity: inviteLoading === u.email ? 0.6 : 1,
+                              cursor: inviteLoading === u.email ? 'not-allowed' : 'pointer',
                             }}
                             onClick={() => handleSendResetEmail(u.email)}
-                            title="إرسال رابط إعادة تعيين كلمة المرور إلى بريده الإلكتروني عبر Firebase"
+                            disabled={inviteLoading === u.email}
+                            title="إنشاء حساب وإرسال رابط تعيين كلمة المرور إلى بريده"
                           >
-                            {resetSentEmail === u.email ? <Check size={14} color="#10B981" /> : <Mail size={14} />}
+                            {inviteLoading === u.email
+                              ? <span style={{ fontSize: 12 }}>⌛</span>
+                              : resetSentEmail === u.email
+                                ? <Check size={13} color="#10B981" />
+                                : <Mail size={13} />}
+                            <span>{inviteLoading === u.email ? 'جاري...' : resetSentEmail === u.email ? 'أرسل!' : 'دعوة'}</span>
                           </button>
 
                           {/* Copy */}
