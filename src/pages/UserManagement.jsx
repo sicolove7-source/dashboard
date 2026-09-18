@@ -21,7 +21,7 @@ const COMPANY_ROLES = Object.fromEntries(
    Storage Helper for Isolated Company User Accounts
 ──────────────────────────────────────────────────────────── */
 export function getCompanyUsersKey(companyId) {
-  const cId = companyId || getActiveTenantId() || 'comp_alain';
+  const cId = companyId || getActiveTenantId() || 'comp_c_mtyw7mqk';
   return `tenant_${cId}_users`;
 }
 
@@ -158,6 +158,7 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
   });
 
   const [errors, setErrors] = useState({});
+  const [copied, setCopied] = useState(false);
 
   // ── حالة تخصيص الصلاحيات يدوياً ──
   const [isCustom, setIsCustom] = useState(() => {
@@ -267,7 +268,8 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
   }
 
   function copyCredentials() {
-    const text = `البريد: ${form.email}\nكلمة المرور: ${form.password}`;
+    const roleLabel = COMPANY_ROLES[form.role]?.label || form.role;
+    const text = `بيانات الدخول لحساب المستخدم في منصة تشطيب برو:\nالاسم: ${form.name}\nالبريد الإلكتروني: ${form.email}\nالدور الوظيفي: ${roleLabel}\nرابط تسجيل الدخول: https://tashteebpro.com/login`;
     navigator.clipboard?.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
