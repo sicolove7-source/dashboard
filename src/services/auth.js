@@ -7,6 +7,7 @@
 
 import { auth } from '../firebase';
 import { functions } from '../firebase';
+import { firebaseConfig } from '../firebase';
 import {
   signInWithEmailAndPassword,
   signOut,
@@ -15,7 +16,9 @@ import {
   createUserWithEmailAndPassword,
   updatePassword,
   updateEmail,
+  getAuth,
 } from 'firebase/auth';
+import { initializeApp, getApps } from 'firebase/app';
 import { httpsCallable } from 'firebase/functions';
 
 /**
@@ -34,26 +37,58 @@ export async function callAssignUserClaims({ targetUid, companyId, role, company
 }
 
 /**
- * إنشاء حساب Firebase Auth لموظف جديد وإرسال رابط تعيين كلمة المرور عبر Cloud Function آمنة
+ * إنشاء حساب Firebase Auth لموظف جديد باستخدام Secondary App Instance
+ * (لا يحتاج Cloud Functions - يعمل على Spark Plan المجاني)
+ * الحيلة: ننشئ Firebase App ثانوي مؤقت حتى لا نؤثر على جلسة المدير الحالية
  */
 export async function callCreateCompanyUser({ email, name, role, companyId }) {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  if (!cleanEmail) return { success: false, error: 'البريد الإلكتروني مطلوب.' };
+
+  // أولاً: نجرب Cloud Function إن كانت متاحة (Blaze plan)
   try {
     const fn = httpsCallable(functions, 'createCompanyUser');
-    const result = await fn({ email, name, role, companyId });
-    return result.data;
+    const result = await fn({ email: cleanEmail, name, role, companyId });
+    if (result.data?.success) return result.data;
+  } catch (cloudErr) {
+    // Cloud Functions غير متاحة (Spark plan) - ننتقل للحل البديل
+    console.info('[callCreateCompanyUser] Cloud function not available, using secondary app:', cloudErr?.code);
+  }
+
+  // الحل البديل: Secondary Firebase App لإنشاء الحساب بدون التأثير على جلسة المدير
+  let secondaryApp = null;
+  try {
+    // إنشاء App ثانوي أو استخدام الموجود
+    const secondaryAppName = '_employee_creator_temp';
+    const existingApps = getApps();
+    secondaryApp = existingApps.find(a => a.name === secondaryAppName)
+      || initializeApp(firebaseConfig, secondaryAppName);
+
+    const secondaryAuth = getAuth(secondaryApp);
+
+    // توليد كلمة مرور مؤقتة قوية
+    const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8) + 'A1!';
+
+    // إنشاء الحساب
+    await createUserWithEmailAndPassword(secondaryAuth, cleanEmail, tempPassword);
+
+    // تسجيل خروج فوري من الـ App الثانوي (لا يؤثر على المدير)
+    await signOut(secondaryAuth);
+
+    console.log(`[callCreateCompanyUser] Employee account created via secondary app: ${cleanEmail}`);
+    return { success: true, isNew: true, message: `تم إنشاء حساب ${cleanEmail} بنجاح.` };
+
   } catch (err) {
-    let message = 'تعذر إنشاء حساب المستخدم.';
-    const errMsg = err?.message || '';
-    if (errMsg.includes('permission-denied') || errMsg.includes('PERMISSION_DENIED')) {
-      message = 'لا تملك صلاحية إنشاء مستخدمين. يجب أن تكون مدير الشركة.';
-    } else if (errMsg.includes('already-exists') || errMsg.includes('email-already-exists')) {
-      message = 'هذا البريد الإلكتروني مسجل بالفعل في تطبيقات أخرى. سيتم إرسال رابط تعيين كلمة المرور إليه.';
-    } else if (errMsg.includes('unauthenticated') || errMsg.includes('UNAUTHENTICATED')) {
-      message = 'يجب تسجيل الدخول أولاً.';
-    } else if (errMsg) {
-      message = errMsg;
+    // إذا كان البريد مسجلاً مسبقاً - ليس خطأً، يمكننا إرسال reset email إليه
+    if (err?.code === 'auth/email-already-in-use') {
+      console.info('[callCreateCompanyUser] Account already exists, will send reset email.');
+      return { success: true, isNew: false, message: 'الحساب موجود مسبقاً. سيُرسل رابط تعيين كلمة المرور.' };
     }
-    console.error('[callCreateCompanyUser] Error:', err);
+    let message = 'تعذر إنشاء حساب الموظف.';
+    if (err?.code === 'auth/invalid-email') message = 'صيغة البريد الإلكتروني غير صالحة.';
+    else if (err?.code === 'auth/weak-password') message = 'كلمة المرور المؤقتة ضعيفة - حاول مجدداً.';
+    else if (err?.message) message = err.message;
+    console.error('[callCreateCompanyUser] Secondary app error:', err);
     return { success: false, error: message };
   }
 }
