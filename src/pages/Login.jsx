@@ -71,7 +71,7 @@ export default function Login({
       }
     } catch (err) {
       console.error("Login unexpected error:", err);
-      setError("حدث خطأ أثناء الاتصال بنظام المصادقة. يرجى المحاولة لاحقاً.");
+      setError(err?.message ? `حدث خطأ أثناء المصادقة: ${err.message}` : "حدث خطأ أثناء الاتصال بنظام المصادقة. يرجى المحاولة لاحقاً.");
     } finally {
       setLoading(false);
     }
@@ -106,56 +106,80 @@ export default function Login({
     setResetSuccess(null);
     setLoading(true);
 
+    const cleanEmail = (email || '').toLowerCase().trim();
+    if (!cleanEmail || !companyTitle?.trim()) {
+      setError('يرجى ملء جميع الحقول المطلوبة (اسم الشركة والبريد الإلكتروني).');
+      setLoading(false);
+      return;
+    }
+
+    // علامة أمان تمنع App.jsx من طرد المستخدم قبل اكتمال التسجيل وربط الشركة
+    try { sessionStorage.setItem('is_registering_user', cleanEmail); } catch (e) {}
+
     try {
-      // 1. إنشاء الحساب في Firebase Auth الرسمي
-      const authRes = await registerWithEmail(email, password);
+      // 1. تسجيل بيانات الشركة والمستخدم أولاً محلياً وسحابياً لتكون جاهزة فور إطلاق حدث المصادقة
+      const res = await registerNewTenant({
+        companyName: companyTitle,
+        adminName: adminName,
+        phone: phone,
+        email: cleanEmail,
+        password: password,
+        currency: 'ج.م',
+      });
+
+      if (!res.success) {
+        try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
+        setError(res.error || 'حدث خطأ أثناء إنشاء الحساب.');
+        setLoading(false);
+        return;
+      }
+
+      // 2. إنشاء الحساب في Firebase Auth الرسمي
+      const authRes = await registerWithEmail(cleanEmail, password);
       if (!authRes.success && authRes.code !== 'auth/email-already-in-use') {
+        try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
         setError(authRes.error || 'تعذر إنشاء الحساب في نظام المصادقة.');
         setLoading(false);
         return;
       }
 
-      // 2. تسجيل بيانات الشركة والمستخدم في المنصة
-      const res = await registerNewTenant({
-        companyName: companyTitle,
-        adminName: adminName,
-        phone: phone,
-        email: email,
-        password: password,
-        currency: 'ج.م',
-      });
-
-      if (res.success) {
+      // 3. تعيين Custom Claims وتحديث توكن الأمان فوراً
+      const firebaseUser = authRes.user || auth.currentUser;
+      if (firebaseUser?.uid && res.tenant?.id) {
         try {
-          confetti({
-            particleCount: 80,
-            spread: 70,
-            origin: { y: 0.6 }
-          });
-        } catch (e) {}
-
-        // ✅ تعيين Custom Claims سحابياً لربط المستخدم بشركته بشكل دائم وآمن
-        // هذا يضمن أنه في المرة القادمة لن يرى بيانات شركة أخرى
-        if (authRes.user?.uid && res.tenant?.id) {
-          callAssignUserClaims({
-            targetUid: authRes.user.uid,
+          await callAssignUserClaims({
+            targetUid: firebaseUser.uid,
             companyId: res.tenant.id,
             role: 'owner',
             companyName: res.tenant.name,
             currency: res.tenant.currency || 'ج.م',
-          }).catch(e => console.warn('assignUserClaims non-blocking error:', e));
+          });
+          if (firebaseUser.getIdToken) {
+            await firebaseUser.getIdToken(true);
+          }
+        } catch (e) {
+          console.warn('assignUserClaims non-blocking error:', e);
         }
-
-        // دخول تلقائي مباشر لبيئة الشركة المنشأة
-        setTimeout(() => {
-          onLogin(res.user, res.tenant, false);
-        }, 500);
-      } else {
-        setError(res.error || 'حدث خطأ أثناء إنشاء الحساب.');
-        setLoading(false);
       }
+
+      try {
+        confetti({
+          particleCount: 80,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+      } catch (e) {}
+
+      // 4. الانتقال المباشر لبيئة العمل وتطهير علامة الأمان
+      setTimeout(() => {
+        try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
+        onLogin(res.user, res.tenant, false);
+      }, 400);
+
     } catch (err) {
-      setError('تعذر إنشاء الحساب حالياً. يرجى التحقق من اتصال الإنترنت.');
+      try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
+      console.error("handleRegister error:", err);
+      setError(err?.message ? `تعذر إنشاء الحساب: ${err.message}` : 'تعذر إنشاء الحساب حالياً. يرجى التحقق من اتصال الإنترنت.');
       setLoading(false);
     }
   };

@@ -1,32 +1,43 @@
 @echo off
 @chcp 65001 >nul
-title نشر وتحديث قواعد ودوال Firebase السحابية
+title نشر لوحة التحكم على Firebase Hosting
 cd /d "%~dp0"
 
 echo ================================================================
-echo   🚀 جاري نشر وتحديث قواعد الحماية ودوال Firebase سحابياً...
+echo   🚀 جاري بناء ونشر لوحة التحكم على Firebase Hosting...
 echo ================================================================
 echo.
 
-echo [1/2] التحقق من تسجيل الدخول إلى Firebase...
-call npx -y firebase-tools login --reauth
+echo [1/3] بناء النسخة النهائية للإنتاج...
+call npm run build
 if %errorlevel% neq 0 (
-    echo [تنبيه] يرجى إتمام تسجيل الدخول إلى Firebase في المتصفح.
+    echo [خطأ] فشل بناء المشروع! يرجى مراجعة الأخطاء أولاً.
+    pause
+    exit /b
 )
 
 echo.
-echo [2/2] جاري نشر قواعد Firestore ودوّال Cloud Functions...
-call npx -y firebase-tools deploy --only firestore:rules,functions --project tashteeb-67d13
+echo [2/3] تسجيل الدخول إلى Firebase (سيفتح المتصفح تلقائياً)...
+call npx -y firebase-tools login --no-localhost
+if %errorlevel% neq 0 (
+    echo [تنبيه] يرجى إتمام تسجيل الدخول في المتصفح أولاً.
+)
+
+echo.
+echo [3/3] جاري نشر لوحة التحكم على Firebase Hosting...
+call npx firebase-tools deploy --only hosting --project tashteeb-67d13
 
 if %errorlevel% equ 0 (
     echo.
     echo ================================================================
-    echo   ✅ تم نشر وتحديث قواعد Firebase ودوال Cloud Functions بنجاح!
+    echo   ✅ تم النشر بنجاح! الموقع متاح على:
+    echo   🌐 https://tashteeb-67d13.web.app
+    echo   🌐 https://tashteeb-67d13.firebaseapp.com
     echo ================================================================
 ) else (
     echo.
     echo ================================================================
-    echo   ⚠️ تعذر النشر التلقائي، يمكنك مراجعة رسالة الخطأ أعلاه.
+    echo   ⚠️ تعذر النشر، يمكنك مراجعة رسالة الخطأ أعلاه.
     echo ================================================================
 )
 

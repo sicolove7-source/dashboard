@@ -216,16 +216,30 @@ export function loadAllTenants() {
 }
 
 export async function loadAllTenantsAsync() {
+  const local = loadAllTenants();
   try {
     const cloudTenants = await fetchTenantsListFromCloud();
     if (Array.isArray(cloudTenants) && cloudTenants.length > 0) {
-      try { localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(cloudTenants)); } catch (e) {}
-      return cloudTenants;
+      // دمج ذكي: الاحتفاظ بأي شركات جديدة أُنشئت محلياً ولم تُرفع بعد للسحابة
+      const mergedMap = new Map();
+      cloudTenants.forEach(t => { if (t?.id) mergedMap.set(t.id, t); });
+      local.forEach(t => {
+        if (t?.id) {
+          if (!mergedMap.has(t.id)) {
+            mergedMap.set(t.id, t);
+          } else {
+            const cloudT = mergedMap.get(t.id);
+            mergedMap.set(t.id, { ...cloudT, ...t });
+          }
+        }
+      });
+      const merged = Array.from(mergedMap.values());
+      try { localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(merged)); } catch (e) {}
+      return merged;
     }
   } catch (e) {
     console.warn("Could not load tenants from cloud, falling back to local:", e);
   }
-  const local = loadAllTenants();
   try { syncTenantsListToCloud(local); } catch (e) {}
   return local;
 }
@@ -299,6 +313,8 @@ export function createTenant(data) {
     primaryColor: newTenant.primaryColor,
     accentColor: newTenant.accentColor,
     companyLogo: null,
+    adminEmail: newTenant.adminEmail,
+    adminName: newTenant.adminName,
   };
   localStorage.setItem(`tenant_${id}_settings`, JSON.stringify(companySettings));
 
@@ -341,6 +357,8 @@ export function createTenant(data) {
   // رفع وتثبيت فضاء عمل الشركة بالكامل في السحابة لحظياً
   try {
     syncCompanyDataToCloud(id, {
+      adminEmail: newTenant.adminEmail,
+      adminName: newTenant.adminName,
       settings: companySettings,
       users: companyUsers,
       team: companyTeam,
@@ -722,10 +740,21 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
   const cleanEmail = (email || '').toLowerCase().trim();
   const superAdmin = getSuperAdminAccount();
 
-  // 1. فحص هل هو حساب الـ Super Admin (عبر Custom Claims الموثقة أو بريد المالك المعتمد)
+  // 1. تحميل قائمة الشركات أولاً ومحلياً/سحابياً لتكون متوفرة لكافة الفحوصات والحسابات
+  let tenants = [];
+  try {
+    tenants = await loadAllTenantsAsync();
+  } catch (e) {
+    tenants = loadAllTenants();
+  }
+  if (!Array.isArray(tenants) || tenants.length === 0) {
+    tenants = [...DEFAULT_TENANTS];
+  }
+
+  // 2. فحص هل هو حساب الـ Super Admin (عبر Custom Claims الموثقة أو بريد المالك المعتمد)
   const isSuperAdminEmail = (superAdmin?.email && cleanEmail === superAdmin.email.toLowerCase().trim()) || BUILTIN_SUPERADMIN_EMAILS.includes(cleanEmail);
   if (claims.role === 'super_admin' || claims.isSuperAdmin || isSuperAdminEmail) {
-    const amlakTenant = tenants.find(t => t.id === 'comp_alain') || tenants[0] || DEFAULT_TENANTS[0];
+    const amlakTenant = (tenants && tenants.find(t => t.id === 'comp_alain')) || tenants[0] || DEFAULT_TENANTS[0];
     return {
       success: true,
       user: {
@@ -735,22 +764,16 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
         name: superAdmin.name || 'مدير شركة أملاك',
         role: 'super_admin',
         isSuperAdmin: true,
-        companyId: amlakTenant.id,
-        companyName: amlakTenant.name,
-        currency: amlakTenant.currency || 'ج.م',
+        companyId: amlakTenant?.id || 'comp_alain',
+        companyName: amlakTenant?.name || 'شركة أملاك للمقاولات والتشطيبات',
+        currency: amlakTenant?.currency || 'ج.م',
       },
       tenant: amlakTenant,
       isSuperAdmin: true,
     };
   }
 
-  // 2. فحص سحابي ومحلي لجميع الشركات والمستخدمين
-  let tenants = [];
-  try {
-    tenants = await loadAllTenantsAsync();
-  } catch (e) {
-    tenants = loadAllTenants();
-  }
+  // 3. فحص صلاحيات الشركة المحددة بدقة داخل الـ Custom Claims
 
   // إذا كانت الشركة محددة بدقة داخل الـ Custom Claims
   if (claims.companyId) {

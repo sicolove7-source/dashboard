@@ -53,14 +53,38 @@ exports.assignUserClaims = onCall(async (request) => {
       currency: currency || 'ج.م',
     });
 
-    // تحديث وثيقة الشركة في Firestore بمعرف المستخدم Firebase (UID)
+    // تحديث وثيقة الشركة في Firestore بمعرف المستخدم Firebase (UID) والبريد الإلكتروني
     try {
       await db.doc(`companies/${companyId}`).set({
         adminUid: targetUid,
+        adminEmail: request.auth?.token?.email || '',
         updatedAt: new Date().toISOString(),
       }, { merge: true });
     } catch (e) {
       console.warn('[assignUserClaims] Could not update adminUid in company doc:', e.message);
+    }
+
+    // تسجيل الشركة في قائمة المنصة السحابية المركزية لضمان ظهورها للسوبر أدمن وكافة الأجهزة
+    try {
+      const tenantsRef = db.doc('platform_metadata/tenants');
+      const snap = await tenantsRef.get();
+      if (snap.exists) {
+        const list = snap.data()?.tenants || [];
+        if (!list.some(t => t.id === companyId)) {
+          list.unshift({
+            id: companyId,
+            name: companyName || companyId,
+            adminEmail: request.auth?.token?.email || '',
+            currency: currency || 'ج.م',
+            status: 'trial',
+            plan: 'trial',
+            createdAt: new Date().toISOString().slice(0, 10),
+          });
+          await tenantsRef.set({ tenants: list, updatedAt: new Date().toISOString() }, { merge: true });
+        }
+      }
+    } catch (e) {
+      console.warn('[assignUserClaims] Could not append to platform_metadata/tenants:', e.message);
     }
 
     console.log(`[assignUserClaims] Claims set for UID ${targetUid}: companyId=${companyId}, role=${safeRole}`);

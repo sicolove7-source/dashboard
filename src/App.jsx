@@ -1023,6 +1023,16 @@ export default function App() {
           }
 
           if (!tenantRes?.success || !tenantRes.user) {
+            // فحص هل المستخدم في مرحلة إكمال تسجيل حساب شركة جديد لتفادي طرده قبل حفظ الشركة
+            const cleanUserEmail = (firebaseUser.email || '').toLowerCase().trim();
+            const isRegistering = typeof sessionStorage !== 'undefined' && 
+              sessionStorage.getItem('is_registering_user') === cleanUserEmail;
+            
+            if (isRegistering) {
+              console.log("[onAuthChange] User is currently completing registration, deferring auto-logout:", cleanUserEmail);
+              return;
+            }
+
             console.warn("Unassigned user attempted login without company affiliation:", firebaseUser.email);
             await logoutUser();
             try { localStorage.removeItem('active_session_user'); } catch (e) {}
