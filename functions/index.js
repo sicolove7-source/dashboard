@@ -28,10 +28,12 @@ exports.assignUserClaims = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "targetUid و companyId مطلوبان.");
   }
 
-  // الأمان: يُسمح فقط للمستخدم نفسه (يُعيَّن لنفسه) أو للسوبر أدمن
+  // الأمان: يُسمح للمستخدم نفسه بتعيين صلاحيات شركته، وللسوبر أدمن المعتمد
   const callerUid = request.auth?.uid;
   const callerClaims = request.auth?.token || {};
-  const isSuperAdmin = callerClaims.role === 'super_admin' || callerClaims.isSuperAdmin === true;
+  const callerEmail = (request.auth?.token?.email || '').toLowerCase().trim();
+  const isMasterOwner = callerEmail === 'sicolove7@gmail.com' || callerEmail === 'admin@platform.com';
+  const isSuperAdmin = callerClaims.role === 'super_admin' || callerClaims.isSuperAdmin === true || isMasterOwner;
 
   if (!callerUid) {
     throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً.");
@@ -42,16 +44,26 @@ exports.assignUserClaims = onCall(async (request) => {
     throw new HttpsError("permission-denied", "لا تملك صلاحية تعيين Claims لمستخدمين آخرين.");
   }
 
-  // منع تعيين صلاحية super_admin من هذه الدالة (يتم فقط عبر Firebase Console)
-  const safeRole = (role === 'super_admin' && !isSuperAdmin) ? 'owner' : (role || 'owner');
+  // السماح بتعيين super_admin فقط للمالك المعتمد أو سوبر أدمن موثق سحابياً
+  let safeRole = role || 'owner';
+  if (role === 'super_admin') {
+    if (!isSuperAdmin) {
+      safeRole = 'owner';
+    }
+  }
 
   try {
-    await getAuth().setCustomUserClaims(targetUid, {
-      companyId,
+    const claimsPayload = {
+      companyId: companyId || 'comp_alain',
       role: safeRole,
       companyName: companyName || companyId,
       currency: currency || 'ج.م',
-    });
+    };
+    if (safeRole === 'super_admin') {
+      claimsPayload.isSuperAdmin = true;
+    }
+
+    await getAuth().setCustomUserClaims(targetUid, claimsPayload);
 
     // تحديث وثيقة الشركة في Firestore بمعرف المستخدم Firebase (UID) والبريد الإلكتروني
     try {

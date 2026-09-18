@@ -21,24 +21,11 @@ service cloud.firestore {
              get(/databases/$(database)/documents/platform_metadata/platform_settings).data.subAccountsAllowed != false;
     }
 
-    // فحص المالك بالإيميل المسجل بوثيقة الشركة
-    function isCompanyAdminByDoc(companyId) {
-      return isAuthenticated() &&
-             request.auth.token.email != null &&
-             exists(/databases/$(database)/documents/companies/$(companyId)) &&
-             (
-               get(/databases/$(database)/documents/companies/$(companyId)).data.adminEmail == request.auth.token.email ||
-               (
-                 get(/databases/$(database)/documents/companies/$(companyId)).data.settings != null &&
-                 get(/databases/$(database)/documents/companies/$(companyId)).data.settings.adminEmail == request.auth.token.email
-               )
-             );
-    }
-
+    // عزل الشركات الصارم: السماح فقط إذا كان التوكن المشفر يحمل نفس معرف الشركة
     function isAuthorized(companyId) {
       return isAuthenticated() && (
         isSuperAdmin() || (
-          (request.auth.token.companyId == companyId || isCompanyAdminByDoc(companyId)) &&
+          request.auth.token.companyId == companyId &&
           isSubAccountsAllowed()
         )
       );
@@ -90,7 +77,8 @@ service cloud.firestore {
         allow write: if isSuperAdmin();
       }
       match /tenants {
-        allow read, write: if isSuperAdmin();
+        allow read: if isAuthenticated();
+        allow write: if isSuperAdmin();
       }
       allow read, write: if isSuperAdmin();
     }

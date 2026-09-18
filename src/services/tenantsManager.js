@@ -7,7 +7,6 @@
 
 import { setGlobalCurrency } from '../utils/helpers';
 import { DEMO_ACCOUNTS } from '../utils/permissions';
-import { hashPassword, verifyPassword } from '../utils/security';
 import {
   fetchCompanyDataFromCloud,
   fetchProjectsFromCloud,
@@ -87,35 +86,46 @@ export function setSubAccountsLoginAllowed(allowed) {
 // قائمة البريد المعتمد لمالك المنصة الرئيسي (Super Admin)
 export const BUILTIN_SUPERADMIN_EMAILS = ['sicolove7@gmail.com', 'admin@platform.com'];
 
-// حساب مالك المنصة الرئيسي الافتراضي (Super Admin)
+// حساب مالك المنصة الرئيسي الافتراضي (Super Admin) - بدون أي كلمات مرور
 export const DEFAULT_SUPER_ADMIN_ACCOUNT = {
   id: 'super_admin_master',
   email: 'sicolove7@gmail.com',
-  password: '',
   name: 'مدير شركة أملاك',
   role: 'super_admin',
   isSuperAdmin: true,
 };
 
+// تطهير أمني فوري: إزالة أي كلمات مرور قديمة كانت مخزنة في LocalStorage
+try {
+  if (typeof localStorage !== 'undefined') {
+    const raw = localStorage.getItem(SUPER_ADMIN_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && 'password' in parsed) {
+        delete parsed.password;
+        localStorage.setItem(SUPER_ADMIN_STORAGE_KEY, JSON.stringify(parsed));
+      }
+    }
+  }
+} catch (e) {}
 
 export function getSuperAdminAccount() {
   try {
     const raw = localStorage.getItem(SUPER_ADMIN_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.email && parsed.password) {
+      if (parsed && parsed.email) {
         return {
           id: 'super_admin_master',
           name: parsed.name || 'مالك المنصة الرئيسي',
           email: parsed.email.toLowerCase().trim(),
-          password: parsed.password,
           role: 'super_admin',
           isSuperAdmin: true,
         };
       }
     }
   } catch (e) {
-    console.error("Error reading superadmin credentials:", e);
+    console.error("Error reading superadmin profile:", e);
   }
   return DEFAULT_SUPER_ADMIN_ACCOUNT;
 }
@@ -124,13 +134,12 @@ export function saveSuperAdminAccount(creds) {
   try {
     const data = {
       name: creds.name || 'مالك المنصة الرئيسي',
-      email: creds.email.toLowerCase().trim(),
-      password: creds.password,
+      email: creds.email ? creds.email.toLowerCase().trim() : 'sicolove7@gmail.com',
     };
     localStorage.setItem(SUPER_ADMIN_STORAGE_KEY, JSON.stringify(data));
     return true;
   } catch (e) {
-    console.error("Error saving superadmin credentials:", e);
+    console.error("Error saving superadmin profile:", e);
     return false;
   }
 }
@@ -400,8 +409,6 @@ export async function registerNewTenant(formData) {
 
   // توليد معرف للشركة
   const slug = 'c_' + Date.now().toString(36);
-  const rawPassword = formData.password || '123456';
-  const hashedPassword = await hashPassword(rawPassword);
 
   const newTenant = createTenant({
     slug,

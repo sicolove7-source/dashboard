@@ -960,20 +960,25 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                 setOwnerLoading(true);
                 setOwnerMsg(null);
                 try {
-                  let note = '';
-                  // إذا كانت هناك كلمة مرور جديدة مدخلة، نقوم بتحديثها في Firebase Authentication
+                  // إذا كانت هناك كلمة مرور جديدة مدخلة، نقوم بتحديثها في Firebase Authentication السحابي فقط
                   if (ownerForm.password && ownerForm.password.trim().length >= 6) {
                     const passRes = await updateCurrentUserPassword(ownerForm.password.trim());
                     if (!passRes.success) {
                       if (passRes.code === 'auth/requires-recent-login') {
-                        note = 'تم الحفظ محلياً. لتحديثها سحابياً في Firebase يرجى إعادة تسجيل الدخول.';
+                        note = 'لتحديث كلمة المرور في Firebase يرجى إعادة تسجيل الدخول أولاً لدواعي الأمان.';
                       } else {
                         note = passRes.error;
                       }
+                    } else {
+                      note = 'تم تحديث كلمة المرور سحابياً في Firebase بنجاح!';
                     }
                   }
 
-                  saveSuperAdminAccount(ownerForm);
+                  // حفظ بيانات الملف الشخصي (الاسم والبريد فقط) دون أي كلمات مرور
+                  saveSuperAdminAccount({
+                    name: ownerForm.name,
+                    email: ownerForm.email,
+                  });
                   setOwnerSuccess(true);
                   if (note) setOwnerMsg(note);
                   setTimeout(() => {

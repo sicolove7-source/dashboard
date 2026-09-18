@@ -84,6 +84,14 @@ export async function loginWithEmail(email, password) {
  */
 export async function logoutUser() {
   try {
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.clear();
+      }
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('active_session_user');
+      }
+    } catch (e) {}
     await signOut(auth);
     return { success: true };
   } catch (error) {

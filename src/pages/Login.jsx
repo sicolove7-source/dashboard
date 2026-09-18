@@ -58,7 +58,27 @@ export default function Login({
       const authResult = await loginWithEmail(email, password);
       if (authResult.success) {
         // قراءة الـ Custom Claims المشفرة من Google
-        const claims = await getUserClaims(authResult.user);
+        let claims = await getUserClaims(authResult.user);
+
+        // إذا كان بريد مالك المنصة المعتمد ولم يحصل على Custom Claim السوبر أدمن بعد، نقوم بتعيينها فوراً
+        const cleanEmail = (email || '').toLowerCase().trim();
+        if ((cleanEmail === 'sicolove7@gmail.com' || cleanEmail === 'admin@platform.com') && claims.role !== 'super_admin') {
+          try {
+            await callAssignUserClaims({
+              targetUid: authResult.user.uid,
+              companyId: 'comp_alain',
+              role: 'super_admin',
+              companyName: 'منصة تشطيب برو',
+            });
+            if (authResult.user.getIdToken) {
+              await authResult.user.getIdToken(true);
+            }
+            claims = await getUserClaims(authResult.user);
+          } catch (e) {
+            console.warn("Could not auto-assign super_admin claim:", e);
+          }
+        }
+
         // 2. تحديد بيانات الشركة والمستخدم والصلاحيات
         const tenantResult = await resolveTenantUserByEmail(email, authResult.user?.uid, claims);
         if (tenantResult.success) {
