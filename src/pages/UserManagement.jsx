@@ -666,34 +666,20 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
     if (!email) return;
     setInviteLoading(email);
     try {
-      // أولاً: نحاول إنشاء الحساب عبر Cloud Function (يعمل حتى لو كان الحساب غير منشأ بعد)
       const user = users.find(u => u.email === email);
-      const cloudRes = await callCreateCompanyUser({
+      // callCreateCompanyUser تتولى الآن: إنشاء الحساب + إرسال رابط كلمة المرور في خطوة واحدة
+      const res = await callCreateCompanyUser({
         email,
         name: user?.name || email,
         role: user?.role || 'engineer',
         companyId: activeCompId,
       });
 
-      if (cloudRes?.success) {
-        // بعد التأكد من وجود الحساب، نرسل رابط إعادة التعيين
-        const res = await sendPasswordReset(email);
-        if (res.success) {
-          setResetSentEmail(email);
-          setResetFeedback(`✅ تم إنشاء حساب ${email} وإرسال رابط تعيين كلمة المرور بنجاح ✉️`);
-        } else {
-          setResetFeedback(`تم إنشاء الحساب بنجاح ولكن تعذر إرسال الرابط: ${res.error}`);
-          setResetSentEmail(email);
-        }
+      if (res?.success) {
+        setResetSentEmail(email);
+        setResetFeedback(res.message || `✅ تم إرسال رابط الدخول إلى ${email} ✉️`);
       } else {
-        // الحساب موجود مسبقاً أو فشل Cloud Function — نجرب Reset Email مباشرة
-        const res = await sendPasswordReset(email);
-        if (res.success) {
-          setResetSentEmail(email);
-          setResetFeedback(`✉️ تم إرسال رابط تعيين كلمة المرور إلى ${email}`);
-        } else {
-          alert(`تعذر إنشاء الحساب أو إرسال الرابط. \nتفاصيل: ${cloudRes?.error || res.error}`);
-        }
+        alert(`تعذر إرسال الدعوة:\n${res?.error || 'خطأ غير معروف'}`);
       }
     } catch (e) {
       alert(e.message || 'حدث خطأ غير متوقع أثناء إرسال الرابط');
@@ -702,7 +688,7 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
       setTimeout(() => {
         setResetSentEmail(null);
         setResetFeedback(null);
-      }, 6000);
+      }, 8000);
     }
   }
 
@@ -736,7 +722,7 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
     }
     persist(nextUsers);
 
-    // إنشاء حساب Firebase Auth وإرسال رابط دعوة للمستخدم الجديد
+    // إنشاء حساب Firebase Auth وإرسال رابط دعوة للمستخدم الجديد (تلقائياً داخل callCreateCompanyUser)
     if (isNewUser && userData.email) {
       try {
         const cloudRes = await callCreateCompanyUser({
@@ -746,18 +732,14 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
           companyId: activeCompId,
         });
         if (cloudRes?.success) {
-          // إرسال رابط تعيين كلمة المرور
-          const resetRes = await sendPasswordReset(userData.email);
-          if (resetRes.success) {
-            setResetFeedback(`✅ تم إنشاء حساب لـ ${userData.name} وإرسال رابط الدخول إلى ${userData.email} ✉️ يجب عليه الضغط على الرابط لتعيين كلمة مروره`);
-            setTimeout(() => setResetFeedback(null), 8000);
-          } else {
-            setResetFeedback(`⚠️ تم إنشاء الحساب ولكن تعذر إرسال رابط الدعوة. ادفع زر ✉️ بجانب المستخدم لإرساله`);
-            setTimeout(() => setResetFeedback(null), 6000);
-          }
-        } else {
-          // Cloud Function غير متاحة أو صلاحيات غير كافية — نتجاهل وندل على UI بصمت
-          console.warn('[handleSaveUser] createCompanyUser failed (non-critical):', cloudRes?.error);
+          const msg = cloudRes.emailSent
+            ? `✅ تم إنشاء حساب لـ ${userData.name} وإرسال رابط الدخول إلى ${userData.email} ✉️\nيجب على الموظف فتح الإيميل والضغط على الرابط لتعيين كلمة المرور`
+            : `✅ تم إنشاء حساب لـ ${userData.name}. اضغط زر "دعوة" ✉️ لإرسال رابط الدخول إليه`;
+          setResetFeedback(msg);
+          setTimeout(() => setResetFeedback(null), 10000);
+        } else if (cloudRes?.error) {
+          setResetFeedback(`⚠️ ${cloudRes.error} — يمكنك إرسال الدعوة يدوياً من زر ✉️`);
+          setTimeout(() => setResetFeedback(null), 8000);
         }
       } catch (cloudErr) {
         console.warn('[handleSaveUser] Cloud create user error (non-critical):', cloudErr);

@@ -49,46 +49,69 @@ export async function callCreateCompanyUser({ email, name, role, companyId }) {
   try {
     const fn = httpsCallable(functions, 'createCompanyUser');
     const result = await fn({ email: cleanEmail, name, role, companyId });
-    if (result.data?.success) return result.data;
+    if (result.data?.success) {
+      // إرسال رابط تعيين كلمة المرور فوراً
+      try { await sendPasswordResetEmail(auth, cleanEmail); } catch (e) {}
+      return result.data;
+    }
   } catch (cloudErr) {
     // Cloud Functions غير متاحة (Spark plan) - ننتقل للحل البديل
     console.info('[callCreateCompanyUser] Cloud function not available, using secondary app:', cloudErr?.code);
   }
 
   // الحل البديل: Secondary Firebase App لإنشاء الحساب بدون التأثير على جلسة المدير
-  let secondaryApp = null;
   try {
     // إنشاء App ثانوي أو استخدام الموجود
     const secondaryAppName = '_employee_creator_temp';
     const existingApps = getApps();
-    secondaryApp = existingApps.find(a => a.name === secondaryAppName)
+    const secondaryApp = existingApps.find(a => a.name === secondaryAppName)
       || initializeApp(firebaseConfig, secondaryAppName);
 
     const secondaryAuth = getAuth(secondaryApp);
 
-    // توليد كلمة مرور مؤقتة قوية
-    const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8) + 'A1!';
+    // توليد كلمة مرور مؤقتة قوية (8+8 حروف + رقم + رمز)
+    const r = () => Math.random().toString(36).slice(2, 10);
+    const tempPassword = r() + r() + 'Aa1!';
 
-    // إنشاء الحساب
-    await createUserWithEmailAndPassword(secondaryAuth, cleanEmail, tempPassword);
+    let isNew = false;
+    try {
+      // محاولة إنشاء الحساب
+      await createUserWithEmailAndPassword(secondaryAuth, cleanEmail, tempPassword);
+      isNew = true;
+      console.log(`[callCreateCompanyUser] ✅ New account created: ${cleanEmail}`);
+    } catch (createErr) {
+      if (createErr?.code === 'auth/email-already-in-use') {
+        // الحساب موجود مسبقاً - جيد، نرسل reset email فقط
+        console.info(`[callCreateCompanyUser] Account already exists: ${cleanEmail}`);
+      } else {
+        throw createErr; // خطأ حقيقي
+      }
+    }
 
-    // تسجيل خروج فوري من الـ App الثانوي (لا يؤثر على المدير)
-    await signOut(secondaryAuth);
+    // تسجيل خروج من الـ App الثانوي (لا يؤثر على المدير أبداً)
+    try { await signOut(secondaryAuth); } catch (e) {}
 
-    console.log(`[callCreateCompanyUser] Employee account created via secondary app: ${cleanEmail}`);
-    return { success: true, isNew: true, message: `تم إنشاء حساب ${cleanEmail} بنجاح.` };
+    // إرسال رابط تعيين كلمة المرور من الـ auth الأساسي
+    await sendPasswordResetEmail(auth, cleanEmail);
+    console.log(`[callCreateCompanyUser] ✅ Password reset email sent to: ${cleanEmail}`);
+
+    return {
+      success: true,
+      isNew,
+      emailSent: true,
+      message: isNew
+        ? `✅ تم إنشاء حساب ${cleanEmail} وإرسال رابط الدخول إليه بنجاح`
+        : `✅ تم إرسال رابط تعيين كلمة المرور إلى ${cleanEmail}`,
+    };
 
   } catch (err) {
-    // إذا كان البريد مسجلاً مسبقاً - ليس خطأً، يمكننا إرسال reset email إليه
-    if (err?.code === 'auth/email-already-in-use') {
-      console.info('[callCreateCompanyUser] Account already exists, will send reset email.');
-      return { success: true, isNew: false, message: 'الحساب موجود مسبقاً. سيُرسل رابط تعيين كلمة المرور.' };
-    }
-    let message = 'تعذر إنشاء حساب الموظف.';
+    let message = 'تعذر إنشاء حساب الموظف أو إرسال الرابط.';
     if (err?.code === 'auth/invalid-email') message = 'صيغة البريد الإلكتروني غير صالحة.';
     else if (err?.code === 'auth/weak-password') message = 'كلمة المرور المؤقتة ضعيفة - حاول مجدداً.';
+    else if (err?.code === 'auth/user-not-found') message = 'لم يُعثر على الحساب. يرجى المحاولة مجدداً.';
+    else if (err?.code === 'auth/too-many-requests') message = 'تم إرسال عدة طلبات. يرجى الانتظار قليلاً والمحاولة لاحقاً.';
     else if (err?.message) message = err.message;
-    console.error('[callCreateCompanyUser] Secondary app error:', err);
+    console.error('[callCreateCompanyUser] Error:', err?.code, err?.message);
     return { success: false, error: message };
   }
 }
