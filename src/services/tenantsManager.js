@@ -106,6 +106,49 @@ try {
         localStorage.setItem(SUPER_ADMIN_STORAGE_KEY, JSON.stringify(parsed));
       }
     }
+
+    // ترقية وتثبيت شركة أملاك للمقاولات والتشطيبات كشركة المالك الأساسية comp_alain
+    const rawTenants = localStorage.getItem(PLATFORM_TENANTS_KEY);
+    if (rawTenants) {
+      let tList = JSON.parse(rawTenants);
+      if (Array.isArray(tList)) {
+        let changed = false;
+        tList = tList.map(t => {
+          if (t.id === 'comp_alain' && (t.name?.includes('العين') || t.name !== 'شركة أملاك للمقاولات والتشطيبات')) {
+            changed = true;
+            return {
+              ...t,
+              name: 'شركة أملاك للمقاولات والتشطيبات',
+              subtitle: 'متخصصون في تشطيب الشقق والقصور والفلل الفاخرة',
+              city: 'القاهرة',
+              country: 'مصر',
+              currency: 'ج.م',
+              phone: '+20 100 123 4567',
+              adminEmail: 'sicolove7@gmail.com',
+              adminName: 'أ. مدير شركة أملاك',
+            };
+          }
+          return t;
+        });
+        if (changed) {
+          localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(tList));
+        }
+      }
+    }
+
+    const rawAlain = localStorage.getItem('tenant_comp_alain_settings');
+    if (rawAlain) {
+      let aSettings = JSON.parse(rawAlain);
+      if (aSettings && (aSettings.companyName?.includes('العين') || aSettings.companyName !== 'شركة أملاك للمقاولات والتشطيبات')) {
+        aSettings.companyName = 'شركة أملاك للمقاولات والتشطيبات';
+        aSettings.companySubtitle = 'متخصصون في تشطيب الشقق والقصور والفلل الفاخرة';
+        aSettings.currency = 'ج.م';
+        aSettings.city = 'القاهرة';
+        aSettings.country = 'مصر';
+        aSettings.phone = '+20 100 123 4567';
+        localStorage.setItem('tenant_comp_alain_settings', JSON.stringify(aSettings));
+      }
+    }
   }
 } catch (e) {}
 
@@ -214,8 +257,19 @@ export function loadAllTenants() {
   try {
     const raw = localStorage.getItem(PLATFORM_TENANTS_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      let parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // ترقية وتثبيت شركة أملاك للمقاولات والتشطيبات كشركة المالك الأساسية comp_alain
+        const alainIdx = parsed.findIndex(t => t.id === 'comp_alain');
+        if (alainIdx !== -1 && (parsed[alainIdx].name?.includes('العين') || parsed[alainIdx].name !== DEFAULT_TENANTS[0].name)) {
+          parsed[alainIdx] = {
+            ...parsed[alainIdx],
+            ...DEFAULT_TENANTS[0],
+          };
+          try { localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(parsed)); } catch (e) {}
+        }
+        return parsed;
+      }
     }
   } catch (e) {
     console.error("Error loading tenants:", e);
@@ -229,9 +283,16 @@ export async function loadAllTenantsAsync() {
   try {
     const cloudTenants = await fetchTenantsListFromCloud();
     if (Array.isArray(cloudTenants) && cloudTenants.length > 0) {
-      // دمج ذكي: الاحتفاظ بأي شركات جديدة أُنشئت محلياً ولم تُرفع بعد للسحابة
+      // دمج ذكي مع فرض اسم شركة أملاك وتحديثها سحابياً ومحلياً
       const mergedMap = new Map();
-      cloudTenants.forEach(t => { if (t?.id) mergedMap.set(t.id, t); });
+      cloudTenants.forEach(t => {
+        if (t?.id) {
+          if (t.id === 'comp_alain' && (t.name?.includes('العين') || t.name !== DEFAULT_TENANTS[0].name)) {
+            t = { ...t, ...DEFAULT_TENANTS[0] };
+          }
+          mergedMap.set(t.id, t);
+        }
+      });
       local.forEach(t => {
         if (t?.id) {
           if (!mergedMap.has(t.id)) {
@@ -242,8 +303,16 @@ export async function loadAllTenantsAsync() {
           }
         }
       });
+      // تأكيد تثبيت شركة أملاك
+      if (mergedMap.has('comp_alain')) {
+        mergedMap.set('comp_alain', {
+          ...mergedMap.get('comp_alain'),
+          ...DEFAULT_TENANTS[0],
+        });
+      }
       const merged = Array.from(mergedMap.values());
       try { localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(merged)); } catch (e) {}
+      try { syncTenantsListToCloud(merged); } catch (e) {}
       return merged;
     }
   } catch (e) {
@@ -509,16 +578,24 @@ export function getTenantData(companyId) {
   } catch (e) {}
   if (!settings) {
     settings = {
-      companyName: tenant ? tenant.name : 'شركة المقاولات والتشطيبات',
-      companySubtitle: tenant ? tenant.subtitle : 'نظام إدارة المشاريع المتكامل',
-      city: tenant?.city || '',
+      companyName: tenant ? tenant.name : (companyId === 'comp_alain' ? DEFAULT_TENANTS[0].name : 'شركة المقاولات والتشطيبات'),
+      companySubtitle: tenant ? tenant.subtitle : (companyId === 'comp_alain' ? DEFAULT_TENANTS[0].subtitle : 'نظام إدارة المشاريع المتكامل'),
+      city: tenant?.city || (companyId === 'comp_alain' ? DEFAULT_TENANTS[0].city : ''),
       country: tenant?.country || 'مصر',
-      currency: tenant?.currency || 'ج.م',
-      phone: tenant?.phone || '',
+      currency: tenant?.currency || (companyId === 'comp_alain' ? DEFAULT_TENANTS[0].currency : 'ج.م'),
+      phone: tenant?.phone || (companyId === 'comp_alain' ? DEFAULT_TENANTS[0].phone : ''),
       primaryColor: tenant?.primaryColor || '#1877F2',
       accentColor: tenant?.accentColor || '#166FE5',
       companyLogo: null,
     };
+    try { localStorage.setItem(`tenant_${companyId}_settings`, JSON.stringify(settings)); } catch (e) {}
+  } else if (companyId === 'comp_alain' && (settings.companyName?.includes('العين') || settings.companyName !== DEFAULT_TENANTS[0].name)) {
+    settings.companyName = DEFAULT_TENANTS[0].name;
+    settings.companySubtitle = DEFAULT_TENANTS[0].subtitle;
+    settings.city = DEFAULT_TENANTS[0].city;
+    settings.country = DEFAULT_TENANTS[0].country;
+    settings.currency = DEFAULT_TENANTS[0].currency;
+    settings.phone = DEFAULT_TENANTS[0].phone;
     try { localStorage.setItem(`tenant_${companyId}_settings`, JSON.stringify(settings)); } catch (e) {}
   }
 
@@ -680,6 +757,17 @@ export async function getTenantDataAsync(companyId) {
         ...(cloudSettings || {}),
         companyLogo: cloudSettings?.companyLogo || localSettings?.companyLogo || null,
       };
+
+      // تثبيت اسم شركة أملاك وتحديث السحابة إذا كانت تحمل اسم العين القديم
+      if (companyId === 'comp_alain' && (settings.companyName?.includes('العين') || cloudSettings?.companyName?.includes('العين') || settings.companyName !== DEFAULT_TENANTS[0].name)) {
+        settings.companyName = DEFAULT_TENANTS[0].name;
+        settings.companySubtitle = DEFAULT_TENANTS[0].subtitle;
+        settings.city = DEFAULT_TENANTS[0].city;
+        settings.country = DEFAULT_TENANTS[0].country;
+        settings.currency = DEFAULT_TENANTS[0].currency;
+        settings.phone = DEFAULT_TENANTS[0].phone;
+        try { syncSettingsToCloud(companyId, settings); } catch (e) {}
+      }
 
       if (localSettings?.companyLogo && !cloudSettings?.companyLogo) {
         try { syncSettingsToCloud(companyId, settings); } catch (e) {}

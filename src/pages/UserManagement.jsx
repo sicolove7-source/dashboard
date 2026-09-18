@@ -40,9 +40,9 @@ export function loadUsers(companyId) {
   let defaults = [];
   if (cId === 'comp_alain') {
     defaults = [
-      { id: 'u_alain_1', email: 'ceo@alain-contract.ae', role: 'owner', name: 'أ. هزاع الشامسي', engineerName: null, companyId: 'comp_alain' },
-      { id: 'u_alain_2', email: 'eng@alain-contract.ae', role: 'engineer', name: 'م. هزاع المنصوري', engineerName: 'م. هزاع المنصوري', companyId: 'comp_alain' },
-      { id: 'u_alain_3', email: 'supply@alain-contract.ae', role: 'procurement', name: 'أ. محمود فوزي (مسؤول التوريدات)', engineerName: null, companyId: 'comp_alain' },
+      { id: 'u_alain_1', email: 'sicolove7@gmail.com', role: 'owner', name: 'أ. مدير شركة أملاك', engineerName: null, companyId: 'comp_alain' },
+      { id: 'u_alain_2', email: 'eng@amlak-contract.com', role: 'engineer', name: 'م. أحمد كامل', engineerName: 'م. أحمد كامل', companyId: 'comp_alain' },
+      { id: 'u_alain_3', email: 'supply@amlak-contract.com', role: 'procurement', name: 'أ. محمود فوزي (مسؤول التوريدات)', engineerName: null, companyId: 'comp_alain' },
     ];
   } else if (cId === 'comp_dhabi') {
     defaults = [
