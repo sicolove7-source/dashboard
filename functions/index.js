@@ -28,36 +28,89 @@ exports.assignUserClaims = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "targetUid و companyId مطلوبان.");
   }
 
-  // الأمان: التحقق من هوية المستدعي وصلاحياته
+  // 1. الأمان والتحقق من الهوية
   const callerUid = request.auth?.uid;
   const callerClaims = request.auth?.token || {};
 
   if (!callerUid) {
-    throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً.");
+    throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً لتنفيذ هذه العملية.");
   }
 
-  // التحقق هل المستدعي سوبر أدمن عبر التوكن أو مستند السوبر أدمن السحابي
-  let isSuperAdmin = callerClaims.role === 'super_admin' || callerClaims.isSuperAdmin === true;
-  if (!isSuperAdmin) {
-    try {
-      const saDoc = await db.doc('platform_metadata/superadmin').get();
-      if (saDoc.exists && saDoc.data()?.uid === callerUid) {
-        isSuperAdmin = true;
+  const isCallerSuperAdmin = callerClaims.role === 'super_admin' || callerClaims.isSuperAdmin === true;
+  const targetRole = role || 'owner';
+
+  // 2. التحقق من صلاحيات منح دور super_admin
+  if (targetRole === 'super_admin') {
+    if (isCallerSuperAdmin) {
+      // الحالة (أ): سوبر أدمن موجود وموثق في الـ claims يمنح الصلاحية لمستخدم آخر عن قصد
+      console.log(`[assignUserClaims] Super Admin granted by existing Super Admin: ${callerUid}`);
+    } else {
+      // الحالة (ب): التحقق الفعلي من عدم وجود أي سوبر أدمن في النظام كله حتى الآن (حالة الإقلاع الأول)
+      let hasExistingSuperAdmin = false;
+      try {
+        const saDoc = await db.doc('platform_metadata/superadmin').get();
+        if (saDoc.exists) {
+          const saData = saDoc.data() || {};
+          if (saData.uid || saData.isInitialized === true || saData.superAdminUid) {
+            hasExistingSuperAdmin = true;
+          }
+        }
+      } catch (e) {
+        console.error('[assignUserClaims] Error checking superadmin initialization:', e);
+        throw new HttpsError("internal", "فشل التحقق من سجلات المشرف العام المركزية.");
       }
-    } catch (e) {}
+
+      if (!hasExistingSuperAdmin) {
+        // الإقلاع الأول: السماح وتوثيق أول سوبر أدمن فورياً في Firestore
+        try {
+          await db.doc('platform_metadata/superadmin').set({
+            uid: targetUid,
+            email: request.auth?.token?.email || '',
+            isInitialized: true,
+            createdAt: new Date().toISOString(),
+          }, { merge: true });
+          console.log(`[assignUserClaims] First Super Admin bootstrapped for UID: ${targetUid}`);
+        } catch (e) {
+          console.warn('[assignUserClaims] Could not write bootstrap superadmin record:', e.message);
+        }
+      } else {
+        // رفض حاسم لأي حساب آخر يحاول منح نفسه أو غيره super_admin
+        throw new HttpsError(
+          "permission-denied",
+          "مرفوض: لا يمكنك منح دور super_admin. يوجد مشرف عام مسجل بالفعل في المنصة، ويجب أن يتم المنح بواسطة حسابه فقط."
+        );
+      }
+    }
+  } else {
+    // 3. التحقق من صلاحيات منح الأدوار الأخرى (owner, engineer, accountant, إلخ)
+    // يُسمح فقط إذا كان المستدعي super_admin أو owner لنفس الشركة
+    const isOwnerOfCompany = callerClaims.role === 'owner' && callerClaims.companyId === companyId;
+
+    // استثناء التسجيل الذاتي لمالك الشركة الجديد وقت التسجيل الأولي:
+    let isSelfRegisteringOwner = false;
+    if (!isCallerSuperAdmin && !isOwnerOfCompany && targetRole === 'owner' && callerUid === targetUid) {
+      try {
+        const compDoc = await db.doc(`companies/${companyId}`).get();
+        if (compDoc.exists) {
+          const compData = compDoc.data() || {};
+          if (compData.adminUid === callerUid || compData.adminEmail === request.auth?.token?.email) {
+            isSelfRegisteringOwner = true;
+          }
+        }
+      } catch (e) {
+        console.warn('[assignUserClaims] Error checking company doc for new owner self-registration:', e.message);
+      }
+    }
+
+    if (!isCallerSuperAdmin && !isOwnerOfCompany && !isSelfRegisteringOwner) {
+      throw new HttpsError(
+        "permission-denied",
+        "مرفوض: لا تملك الصلاحية لتعيين مستخدمين لهذه الشركة. يجب أن تكون سوبر أدمن أو مالكاً للشركة المعنية."
+      );
+    }
   }
 
-  const isSelf = callerUid === targetUid;
-  if (!isSelf && !isSuperAdmin) {
-    throw new HttpsError("permission-denied", "لا تملك صلاحية تعيين Claims لمستخدمين آخرين.");
-  }
-
-  // حماية حاسمة: منع أي مستخدم غير مصرح له من منح دور super_admin إطلاقاً
-  if (role === 'super_admin' && !isSuperAdmin) {
-    throw new HttpsError("permission-denied", "لا تملك صلاحية منح دور سوبر أدمن.");
-  }
-
-  const safeRole = role || 'owner';
+  const safeRole = targetRole;
 
   try {
     const claimsPayload = {

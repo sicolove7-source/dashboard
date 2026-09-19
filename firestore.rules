@@ -6,7 +6,6 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // التعرف على السوبر أدمن عبر الـ Custom Claims حصراً
     function isSuperAdmin() {
       return isAuthenticated() && (
         request.auth.token.role == 'super_admin' ||
@@ -19,7 +18,6 @@ service cloud.firestore {
              get(/databases/$(database)/documents/platform_metadata/platform_settings).data.subAccountsAllowed != false;
     }
 
-    // عزل الشركات: الاعتماد الحصري على التوكن الموثق (Custom Claims) أو السوبر أدمن
     function isAuthorized(companyId) {
       return isAuthenticated() && (
         isSuperAdmin() || (
@@ -30,13 +28,11 @@ service cloud.firestore {
     }
 
     function hasValidCompanyPayload(companyId) {
-      return request.resource == null ||
-             !('companyId' in request.resource.data) ||
+      return !('companyId' in request.resource.data) ||
              request.resource.data.companyId == companyId ||
              isSuperAdmin();
     }
 
-    // 1. حماية بيانات الشركات والمشاريع
     match /companies/{companyId} {
       allow read: if isAuthorized(companyId);
       allow create: if isAuthenticated() && hasValidCompanyPayload(companyId);
@@ -51,37 +47,30 @@ service cloud.firestore {
 
       match /{subcollection}/{docId} {
         allow read: if isAuthorized(companyId);
-        allow create, update: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
-        allow delete: if isAuthorized(companyId);
+        allow create, update, delete: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
       }
     }
 
-    // 2. بوابة العميل بالتوكن السري فقط (قراءة)
     match /portal_shares/{token} {
       allow read: if true;
       allow write: if false;
     }
 
-    // 3. إعدادات المنصة المركزية
-    match /platform_metadata/superadmin {
-      allow read, write: if false;
-    }
-    match /platform_metadata/platform_settings {
-      allow read: if true;
-      allow write: if isSuperAdmin();
-    }
-    match /platform_metadata/tenants {
-      allow read: if isAuthenticated();
-      allow write: if isSuperAdmin();
-    }
-    match /platform_metadata/users_directory {
-      allow read, write: if isAuthenticated();
-    }
     match /platform_metadata/{docId} {
+      match /superadmin {
+        allow read, write: if false;
+      }
+      match /platform_settings {
+        allow read: if true;
+        allow write: if isSuperAdmin();
+      }
+      match /tenants {
+        allow read: if isAuthenticated();
+        allow write: if isSuperAdmin();
+      }
       allow read, write: if isSuperAdmin();
     }
 
-    // 4. إغلاق أي مسار آخر
     match /{document=**} {
       allow read, write: if false;
     }
