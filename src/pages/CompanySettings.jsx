@@ -8,7 +8,7 @@ import {
 
 import { setGlobalCurrency } from '../utils/helpers';
 import { getActiveTenantId } from '../services/tenantsManager';
-import { syncSettingsToCloud, syncCompanyUsersToCloud } from '../services/cloudSync';
+import { syncSettingsToCloud, syncCompanyUsersToCloud, syncTenantUsersToCloud } from '../services/cloudSync';
 import AutomationsCenter from './AutomationsCenter';
 import UserManagement, { loadUsers, saveUsers } from './UserManagement';
 import {
@@ -257,7 +257,10 @@ export default function CompanySettings({
           };
           const nextUsers = [newUser, ...existingUsers];
           saveUsers(nextUsers, activeCompanyId);
-          try { syncCompanyUsersToCloud(activeCompanyId, nextUsers).catch(() => {}); } catch (e) {}
+          try {
+            syncCompanyUsersToCloud(activeCompanyId, nextUsers).catch(() => {});
+            syncTenantUsersToCloud(activeCompanyId, nextUsers).catch(() => {});
+          } catch (e) {}
         }
       }
     } catch (e) {

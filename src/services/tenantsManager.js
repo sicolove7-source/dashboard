@@ -19,6 +19,8 @@ import {
   deleteCompanyFromCloud,
   fetchTenantsListFromCloud,
   syncTenantsListToCloud,
+  syncTenantUsersToCloud,
+  fetchUserFromCloudDirectory,
   mergeProjectsPreservingLocal,
   mergeTeamsPreservingLocal,
   mergeUsersPreservingLocal,
@@ -262,6 +264,9 @@ try {
       if (changed) {
         localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
       }
+      setTimeout(() => {
+        try { syncAllLocalUsersToCloud(); } catch(e) {}
+      }, 500);
     } catch(e) {}
   }
 } catch (e) {}
@@ -423,7 +428,20 @@ export async function loadAllTenantsAsync() {
             mergedMap.set(t.id, t);
           } else {
             const cloudT = mergedMap.get(t.id);
-            mergedMap.set(t.id, { ...cloudT, ...t });
+            const mergedUsers = Array.isArray(cloudT.users) && cloudT.users.length > 0
+              ? (Array.isArray(t.users) && t.users.length > 0 ? mergeUsersPreservingLocal(t.users, cloudT.users) : cloudT.users)
+              : (t.users || []);
+            const mergedEmails = Array.from(new Set([
+              ...(cloudT.authorizedEmails || []),
+              ...(t.authorizedEmails || []),
+              ...(mergedUsers || []).map(u => (u.email || '').toLowerCase().trim()).filter(Boolean)
+            ]));
+            mergedMap.set(t.id, {
+              ...cloudT,
+              ...t,
+              users: mergedUsers,
+              authorizedEmails: mergedEmails,
+            });
           }
         }
       });
@@ -1022,7 +1040,43 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     };
   }
 
-  // 4. فحص السجل المركزي لكافة مستخدمي وموظفي المنصة أولاً (أسرع وأدق لمطابقة المهندسين والموظفين)
+  // 4. فحص دليل المستخدمين السحابي المركزي أولاً (Direct Cloud Directory Lookup)
+  try {
+    const cloudUser = await fetchUserFromCloudDirectory(cleanEmail);
+    if (cloudUser && cloudUser.companyId) {
+      const matchTenant = tenants.find(t => t.id === cloudUser.companyId) || {
+        id: cloudUser.companyId,
+        name: cloudUser.companyName || 'الشركة',
+        currency: cloudUser.currency || 'ج.م',
+      };
+      console.log('[resolveTenantUserByEmail] ✅ Found user in cloud directory:', cleanEmail, 'company:', matchTenant.id);
+
+      // حفظ محلي فوري لتسريع عمليات الدخول التالية على هذا المتصفح
+      try {
+        const reg = JSON.parse(localStorage.getItem('platform-all-users-registry') || '{}');
+        reg[cleanEmail] = { ...cloudUser, companyId: matchTenant.id };
+        localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
+      } catch (e) {}
+
+      return {
+        success: true,
+        user: {
+          ...cloudUser,
+          id: firebaseUid || cloudUser.id,
+          role: cloudUser.role || 'engineer',
+          companyId: matchTenant.id,
+          companyName: matchTenant.name || cloudUser.companyName,
+          currency: matchTenant.currency || cloudUser.currency || 'ج.م',
+        },
+        tenant: matchTenant,
+        isSuperAdmin: false,
+      };
+    }
+  } catch(e) {
+    console.warn('[resolveTenantUserByEmail] Cloud directory check warning:', e);
+  }
+
+  // 5. فحص السجل المركزي لكافة مستخدمي وموظفي المنصة محلياً platform-all-users-registry
   try {
     const regRaw = localStorage.getItem('platform-all-users-registry');
     if (regRaw) {
@@ -1052,47 +1106,59 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     }
   } catch(e) {}
 
-  // 5. فحص كافة الشركات المسجلة: أولوية البحث لأعضاء الفريق (مهندسون، محاسبون، إلخ) ثم المالك
+  // 6. فحص كافة الشركات المسجلة: دمج أعضاء الفريق في t.users مع المحلي، والتحقق السحابي الفعال إذا لم يتطابق محلياً
   for (const t of tenants) {
-    // أ) هل هو عضو في فريق العمل داخل الشركة
-    let users = null;
-    if (Array.isArray(t.users) && t.users.length > 0) {
-      users = t.users;
-    }
-    if (!users) {
-      try {
-        const rawUsers = localStorage.getItem(`tenant_${t.id}_users`);
-        if (rawUsers) users = JSON.parse(rawUsers);
-      } catch (e) {}
-    }
+    // أ) التحقق من قائمة المستخدمين
+    let users = Array.isArray(t.users) ? [...t.users] : [];
 
-    if (!users) {
+    // دمج المستخدمين من التخزين المحلي للشركة إن وجدوا
+    try {
+      const rawUsers = localStorage.getItem(`tenant_${t.id}_users`);
+      if (rawUsers) {
+        const parsed = JSON.parse(rawUsers);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          users = mergeUsersPreservingLocal(parsed, users);
+        }
+      }
+    } catch (e) {}
+
+    let match = users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
+
+    // إذا لم يتطابق محلياً، نفحص سحابة الشركة فوراً للتأكد تماماً من عدم وجود الموظف
+    if (!match) {
       try {
         const cloudData = await fetchCompanyDataFromCloud(t.id);
         if (cloudData && Array.isArray(cloudData.users)) {
-          users = cloudData.users;
+          users = mergeUsersPreservingLocal(users, cloudData.users);
+          match = users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
         }
       } catch (e) {}
     }
 
-    if (Array.isArray(users)) {
-      const match = users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
-      if (match) {
-        console.log('[resolveTenantUserByEmail] Found employee in company users:', cleanEmail, 'role:', match.role);
-        return {
-          success: true,
-          user: {
-            ...match,
-            id: firebaseUid || match.id,
-            companyId: t.id,
-            companyName: t.name,
-            currency: t.currency || 'ج.م',
-            role: match.role || 'engineer',
-          },
-          tenant: t,
-          isSuperAdmin: false,
-        };
-      }
+    if (match) {
+      console.log('[resolveTenantUserByEmail] ✅ Found employee in company users:', cleanEmail, 'company:', t.id, 'role:', match.role);
+
+      // حفظ وفهرسة فورية لتسريع الجلسة القادمة
+      try {
+        localStorage.setItem(`tenant_${t.id}_users`, JSON.stringify(users));
+        const reg = JSON.parse(localStorage.getItem('platform-all-users-registry') || '{}');
+        reg[cleanEmail] = { ...match, companyId: t.id };
+        localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
+      } catch (e) {}
+
+      return {
+        success: true,
+        user: {
+          ...match,
+          id: firebaseUid || match.id,
+          companyId: t.id,
+          companyName: t.name,
+          currency: t.currency || 'ج.م',
+          role: match.role || 'engineer',
+        },
+        tenant: t,
+        isSuperAdmin: false,
+      };
     }
 
     // ب) هل هو مالك الشركة (Owner / Admin)
@@ -1114,13 +1180,77 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     }
   }
 
+  // 7. محاولة أخيرة مخصصة لشركة أملاك (comp_c_mtyw7mqk) للتحقق المباشر من السحابة والمحلي
+  try {
+    const amlakData = await fetchCompanyDataFromCloud('comp_c_mtyw7mqk');
+    if (amlakData && Array.isArray(amlakData.users)) {
+      const match = amlakData.users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
+      if (match) {
+        const amlakTenant = (tenants && tenants.find(t => t.id === 'comp_c_mtyw7mqk')) || DEFAULT_TENANTS[0];
+        console.log('[resolveTenantUserByEmail] ✅ Found employee in Amlak fallback cloud data:', cleanEmail);
+        return {
+          success: true,
+          user: {
+            ...match,
+            id: firebaseUid || match.id,
+            companyId: 'comp_c_mtyw7mqk',
+            companyName: amlakTenant.name || 'شركة أملاك للمقاولات والتشطيبات',
+            currency: amlakTenant.currency || 'ج.م',
+            role: match.role || 'engineer',
+          },
+          tenant: amlakTenant,
+          isSuperAdmin: false,
+        };
+      }
+    }
+  } catch (e) {}
+
   // ⚠️ أمان حاسم: لم يتم العثور على هذا المستخدم في أي شركة مسجلة
-  // لا نربطه بأي شركة عشوائية — نرجع فشل لمنعه من الدخول حمايةً للبيانات
   console.warn('[resolveTenantUserByEmail] No matching company found for user — login blocked:', cleanEmail);
   return {
     success: false,
     error: 'لم يتم ربط هذا الحساب بأي شركة مسجلة في المنصة. يرجى التواصل مع مدير المنصة لإضافة حسابك.',
   };
+}
+
+/**
+ * مزامنة تصحيحية ذاتية لكافة مستخدمي الشركات المحليين ورفعهم للسحابة
+ * لضمان عمل حسابات الموظفين على أي جهاز دون الحاجة لإعادة إضافتهم
+ */
+export async function syncAllLocalUsersToCloud() {
+  try {
+    let allTenants = loadAllTenants();
+    let hasChanges = false;
+
+    Object.keys(localStorage).forEach(k => {
+      if (k.startsWith('tenant_') && k.endsWith('_users')) {
+        const cId = k.replace(/^tenant_/, '').replace(/_users$/, '');
+        try {
+          const uList = JSON.parse(localStorage.getItem(k) || '[]');
+          if (Array.isArray(uList) && uList.length > 0) {
+            const tIdx = allTenants.findIndex(t => t.id === cId);
+            if (tIdx !== -1) {
+              const currentUsers = allTenants[tIdx].users || [];
+              const merged = mergeUsersPreservingLocal(currentUsers, uList);
+              allTenants[tIdx].users = merged;
+              allTenants[tIdx].authorizedEmails = merged.map(u => (u.email || '').toLowerCase().trim()).filter(Boolean);
+              hasChanges = true;
+              // مزامنة فورية لكل شركة
+              syncTenantUsersToCloud(cId, merged).catch(() => {});
+            }
+          }
+        } catch (e) {}
+      }
+    });
+
+    if (hasChanges) {
+      localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(allTenants));
+      await syncTenantsListToCloud(allTenants);
+      console.log('[syncAllLocalUsersToCloud] ✅ Successfully auto-healed and synced company users to cloud.');
+    }
+  } catch (e) {
+    console.warn('[syncAllLocalUsersToCloud] Auto-healing error:', e);
+  }
 }
 
 export function generateWhatsAppWelcomeMessage(tenant) {

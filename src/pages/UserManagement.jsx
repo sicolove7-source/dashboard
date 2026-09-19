@@ -9,7 +9,7 @@ import {
   CUSTOMIZABLE_NAV_TABS, CUSTOMIZABLE_ACTIONS
 } from '../utils/permissions';
 import { getActiveTenantId } from '../services/tenantsManager';
-import { syncCompanyUsersToCloud, syncTeamToCloud, sanitizeCompanyUsersForCloud } from '../services/cloudSync';
+import { syncCompanyUsersToCloud, syncTenantUsersToCloud, syncTenantsListToCloud, syncTeamToCloud, sanitizeCompanyUsersForCloud } from '../services/cloudSync';
 import { sendPasswordReset, callCreateCompanyUser } from '../services/auth';
 
 // أدوار الشركة المشتركة فقط (استبعاد Super Admin الخاص بالمنصة)
@@ -702,6 +702,7 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
     saveUsers(next, activeCompId);
     try {
       syncCompanyUsersToCloud(activeCompId, next).catch(e => console.warn("Cloud sync users error:", e));
+      syncTenantUsersToCloud(activeCompId, next).catch(e => console.warn("Cloud sync tenant users error:", e));
     } catch (e) {}
 
     // حفظ وفهرسة فورية في السجل المركزي platform-all-users-registry
@@ -719,7 +720,7 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
       localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
     } catch (e) {}
 
-    // تحديث قائمة أعضاء الشركة في platform-tenants-master-v1
+    // تحديث قائمة أعضاء الشركة في platform-tenants-master-v1 مع المزامنة السحابية الفورية
     try {
       const rawTenants = localStorage.getItem('platform-tenants-master-v1');
       if (rawTenants) {
@@ -727,7 +728,9 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
         const idx = tList.findIndex(t => t.id === activeCompId);
         if (idx !== -1) {
           tList[idx].users = next;
+          tList[idx].authorizedEmails = next.map(u => (u.email || '').toLowerCase().trim()).filter(Boolean);
           localStorage.setItem('platform-tenants-master-v1', JSON.stringify(tList));
+          syncTenantsListToCloud(tList).catch(e => console.warn("Cloud sync tenants list error:", e));
         }
       }
     } catch (e) {}

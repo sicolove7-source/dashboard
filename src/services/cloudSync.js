@@ -663,10 +663,87 @@ export function subscribeToCloudLeads(companyId, onUpdate) {
 }
 
 /**
- * حفظ مستخدمي الشركة في السحابة
+ * حفظ مستخدمي الشركة في السحابة مع قائمة البريد المصرح له
  */
 export async function syncCompanyUsersToCloud(companyId, users) {
-  return syncCompanyDataToCloud(companyId, { users });
+  const cId = cleanCompanyId(companyId);
+  const cleanUsers = sanitizeCompanyUsersForCloud(users);
+  const authorizedEmails = Array.isArray(cleanUsers)
+    ? cleanUsers.map(u => (u.email || '').toLowerCase().trim()).filter(Boolean)
+    : [];
+  return syncCompanyDataToCloud(cId, { users: cleanUsers, authorizedEmails });
+}
+
+/**
+ * حفظ وتحديث موظفي الشركة سحابياً في كل من وثيقة الشركة وقائمة المنصة المركزية
+ * لضمان دخول الموظفين بسلاسة من أي هاتف أو كمبيوتر دون عوائق
+ */
+export async function syncTenantUsersToCloud(companyId, users) {
+  const cId = cleanCompanyId(companyId);
+  if (!cId || !Array.isArray(users)) return false;
+  const cleanUsers = sanitizeCompanyUsersForCloud(users);
+  const authorizedEmails = cleanUsers.map(u => (u.email || '').toLowerCase().trim()).filter(Boolean);
+
+  // 1. تحديث وثيقة الشركة مع قائمة الإيميلات المصرح لها
+  try {
+    await syncCompanyDataToCloud(cId, {
+      users: cleanUsers,
+      authorizedEmails: authorizedEmails,
+    });
+  } catch (e) {
+    console.warn("[syncTenantUsersToCloud] company doc update warning:", e);
+  }
+
+  // 2. تحديث قائمة الشركات المركزية platform_metadata/tenants لتمكين التحقق السحابي الفوري
+  try {
+    const tenantsRef = doc(db, TENANTS_META_DOC, TENANTS_META_KEY);
+    const snap = await getDoc(tenantsRef);
+    if (snap.exists()) {
+      const currentList = snap.data()?.tenants || [];
+      const idx = currentList.findIndex(t => t.id === cId);
+      if (idx !== -1) {
+        currentList[idx] = {
+          ...currentList[idx],
+          users: cleanUsers,
+          authorizedEmails: authorizedEmails,
+        };
+        await setDoc(tenantsRef, {
+          tenants: currentList,
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+      }
+    }
+  } catch (e) {
+    console.warn("[syncTenantUsersToCloud] tenants list update warning:", e);
+  }
+
+  // 3. تحديث دليل المستخدمين المركزي السحابي platform_metadata/users_directory
+  try {
+    const dirRef = doc(db, TENANTS_META_DOC, 'users_directory');
+    const dirPatch = {};
+    cleanUsers.forEach(u => {
+      if (u.email) {
+        const cleanE = u.email.toLowerCase().trim();
+        const safeKey = cleanE.replace(/\./g, '_dot_');
+        dirPatch[safeKey] = {
+          id: u.id || '',
+          email: cleanE,
+          name: u.name || '',
+          role: u.role || 'engineer',
+          engineerName: u.engineerName || null,
+          companyId: cId,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+    });
+    if (Object.keys(dirPatch).length > 0) {
+      await setDoc(dirRef, dirPatch, { merge: true });
+    }
+  } catch (e) {
+    console.warn("[syncTenantUsersToCloud] users directory update warning:", e);
+  }
+
+  return true;
 }
 
 /**
@@ -823,6 +900,64 @@ export async function syncTenantsListToCloud(tenants) {
     console.warn("Cloud sync (tenants list) error:", error.message);
     return false;
   }
+}
+
+/**
+ * البحث عن حساب المستخدم في دليل المنصة السحابي المركزي (للتحقق الفوري عند الدخول)
+ */
+export async function fetchUserFromCloudDirectory(email) {
+  const cleanEmail = (email || '').toLowerCase().trim();
+  if (!cleanEmail) return null;
+
+  // 1. فحص وثيقة الدليل المركزي السحابي platform_metadata/users_directory
+  try {
+    const dirRef = doc(db, TENANTS_META_DOC, 'users_directory');
+    const snap = await getDoc(dirRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      const safeKey = cleanEmail.replace(/\./g, '_dot_');
+      if (data && (data[safeKey] || data[cleanEmail])) {
+        return data[safeKey] || data[cleanEmail];
+      }
+    }
+  } catch (e) {
+    // Non-blocking fallback to tenants list
+  }
+
+  // 2. فحص قائمة الشركات المركزية platform_metadata/tenants كمسار بديل مضمون
+  try {
+    const tenantsList = await fetchTenantsListFromCloud();
+    if (Array.isArray(tenantsList)) {
+      for (const t of tenantsList) {
+        if (Array.isArray(t.users)) {
+          const match = t.users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
+          if (match) {
+            return {
+              ...match,
+              companyId: t.id,
+              companyName: t.name,
+              currency: t.currency || 'ج.م',
+            };
+          }
+        }
+        if (t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail) {
+          return {
+            id: `u_${t.id}_admin`,
+            email: t.adminEmail,
+            name: t.adminName || 'مدير الشركة',
+            role: 'owner',
+            companyId: t.id,
+            companyName: t.name,
+            currency: t.currency || 'ج.م',
+          };
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[fetchUserFromCloudDirectory] tenants list fallback error:", e.message);
+  }
+
+  return null;
 }
 
 /**

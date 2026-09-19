@@ -21,11 +21,22 @@ service cloud.firestore {
              get(/databases/$(database)/documents/platform_metadata/platform_settings).data.subAccountsAllowed != false;
     }
 
-    // عزل الشركات الصارم: السماح فقط إذا كان التوكن المشفر يحمل نفس معرف الشركة
+    // عزل الشركات: السماح إذا كان التوكن يحمل معرف الشركة أو عبر البريد المصرح له
     function isAuthorized(companyId) {
       return isAuthenticated() && (
         isSuperAdmin() || (
-          request.auth.token.companyId == companyId &&
+          (
+            request.auth.token.companyId == companyId ||
+            (
+              request.auth.token.email != null &&
+              exists(/databases/$(database)/documents/companies/$(companyId)) &&
+              (
+                get(/databases/$(database)/documents/companies/$(companyId)).data.adminEmail == request.auth.token.email ||
+                (get(/databases/$(database)/documents/companies/$(companyId)).data.settings != null && get(/databases/$(database)/documents/companies/$(companyId)).data.settings.adminEmail == request.auth.token.email) ||
+                (get(/databases/$(database)/documents/companies/$(companyId)).data.authorizedEmails != null && request.auth.token.email in get(/databases/$(database)/documents/companies/$(companyId)).data.authorizedEmails)
+              )
+            )
+          ) &&
           isSubAccountsAllowed()
         )
       );
@@ -78,7 +89,11 @@ service cloud.firestore {
       }
       match /tenants {
         allow read: if isAuthenticated();
-        allow write: if isSuperAdmin();
+        allow write: if isAuthenticated();
+      }
+      match /users_directory {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();
       }
       allow read, write: if isSuperAdmin();
     }

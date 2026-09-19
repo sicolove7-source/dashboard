@@ -39,7 +39,7 @@ import { isFirstLogin, markFirstLoginDone, seedDemoData } from './utils/seedDemo
 
 import { loadCompanySettings, applyCompanyBranding } from './utils/branding';
 try { if (typeof localStorage !== 'undefined') localStorage.removeItem('company-settings-v1'); } catch (e) {}
-import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail } from './services/tenantsManager';
+import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail, syncAllLocalUsersToCloud } from './services/tenantsManager';
 import { onAuthChange, logoutUser } from './services/auth';
 import { db } from './firebase';
 import { AdminProvider } from './context/AdminContext';
@@ -480,6 +480,13 @@ export default function App() {
       setGlobalCurrency(companySettings.currency);
     }
   }, [companySettings]);
+
+  // مزامنة تصحيحية ذاتية لكافة حسابات الموظفين والشركات مع السحابة لتمكين الدخول من أي هاتف أو جهاز
+  useEffect(() => {
+    try {
+      syncAllLocalUsersToCloud();
+    } catch (e) {}
+  }, []);
 
   // Listen for company settings changes from other tabs for the active company
   useEffect(() => {
