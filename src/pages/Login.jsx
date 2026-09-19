@@ -16,6 +16,10 @@ import {
   resolveTenantUserByEmail,
   registerNewTenant,
 } from "../services/tenantsManager";
+import {
+  cleanPhoneNumber,
+  fetchUserByPhoneFromCloudDirectory,
+} from "../services/cloudSync";
 
 export default function Login({
   onLogin,
@@ -61,14 +65,63 @@ export default function Login({
         localStorage.removeItem('active_session_user');
       } catch (e) {}
 
+      const rawInput = (email || '').trim();
+      if (!rawInput) {
+        setError("يرجى إدخال البريد الإلكتروني أو رقم الهاتف.");
+        setLoading(false);
+        return;
+      }
+
+      let targetAuthEmail = rawInput.toLowerCase();
+      const isEmail = rawInput.includes('@');
+
+      if (!isEmail) {
+        // تسجيل الدخول برقم الهاتف
+        const cleanPhone = cleanPhoneNumber(rawInput);
+        if (!cleanPhone || cleanPhone.length < 7) {
+          setError("يرجى إدخال رقم هاتف صحيح (مثال: 01012345678) أو بريد إلكتروني صالح.");
+          setLoading(false);
+          return;
+        }
+
+        // البحث عن الحساب المرتبط برقم الهاتف
+        let resolvedEmail = null;
+
+        // 1. فحص محلي سريع في platform-all-users-registry
+        try {
+          const regRaw = localStorage.getItem('platform-all-users-registry');
+          if (regRaw) {
+            const reg = JSON.parse(regRaw);
+            const userInReg = reg['phone_' + cleanPhone] || reg[cleanPhone] ||
+              Object.values(reg).find(u => cleanPhoneNumber(u.phone || u.cleanPhone) === cleanPhone);
+            if (userInReg && userInReg.email) {
+              resolvedEmail = userInReg.email;
+            }
+          }
+        } catch (e) {}
+
+        // 2. فحص سحابي من دليل المنصة platform_metadata/users_directory أو قائمة الشركات
+        if (!resolvedEmail) {
+          try {
+            const cloudUser = await fetchUserByPhoneFromCloudDirectory(cleanPhone);
+            if (cloudUser && cloudUser.email) {
+              resolvedEmail = cloudUser.email;
+            }
+          } catch (e) {}
+        }
+
+        // 3. إذا لم يُعثر على إيميل مسجل مسبقاً، نستخدم المعرف القياسي الافتراضي للحسابات الهاتفية
+        targetAuthEmail = resolvedEmail ? resolvedEmail.toLowerCase().trim() : `phone_${cleanPhone}@tashteeb.app`;
+      }
+
       // 1. المصادقة عبر Firebase Authentication الرسمي
-      const authResult = await loginWithEmail(email, password);
+      const authResult = await loginWithEmail(targetAuthEmail, password);
       if (authResult.success) {
         // قراءة الـ Custom Claims المشفرة من Google
         let claims = await getUserClaims(authResult.user);
 
         // إذا كان بريد مالك المنصة المعتمد ولم يحصل على Custom Claim السوبر أدمن بعد، نقوم بتعيينها فوراً
-        const cleanEmail = (email || '').toLowerCase().trim();
+        const cleanEmail = targetAuthEmail;
         if ((cleanEmail === 'sicolove7@gmail.com' || cleanEmail === 'admin@platform.com') && claims.role !== 'super_admin') {
           try {
             await callAssignUserClaims({
@@ -87,14 +140,18 @@ export default function Login({
         }
 
         // 2. تحديد بيانات الشركة والمستخدم والصلاحيات
-        const tenantResult = await resolveTenantUserByEmail(email, authResult.user?.uid, claims);
+        const tenantResult = await resolveTenantUserByEmail(targetAuthEmail, authResult.user?.uid, claims);
         if (tenantResult.success) {
           onLogin(tenantResult.user, tenantResult.tenant, tenantResult.isSuperAdmin);
         } else {
           setError(tenantResult.error || "تعذر تحديد بيانات الشركة المرتبطة بهذا الحساب.");
         }
       } else {
-        setError(authResult.error || "البريد الإلكتروني أو كلمة المرور غير صحيحة.");
+        if (!isEmail) {
+          setError("رقم الهاتف أو كلمة المرور غير صحيحة. يرجى التأكد من الرقم وكلمة المرور.");
+        } else {
+          setError(authResult.error || "البريد الإلكتروني أو كلمة المرور غير صحيحة.");
+        }
       }
     } catch (err) {
       console.error("Login unexpected error:", err);
@@ -105,8 +162,13 @@ export default function Login({
   };
 
   const handleForgotPassword = async () => {
-    if (!email || !email.trim()) {
+    const rawInput = (email || '').trim();
+    if (!rawInput) {
       setError("يرجى إدخال بريدك الإلكتروني أولاً في الحقل المخصص، ثم الضغط على 'نسيت كلمة المرور؟'.");
+      return;
+    }
+    if (!rawInput.includes('@')) {
+      setError("إعادة تعيين كلمة المرور عبر الرابط متاحة للحسابات المسجلة ببريد إلكتروني. بالنسبة للدخول برقم الهاتف، يرجى التواصل مع مدير الشركة لتعيين كلمة مرورك.");
       return;
     }
     setError(null);
@@ -114,7 +176,7 @@ export default function Login({
     setResetLoading(true);
 
     try {
-      const res = await sendPasswordReset(email);
+      const res = await sendPasswordReset(rawInput);
       if (res.success) {
         setResetSuccess(res.message);
       } else {
@@ -462,25 +524,34 @@ export default function Login({
           {/* ══════════════ نموذج 1: تسجيل الدخول ══════════════ */}
           {mode === 'login' ? (
             <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {/* البريد */}
+              {/* البريد أو رقم الهاتف */}
               <div>
                 <label style={{ display: "block", marginBottom: 7, color: "var(--muted)", fontSize: 13, fontWeight: 700 }}>
-                  البريد الإلكتروني
+                  البريد الإلكتروني أو رقم الهاتف
                 </label>
                 <div style={{ position: "relative" }}>
-                  <Mail size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
+                  {email && !email.includes('@') ? (
+                    <Phone size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: primaryColor }} />
+                  ) : (
+                    <Mail size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
+                  )}
                   <input
-                    type="email"
+                    type="text"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    placeholder="admin@platform.com"
+                    placeholder="010XXXXXXXX أو example@email.com"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     style={{
                       width: "100%", padding: "11px 42px 11px 14px",
                       border: "1.5px solid var(--border)", borderRadius: 10,
                       background: "transparent", color: "var(--ink)",
                       fontFamily: "'Cairo', sans-serif", fontSize: 14,
                       outline: "none", boxSizing: "border-box",
+                      direction: "ltr",
+                      textAlign: "right"
                     }}
                   />
                 </div>

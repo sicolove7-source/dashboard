@@ -41,17 +41,18 @@ export async function callAssignUserClaims({ targetUid, companyId, role, company
  * (لا يحتاج Cloud Functions - يعمل على Spark Plan المجاني)
  * الحيلة: ننشئ Firebase App ثانوي مؤقت حتى لا نؤثر على جلسة المدير الحالية
  */
-export async function callCreateCompanyUser({ email, name, role, companyId }) {
+export async function callCreateCompanyUser({ email, name, role, companyId, password }) {
   const cleanEmail = (email || '').trim().toLowerCase();
-  if (!cleanEmail) return { success: false, error: 'البريد الإلكتروني مطلوب.' };
+  if (!cleanEmail) return { success: false, error: 'البريد الإلكتروني أو رقم الهاتف مطلوب.' };
 
   // أولاً: نجرب Cloud Function إن كانت متاحة (Blaze plan)
   try {
     const fn = httpsCallable(functions, 'createCompanyUser');
-    const result = await fn({ email: cleanEmail, name, role, companyId });
+    const result = await fn({ email: cleanEmail, name, role, companyId, password });
     if (result.data?.success) {
-      // إرسال رابط تعيين كلمة المرور فوراً
-      try { await sendPasswordResetEmail(auth, cleanEmail); } catch (e) {}
+      if (!password && !cleanEmail.endsWith('@tashteeb.app')) {
+        try { await sendPasswordResetEmail(auth, cleanEmail); } catch (e) {}
+      }
       return result.data;
     }
   } catch (cloudErr) {
@@ -69,19 +70,19 @@ export async function callCreateCompanyUser({ email, name, role, companyId }) {
 
     const secondaryAuth = getAuth(secondaryApp);
 
-    // توليد كلمة مرور مؤقتة قوية (8+8 حروف + رقم + رمز)
+    // استخدام كلمة المرور المحددة أو توليد كلمة مرور مؤقتة قوية
     const r = () => Math.random().toString(36).slice(2, 10);
-    const tempPassword = r() + r() + 'Aa1!';
+    const chosenPassword = (password && String(password).length >= 6) ? String(password) : (r() + r() + 'Aa1!');
 
     let isNew = false;
     try {
       // محاولة إنشاء الحساب
-      await createUserWithEmailAndPassword(secondaryAuth, cleanEmail, tempPassword);
+      await createUserWithEmailAndPassword(secondaryAuth, cleanEmail, chosenPassword);
       isNew = true;
       console.log(`[callCreateCompanyUser] ✅ New account created: ${cleanEmail}`);
     } catch (createErr) {
       if (createErr?.code === 'auth/email-already-in-use') {
-        // الحساب موجود مسبقاً - جيد، نرسل reset email فقط
+        // الحساب موجود مسبقاً
         console.info(`[callCreateCompanyUser] Account already exists: ${cleanEmail}`);
       } else {
         throw createErr; // خطأ حقيقي
@@ -91,9 +92,30 @@ export async function callCreateCompanyUser({ email, name, role, companyId }) {
     // تسجيل خروج من الـ App الثانوي (لا يؤثر على المدير أبداً)
     try { await signOut(secondaryAuth); } catch (e) {}
 
-    // إرسال رابط تعيين كلمة المرور من الـ auth الأساسي
-    await sendPasswordResetEmail(auth, cleanEmail);
-    console.log(`[callCreateCompanyUser] ✅ Password reset email sent to: ${cleanEmail}`);
+    let emailSent = false;
+    // لا نرسل رابط الإيميل إذا كان حساباً بدون إيميل حقيقي (@tashteeb.app) أو إذا تم تحديد كلمة سر يدوياً
+    if (!password && !cleanEmail.endsWith('@tashteeb.app')) {
+      try {
+        await sendPasswordResetEmail(auth, cleanEmail);
+        emailSent = true;
+        console.log(`[callCreateCompanyUser] ✅ Password reset email sent to: ${cleanEmail}`);
+      } catch (e) {
+        console.warn('[callCreateCompanyUser] Could not send reset email:', e);
+      }
+    }
+
+    let successMsg = `✅ تم تجهيز وتفعيل حساب ${name || cleanEmail} بنجاح`;
+    if (isNew) {
+      if (password) {
+        successMsg = `✅ تم إنشاء الحساب بنجاح بكلمة المرور المحددة`;
+      } else if (emailSent) {
+        successMsg = `✅ تم إنشاء الحساب وإرسال رابط تعيين كلمة المرور إلى ${cleanEmail}`;
+      }
+    } else {
+      successMsg = emailSent
+        ? `✅ تم إرسال رابط تعيين كلمة المرور إلى ${cleanEmail}`
+        : `✅ الحساب مسجل ومفعل في نظام التوثيق`;
+    }
 
     return {
       success: true,

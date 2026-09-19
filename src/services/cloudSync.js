@@ -722,18 +722,26 @@ export async function syncTenantUsersToCloud(companyId, users) {
     const dirRef = doc(db, TENANTS_META_DOC, 'users_directory');
     const dirPatch = {};
     cleanUsers.forEach(u => {
-      if (u.email) {
-        const cleanE = u.email.toLowerCase().trim();
+      const cleanE = (u.email || '').toLowerCase().trim();
+      const cPhone = cleanPhoneNumber(u.phone);
+      const userPayload = {
+        id: u.id || '',
+        email: cleanE,
+        phone: u.phone || null,
+        cleanPhone: cPhone || null,
+        name: u.name || '',
+        role: u.role || 'engineer',
+        engineerName: u.engineerName || null,
+        companyId: cId,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (cleanE) {
         const safeKey = cleanE.replace(/\./g, '_dot_');
-        dirPatch[safeKey] = {
-          id: u.id || '',
-          email: cleanE,
-          name: u.name || '',
-          role: u.role || 'engineer',
-          engineerName: u.engineerName || null,
-          companyId: cId,
-          updatedAt: new Date().toISOString(),
-        };
+        dirPatch[safeKey] = userPayload;
+      }
+      if (cPhone) {
+        dirPatch['phone_' + cPhone] = userPayload;
       }
     });
     if (Object.keys(dirPatch).length > 0) {
@@ -955,6 +963,98 @@ export async function fetchUserFromCloudDirectory(email) {
     }
   } catch (e) {
     console.warn("[fetchUserFromCloudDirectory] tenants list fallback error:", e.message);
+  }
+
+  return null;
+}
+
+/**
+ * تطهير وتوحيد أرقام الهواتف (تحويل الأرقام العربية، إزالة المسافات والرموز، وتوحيد الصيغة)
+ */
+export function cleanPhoneNumber(raw) {
+  if (!raw) return '';
+  let str = String(raw).trim()
+    .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+    .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+    .replace(/[\s\-\(\)\.]/g, '');
+
+  if (str.startsWith('00')) str = str.slice(2);
+  if (str.startsWith('+')) str = str.slice(1);
+
+  // إذا كان رقم مصري مسبوق بكود الدولة 20
+  if (str.startsWith('20') && str.length === 12 && ['10', '11', '12', '15'].includes(str.slice(2, 4))) {
+    str = '0' + str.slice(2);
+  } else if (str.length === 10 && ['10', '11', '12', '15'].includes(str.slice(0, 2))) {
+    str = '0' + str;
+  }
+
+  return str.replace(/\D/g, '');
+}
+
+/**
+ * البحث عن حساب المستخدم برقم هاتفه في دليل المنصة السحابي أو قائمة الشركات
+ */
+export async function fetchUserByPhoneFromCloudDirectory(phone) {
+  const cPhone = cleanPhoneNumber(phone);
+  if (!cPhone || cPhone.length < 7) return null;
+
+  // 1. فحص وثيقة الدليل المركزي السحابي platform_metadata/users_directory
+  try {
+    const dirRef = doc(db, TENANTS_META_DOC, 'users_directory');
+    const snap = await getDoc(dirRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      const phoneKey = 'phone_' + cPhone;
+      if (data && data[phoneKey]) {
+        return data[phoneKey];
+      }
+      // مسار بديل: فحص كافة سجلات الدليل في حال كان الهاتف مخزناً داخل كائن المستخدم
+      for (const k of Object.keys(data)) {
+        const u = data[k];
+        if (u && (cleanPhoneNumber(u.phone) === cPhone || cleanPhoneNumber(u.cleanPhone) === cPhone)) {
+          return u;
+        }
+      }
+    }
+  } catch (e) {
+    // Non-blocking fallback
+  }
+
+  // 2. فحص قائمة الشركات المركزية platform_metadata/tenants
+  try {
+    const tenantsList = await fetchTenantsListFromCloud();
+    if (Array.isArray(tenantsList)) {
+      for (const t of tenantsList) {
+        if (Array.isArray(t.users)) {
+          const match = t.users.find(u => (
+            cleanPhoneNumber(u.phone) === cPhone ||
+            cleanPhoneNumber(u.cleanPhone) === cPhone
+          ));
+          if (match) {
+            return {
+              ...match,
+              companyId: t.id,
+              companyName: t.name,
+              currency: t.currency || 'ج.م',
+            };
+          }
+        }
+        if (t.phone && cleanPhoneNumber(t.phone) === cPhone) {
+          return {
+            id: `u_${t.id}_admin`,
+            email: t.adminEmail,
+            phone: t.phone,
+            name: t.adminName || 'مدير الشركة',
+            role: 'owner',
+            companyId: t.id,
+            companyName: t.name,
+            currency: t.currency || 'ج.م',
+          };
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[fetchUserByPhoneFromCloudDirectory] error:", e.message);
   }
 
   return null;

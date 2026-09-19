@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import {
   UserPlus, Trash2, KeyRound, Eye, EyeOff, CheckCircle2,
   AlertTriangle, X, Pencil, Shield, Users, Copy, Check,
-  ChevronDown, Sliders, CheckSquare, Square, Mail
+  ChevronDown, Sliders, CheckSquare, Square, Mail, Phone
 } from 'lucide-react';
 import {
   ROLES, NAV_PERMISSIONS, PERMISSIONS,
   CUSTOMIZABLE_NAV_TABS, CUSTOMIZABLE_ACTIONS
 } from '../utils/permissions';
 import { getActiveTenantId } from '../services/tenantsManager';
-import { syncCompanyUsersToCloud, syncTenantUsersToCloud, syncTenantsListToCloud, syncTeamToCloud, sanitizeCompanyUsersForCloud } from '../services/cloudSync';
+import { syncCompanyUsersToCloud, syncTenantUsersToCloud, syncTenantsListToCloud, syncTeamToCloud, sanitizeCompanyUsersForCloud, cleanPhoneNumber } from '../services/cloudSync';
 import { sendPasswordReset, callCreateCompanyUser } from '../services/auth';
 
 // أدوار الشركة المشتركة فقط (استبعاد Super Admin الخاص بالمنصة)
@@ -152,11 +152,14 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
 
   const [form, setForm] = useState({
     name: user?.name || '',
-    email: user?.email || '',
+    phone: user?.phone || '',
+    email: user?.email && !user?.email.endsWith('@tashteeb.app') ? user.email : '',
+    password: '',
     role: initialRole,
     engineerName: user?.engineerName || '',
   });
 
+  const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [copied, setCopied] = useState(false);
 
@@ -178,18 +181,34 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
     const e = {};
     if (!form.name.trim()) e.name = 'الاسم مطلوب';
 
-    let checkEmail = form.email.trim();
-    if (!checkEmail) {
-      const translit = form.name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || ('user' + Date.now().toString().slice(-4));
-      checkEmail = `${translit}@company.com`;
-    } else if (!checkEmail.includes('@')) {
-      checkEmail = `${checkEmail.toLowerCase()}@company.com`;
+    const cleanP = cleanPhoneNumber(form.phone);
+    const rawEmail = (form.email || '').trim();
+
+    if (!cleanP && !rawEmail) {
+      e.identifier = 'يرجى إدخال رقم الهاتف أو البريد الإلكتروني';
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(checkEmail)) {
-      e.email = 'يرجى كتابة بريد إلكتروني صالح (مثال: name@company.com)';
-    } else if (!isEdit && existingEmails.includes(checkEmail.toLowerCase())) {
-      e.email = 'هذا البريد مستخدم بالفعل، يرجى كتابة بريد آخر';
+    if (rawEmail) {
+      let checkEmail = rawEmail;
+      if (!checkEmail.includes('@')) {
+        checkEmail = `${checkEmail.toLowerCase()}@company.com`;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(checkEmail)) {
+        e.email = 'يرجى كتابة بريد إلكتروني صالح (مثال: name@company.com)';
+      } else if (!isEdit && existingEmails.includes(checkEmail.toLowerCase())) {
+        e.email = 'هذا البريد مستخدم بالفعل، يرجى كتابة بريد آخر';
+      }
+    }
+
+    if (form.phone && form.phone.trim()) {
+      if (cleanP.length < 7) {
+        e.phone = 'يرجى كتابة رقم هاتف صحيح (7 أرقام على الأقل)';
+      }
+    }
+
+    // إذا كان حساب جديد بدون بريد إلكتروني (دخول برقم الهاتف فقط)، يجب تحديد كلمة مرور مبدئية
+    if (!isEdit && !rawEmail && (!form.password || form.password.trim().length < 6)) {
+      e.password = 'يرجى تحديد كلمة مرور للحساب (6 أحرف أو أرقام على الأقل)';
     }
 
     setErrors(e);
@@ -244,10 +263,16 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
   function handleSave() {
     if (!validate()) return;
     
+    const cleanP = cleanPhoneNumber(form.phone);
     let cleanEmail = form.email.trim().toLowerCase();
+    
     if (!cleanEmail) {
-      const translit = form.name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || ('user' + Date.now().toString().slice(-4));
-      cleanEmail = `${translit}@company.com`;
+      if (cleanP) {
+        cleanEmail = `phone_${cleanP}@tashteeb.app`;
+      } else {
+        const translit = form.name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || ('user' + Date.now().toString().slice(-4));
+        cleanEmail = `${translit}@company.com`;
+      }
     } else if (!cleanEmail.includes('@')) {
       cleanEmail = `${cleanEmail}@company.com`;
     }
@@ -259,6 +284,9 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
       id: user?.id || 'u_' + Date.now(),
       name: form.name.trim(),
       email: cleanEmail,
+      phone: form.phone ? form.phone.trim() : (user?.phone || null),
+      cleanPhone: cleanP || (user?.cleanPhone || null),
+      password: form.password ? form.password.trim() : null,
       role: form.role,
       engineerName: effectiveEngName,
       hasCustomPermissions: isCustom,
@@ -269,7 +297,10 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
 
   function copyCredentials() {
     const roleLabel = COMPANY_ROLES[form.role]?.label || form.role;
-    const text = `بيانات الدخول لحساب المستخدم في منصة تشطيب برو:\nالاسم: ${form.name}\nالبريد الإلكتروني: ${form.email}\nالدور الوظيفي: ${roleLabel}\nرابط تسجيل الدخول: https://tashteebpro.com/login`;
+    const phoneDisplay = form.phone ? `\nرقم الهاتف: ${form.phone}` : '';
+    const emailDisplay = (form.email && !form.email.endsWith('@tashteeb.app')) ? `\nالبريد الإلكتروني: ${form.email}` : '';
+    const passDisplay = form.password ? `\nكلمة المرور: ${form.password}` : '';
+    const text = `بيانات الدخول لحساب المستخدم في منصة تشطيب برو:\nالاسم: ${form.name}${phoneDisplay}${emailDisplay}${passDisplay}\nالدور الوظيفي: ${roleLabel}\nرابط تسجيل الدخول: https://tashteebpro.com/login`;
     navigator.clipboard?.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -342,7 +373,44 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
             />
           </Field>
 
-          <Field label="البريد الإلكتروني للدخول *" error={errors.email}>
+          {/* رقم الهاتف للدخول */}
+          <Field label="رقم الهاتف للدخول (موصى به للدخول السريع دون إيميل)" error={errors.phone || errors.identifier}>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                type="text"
+                className="filter-input"
+                style={{
+                  width: '100%',
+                  direction: 'ltr',
+                  textAlign: 'right',
+                  paddingLeft: 14,
+                  paddingRight: 38,
+                  fontSize: 13.5
+                }}
+                placeholder="مثال: 01012345678 أو +2010..."
+                value={form.phone}
+                onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+              />
+              <div style={{
+                position: 'absolute',
+                right: 12,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: '#1877F2',
+                pointerEvents: 'none',
+                display: 'flex',
+                alignItems: 'center'
+              }}>
+                <Phone size={16} />
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
+              💡 يُمكّن الموظف من الدخول برقم هاتفه مباشرة من أي جهاز مع كلمة المرور.
+            </div>
+          </Field>
+
+          {/* البريد الإلكتروني للدخول */}
+          <Field label="البريد الإلكتروني (اختياري عند توفر رقم هاتف)" error={errors.email}>
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <input
                 type="email"
@@ -355,10 +423,10 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
                   paddingRight: 14,
                   fontSize: 13.5
                 }}
-                placeholder="user@company.com"
+                placeholder="user@company.com (اختياري)"
                 value={form.email}
                 onChange={e => setForm(f => ({ ...f, email: e.target.value.trim() }))}
-                disabled={isEdit}
+                disabled={isEdit && !!user?.email && !user?.email.endsWith('@tashteeb.app')}
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
@@ -376,7 +444,65 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
                 <Mail size={16} />
               </div>
             </div>
-            {isEdit && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>⚠️ لا يمكن تغيير البريد بعد الإنشاء لربط البيانات</div>}
+            {isEdit && !!user?.email && !user?.email.endsWith('@tashteeb.app') && (
+              <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>⚠️ لا يمكن تغيير البريد الرسمي بعد الإنشاء لربط البيانات</div>
+            )}
+          </Field>
+
+          {/* كلمة مرور الحساب */}
+          <Field label={isEdit ? "تغيير كلمة المرور (اختياري)" : (!form.email ? "كلمة مرور الحساب للدخول بالهاتف *" : "كلمة المرور المبدئية (اختياري)")} error={errors.password}>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                type={showPassword ? "text" : "password"}
+                className="filter-input"
+                style={{
+                  width: '100%',
+                  direction: 'ltr',
+                  textAlign: 'left',
+                  paddingLeft: 38,
+                  paddingRight: 38,
+                  fontSize: 13.5
+                }}
+                placeholder="6 أحرف أو أرقام على الأقل"
+                value={form.password}
+                onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+              />
+              <div style={{
+                position: 'absolute',
+                left: 12,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--muted)',
+                pointerEvents: 'none',
+                display: 'flex',
+                alignItems: 'center'
+              }}>
+                <KeyRound size={16} />
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: 12,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--muted)',
+                  cursor: 'pointer',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+                title={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
+              🔒 تُمكّن الموظف من تسجيل الدخول فوراً برقم هاتفه وكلمة المرور دون انتظار أي رسائل.
+            </div>
           </Field>
 
           {/* Security & Authentication Info Badge */}
@@ -391,7 +517,7 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
           }}>
             <Shield size={20} color="#10B981" style={{ flexShrink: 0 }} />
             <div style={{ fontSize: 12, color: '#065F46', lineHeight: 1.5 }}>
-              <strong>أمان مشفر بمعايير Firebase Auth:</strong> يتم إدارة وتشفير كلمات المرور حصرياً عبر خوادم Google Firebase الآمنة. لن يتم حفظ أي كلمة سر بصيغة نص صريح. يمكن للمستخدم تعيين أو تغيير كلمة المرور فوراً عبر رابط التعيين السحابي.
+              <strong>دخول موحد وآمن 100%:</strong> يدعم النظام الدخول برقم الهاتف أو البريد الإلكتروني مع كلمة المرور مجاناً وبدون أي فواتير SMS. يتم حفظ وتأمين الحسابات عبر Google Firebase Auth.
             </div>
           </div>
 
@@ -664,10 +790,13 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
 
   async function handleSendResetEmail(email) {
     if (!email) return;
+    if (email.endsWith('@tashteeb.app')) {
+      alert("هذا الحساب مسجل برقم هاتف وبدون بريد إلكتروني حقيقي.\nيمكنك الضغط على زر 'تعديل' ✏️ لتعيين كلمة مرور جديدة للموظف مباشرة.");
+      return;
+    }
     setInviteLoading(email);
     try {
       const user = users.find(u => u.email === email);
-      // callCreateCompanyUser تتولى الآن: إنشاء الحساب + إرسال رابط كلمة المرور في خطوة واحدة
       const res = await callCreateCompanyUser({
         email,
         name: user?.name || email,
@@ -705,16 +834,24 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
       syncTenantUsersToCloud(activeCompId, next).catch(e => console.warn("Cloud sync tenant users error:", e));
     } catch (e) {}
 
-    // حفظ وفهرسة فورية في السجل المركزي platform-all-users-registry
+    // حفظ وفهرسة فورية في السجل المركزي platform-all-users-registry بالإيميل ورقم الهاتف
     try {
       const regRaw = localStorage.getItem('platform-all-users-registry');
       const reg = regRaw ? JSON.parse(regRaw) : {};
       next.forEach(u => {
+        const uWithComp = {
+          ...u,
+          companyId: activeCompId,
+        };
         if (u.email) {
-          reg[u.email.toLowerCase().trim()] = {
-            ...u,
-            companyId: activeCompId,
-          };
+          reg[u.email.toLowerCase().trim()] = uWithComp;
+        }
+        if (u.phone || u.cleanPhone) {
+          const cP = cleanPhoneNumber(u.phone || u.cleanPhone);
+          if (cP) {
+            reg['phone_' + cP] = uWithComp;
+            reg[cP] = uWithComp;
+          }
         }
       });
       localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
@@ -754,23 +891,24 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
     }
     persist(nextUsers);
 
-    // إنشاء حساب Firebase Auth وإرسال رابط دعوة للمستخدم الجديد (تلقائياً داخل callCreateCompanyUser)
-    if (isNewUser && userData.email) {
+    // إنشاء حساب Firebase Auth وإرسال رابط دعوة أو تفعيل فوري بكلمة المرور المحددة
+    if (isNewUser && (userData.email || userData.phone)) {
       try {
         const cloudRes = await callCreateCompanyUser({
           email: userData.email,
           name: userData.name,
           role: userData.role,
           companyId: activeCompId,
+          password: userData.password,
         });
         if (cloudRes?.success) {
-          const msg = cloudRes.emailSent
-            ? `✅ تم إنشاء حساب لـ ${userData.name} وإرسال رابط الدخول إلى ${userData.email} ✉️\nيجب على الموظف فتح الإيميل والضغط على الرابط لتعيين كلمة المرور`
-            : `✅ تم إنشاء حساب لـ ${userData.name}. اضغط زر "دعوة" ✉️ لإرسال رابط الدخول إليه`;
+          const msg = cloudRes.message || (userData.password
+            ? `✅ تم إنشاء وتفعيل حساب ${userData.name} بكلمة المرور المحددة`
+            : `✅ تم إنشاء حساب لـ ${userData.name} وإرسال رابط الدخول إلى ${userData.email} ✉️`);
           setResetFeedback(msg);
           setTimeout(() => setResetFeedback(null), 10000);
         } else if (cloudRes?.error) {
-          setResetFeedback(`⚠️ ${cloudRes.error} — يمكنك إرسال الدعوة يدوياً من زر ✉️`);
+          setResetFeedback(`⚠️ ${cloudRes.error}`);
           setTimeout(() => setResetFeedback(null), 8000);
         }
       } catch (cloudErr) {
@@ -951,7 +1089,7 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
             <thead>
               <tr>
                 <th>المستخدم</th>
-                <th>البريد الإلكتروني</th>
+                <th>بيانات الدخول (الهاتف / البريد)</th>
                 <th>الدور والصلاحيات</th>
                 <th>المهندس المرتبط</th>
                 <th>حالة الأمان والتوثيق</th>
@@ -1005,11 +1143,26 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
                         </div>
                       </td>
 
-                      {/* Email */}
+                      {/* Phone & Email */}
                       <td>
-                        <span className="font-mono" style={{ fontSize: 13, direction: 'ltr', display: 'inline-block' }}>
-                          {u.email}
-                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {u.phone && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>
+                              <Phone size={13} color="#1877F2" />
+                              <span style={{ direction: 'ltr' }}>{u.phone}</span>
+                            </div>
+                          )}
+                          {u.email && !u.email.endsWith('@tashteeb.app') ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--muted)' }}>
+                              <Mail size={12} />
+                              <span className="font-mono" style={{ direction: 'ltr' }}>{u.email}</span>
+                            </div>
+                          ) : !u.phone ? (
+                            <span className="font-mono" style={{ fontSize: 13, direction: 'ltr', display: 'inline-block' }}>
+                              {u.email}
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
 
                       {/* Role & Customization Badge */}

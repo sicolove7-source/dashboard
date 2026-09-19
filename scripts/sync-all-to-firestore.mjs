@@ -15,6 +15,25 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+function cleanPhoneNumber(raw) {
+  if (!raw) return '';
+  let str = String(raw).trim()
+    .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+    .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+    .replace(/[\s\-\(\)\.]/g, '');
+
+  if (str.startsWith('00')) str = str.slice(2);
+  if (str.startsWith('+')) str = str.slice(1);
+
+  if (str.startsWith('20') && str.length === 12 && ['10', '11', '12', '15'].includes(str.slice(2, 4))) {
+    str = '0' + str.slice(2);
+  } else if (str.length === 10 && ['10', '11', '12', '15'].includes(str.slice(0, 2))) {
+    str = '0' + str;
+  }
+
+  return str.replace(/\D/g, '');
+}
+
 async function syncAll() {
   console.log("🚀 Starting complete Firestore synchronization...");
 
@@ -58,9 +77,11 @@ async function syncAll() {
       if (u.email) {
         const cleanE = u.email.toLowerCase().trim();
         const safeKey = cleanE.replace(/\./g, '_dot_');
-        usersDir[safeKey] = {
+        const payload = {
           id: u.id || '',
           email: cleanE,
+          phone: u.phone || null,
+          cleanPhone: u.phone ? cleanPhoneNumber(u.phone) : null,
           name: u.name || '',
           role: u.role || 'engineer',
           engineerName: u.engineerName || null,
@@ -68,22 +89,34 @@ async function syncAll() {
           companyName: t.name || '',
           updatedAt: new Date().toISOString()
         };
+        usersDir[safeKey] = payload;
+        if (u.phone) {
+          const cPhone = cleanPhoneNumber(u.phone);
+          if (cPhone) usersDir['phone_' + cPhone] = payload;
+        }
       }
     });
 
     if (t.adminEmail) {
       const cleanAdmin = t.adminEmail.toLowerCase().trim();
       const safeKey = cleanAdmin.replace(/\./g, '_dot_');
+      const adminPayload = {
+        id: `u_${t.id}_admin`,
+        email: cleanAdmin,
+        phone: t.phone || null,
+        cleanPhone: t.phone ? cleanPhoneNumber(t.phone) : null,
+        name: t.adminName || 'مدير الشركة',
+        role: 'owner',
+        companyId: t.id,
+        companyName: t.name || '',
+        updatedAt: new Date().toISOString()
+      };
       if (!usersDir[safeKey]) {
-        usersDir[safeKey] = {
-          id: `u_${t.id}_admin`,
-          email: cleanAdmin,
-          name: t.adminName || 'مدير الشركة',
-          role: 'owner',
-          companyId: t.id,
-          companyName: t.name || '',
-          updatedAt: new Date().toISOString()
-        };
+        usersDir[safeKey] = adminPayload;
+      }
+      if (t.phone) {
+        const cPhone = cleanPhoneNumber(t.phone);
+        if (cPhone) usersDir['phone_' + cPhone] = adminPayload;
       }
     }
 

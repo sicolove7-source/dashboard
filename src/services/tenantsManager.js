@@ -21,6 +21,8 @@ import {
   syncTenantsListToCloud,
   syncTenantUsersToCloud,
   fetchUserFromCloudDirectory,
+  fetchUserByPhoneFromCloudDirectory,
+  cleanPhoneNumber,
   mergeProjectsPreservingLocal,
   mergeTeamsPreservingLocal,
   mergeUsersPreservingLocal,
@@ -966,6 +968,37 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
   const cleanEmail = (email || '').toLowerCase().trim();
   const superAdmin = getSuperAdminAccount();
 
+  // فحص هل المعرف هو رقم هاتف أو بريد مشتق من رقم هاتف
+  let phoneFromEmail = null;
+  if (cleanEmail.startsWith('phone_') && cleanEmail.endsWith('@tashteeb.app')) {
+    phoneFromEmail = cleanPhoneNumber(cleanEmail.replace('phone_', '').replace('@tashteeb.app', ''));
+  } else if (!cleanEmail.includes('@') && cleanPhoneNumber(cleanEmail).length >= 7) {
+    phoneFromEmail = cleanPhoneNumber(cleanEmail);
+  }
+
+  // دالة مطابقة مرنة تفحص الإيميل والهاتف بدقة تامة
+  const isUserMatch = (u) => {
+    if (!u) return false;
+    const uEmail = (u.email || '').toLowerCase().trim();
+    if (uEmail && uEmail === cleanEmail) return true;
+    if (phoneFromEmail) {
+      if (uEmail && uEmail === `phone_${phoneFromEmail}@tashteeb.app`) return true;
+      const uPhone = cleanPhoneNumber(u.phone || u.cleanPhone);
+      if (uPhone && uPhone === phoneFromEmail) return true;
+    }
+    return false;
+  };
+
+  const isTenantAdminMatch = (t) => {
+    if (!t) return false;
+    if (t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail) return true;
+    if (phoneFromEmail) {
+      if (t.phone && cleanPhoneNumber(t.phone) === phoneFromEmail) return true;
+      if (t.adminPhone && cleanPhoneNumber(t.adminPhone) === phoneFromEmail) return true;
+    }
+    return false;
+  };
+
   // 1. تحميل قائمة الشركات أولاً ومحلياً/سحابياً لتكون متوفرة لكافة الفحوصات والحسابات
   let tenants = [];
   try {
@@ -1042,7 +1075,17 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
 
   // 4. فحص دليل المستخدمين السحابي المركزي أولاً (Direct Cloud Directory Lookup)
   try {
-    const cloudUser = await fetchUserFromCloudDirectory(cleanEmail);
+    let cloudUser = null;
+    if (cleanEmail.includes('@') && !cleanEmail.endsWith('@tashteeb.app')) {
+      cloudUser = await fetchUserFromCloudDirectory(cleanEmail);
+    }
+    if (!cloudUser && phoneFromEmail) {
+      cloudUser = await fetchUserByPhoneFromCloudDirectory(phoneFromEmail);
+    }
+    if (!cloudUser && cleanEmail.endsWith('@tashteeb.app')) {
+      cloudUser = await fetchUserFromCloudDirectory(cleanEmail);
+    }
+
     if (cloudUser && cloudUser.companyId) {
       const matchTenant = tenants.find(t => t.id === cloudUser.companyId) || {
         id: cloudUser.companyId,
@@ -1055,6 +1098,9 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
       try {
         const reg = JSON.parse(localStorage.getItem('platform-all-users-registry') || '{}');
         reg[cleanEmail] = { ...cloudUser, companyId: matchTenant.id };
+        if (phoneFromEmail) {
+          reg['phone_' + phoneFromEmail] = { ...cloudUser, companyId: matchTenant.id };
+        }
         localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
       } catch (e) {}
 
@@ -1081,27 +1127,35 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     const regRaw = localStorage.getItem('platform-all-users-registry');
     if (regRaw) {
       const reg = JSON.parse(regRaw);
-      if (reg && reg[cleanEmail]) {
-        const u = reg[cleanEmail];
-        const matchTenant = tenants.find(t => t.id === u.companyId) || {
-          id: u.companyId,
-          name: u.companyName || 'الشركة',
-          currency: u.currency || 'ج.م',
-        };
-        console.log('[resolveTenantUserByEmail] Found user in platform-all-users-registry:', cleanEmail, 'role:', u.role, 'company:', matchTenant.id);
-        return {
-          success: true,
-          user: {
-            ...u,
-            id: firebaseUid || u.id,
-            role: u.role || 'engineer',
-            companyId: matchTenant.id,
-            companyName: matchTenant.name || u.companyName,
-            currency: matchTenant.currency || u.currency || 'ج.م',
-          },
-          tenant: matchTenant,
-          isSuperAdmin: false,
-        };
+      if (reg) {
+        let u = reg[cleanEmail];
+        if (!u && phoneFromEmail) {
+          u = reg['phone_' + phoneFromEmail] || reg[phoneFromEmail];
+          if (!u) {
+            u = Object.values(reg).find(isUserMatch);
+          }
+        }
+        if (u && u.companyId) {
+          const matchTenant = tenants.find(t => t.id === u.companyId) || {
+            id: u.companyId,
+            name: u.companyName || 'الشركة',
+            currency: u.currency || 'ج.م',
+          };
+          console.log('[resolveTenantUserByEmail] Found user in platform-all-users-registry:', cleanEmail, 'role:', u.role, 'company:', matchTenant.id);
+          return {
+            success: true,
+            user: {
+              ...u,
+              id: firebaseUid || u.id,
+              role: u.role || 'engineer',
+              companyId: matchTenant.id,
+              companyName: matchTenant.name || u.companyName,
+              currency: matchTenant.currency || u.currency || 'ج.م',
+            },
+            tenant: matchTenant,
+            isSuperAdmin: false,
+          };
+        }
       }
     }
   } catch(e) {}
@@ -1122,7 +1176,7 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
       }
     } catch (e) {}
 
-    let match = users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
+    let match = users.find(isUserMatch);
 
     // إذا لم يتطابق محلياً، نفحص سحابة الشركة فوراً للتأكد تماماً من عدم وجود الموظف
     if (!match) {
@@ -1130,7 +1184,7 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
         const cloudData = await fetchCompanyDataFromCloud(t.id);
         if (cloudData && Array.isArray(cloudData.users)) {
           users = mergeUsersPreservingLocal(users, cloudData.users);
-          match = users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
+          match = users.find(isUserMatch);
         }
       } catch (e) {}
     }
@@ -1143,6 +1197,9 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
         localStorage.setItem(`tenant_${t.id}_users`, JSON.stringify(users));
         const reg = JSON.parse(localStorage.getItem('platform-all-users-registry') || '{}');
         reg[cleanEmail] = { ...match, companyId: t.id };
+        if (phoneFromEmail) {
+          reg['phone_' + phoneFromEmail] = { ...match, companyId: t.id };
+        }
         localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
       } catch (e) {}
 
@@ -1162,12 +1219,13 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     }
 
     // ب) هل هو مالك الشركة (Owner / Admin)
-    if (t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail) {
+    if (isTenantAdminMatch(t)) {
       return {
         success: true,
         user: {
           id: firebaseUid || `u_${t.id}_admin`,
           email: t.adminEmail,
+          phone: t.phone,
           name: t.adminName || 'مدير الشركة',
           role: 'owner',
           companyId: t.id,
@@ -1184,7 +1242,7 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
   try {
     const amlakData = await fetchCompanyDataFromCloud('comp_c_mtyw7mqk');
     if (amlakData && Array.isArray(amlakData.users)) {
-      const match = amlakData.users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
+      const match = amlakData.users.find(isUserMatch);
       if (match) {
         const amlakTenant = (tenants && tenants.find(t => t.id === 'comp_c_mtyw7mqk')) || DEFAULT_TENANTS[0];
         console.log('[resolveTenantUserByEmail] ✅ Found employee in Amlak fallback cloud data:', cleanEmail);
