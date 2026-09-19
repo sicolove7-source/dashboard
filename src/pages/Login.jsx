@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   Building2, Lock, Mail, AlertTriangle, ShieldCheck, User, Phone,
-  Sparkles, ArrowRight, CheckCircle2, KeyRound, Eye, EyeOff, X,
-  RefreshCw, MessageSquare, Send, Check
+  Sparkles, ArrowRight, CheckCircle2, KeyRound, Eye, EyeOff, X
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import {
@@ -12,18 +11,11 @@ import {
   registerWithEmail,
   getUserClaims,
   callAssignUserClaims,
-  syncAndResetPhonePassword,
 } from "../services/auth";
 import {
   resolveTenantUserByEmail,
   registerNewTenant,
 } from "../services/tenantsManager";
-import {
-  cleanPhoneNumber,
-  fetchUserByPhoneFromCloudDirectory,
-  syncTenantUsersToCloud,
-} from "../services/cloudSync";
-import { openWhatsApp, formatPhoneNumber } from "../utils/whatsappTemplates";
 
 export default function Login({
   onLogin,
@@ -48,39 +40,19 @@ export default function Login({
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [resetLoading, setResetLoading] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(null);
 
-  // Register Fields
+  // Register Fields (رقم الهاتف متاح كبيانات تفاصيل للتواصل فقط)
   const [companyTitle, setCompanyTitle] = useState("");
   const [adminName, setAdminName] = useState("");
   const [phone, setPhone] = useState("");
 
-  // ── حالة نافذة استعادة كلمة المرور وإرسال كود التحقق (OTP) ──
+  // حالة نافذة استعادة كلمة المرور عبر البريد الإلكتروني الرسمي
   const [showForgotModal, setShowForgotModal] = useState(false);
-  const [forgotTarget, setForgotTarget] = useState("");
-  const [forgotStep, setForgotStep] = useState('input'); // 'input' | 'verify'
-  const [generatedCode, setGeneratedCode] = useState("");
-  const [codeExpiresAt, setCodeExpiresAt] = useState(0);
-  const [enteredCode, setEnteredCode] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showNewPass, setShowNewPass] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
   const [modalLoading, setModalLoading] = useState(false);
   const [modalError, setModalError] = useState(null);
   const [modalSuccess, setModalSuccess] = useState(null);
-  const [resendTimer, setResendTimer] = useState(0);
-
-  // مؤقت إعادة الإرسال
-  useEffect(() => {
-    let timer = null;
-    if (resendTimer > 0) {
-      timer = setInterval(() => {
-        setResendTimer(t => (t > 1 ? t - 1 : 0));
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [resendTimer]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -95,83 +67,27 @@ export default function Login({
         localStorage.removeItem('active_session_user');
       } catch (e) {}
 
-      const rawInput = (email || '').trim();
-      if (!rawInput) {
-        setError("يرجى إدخال البريد الإلكتروني أو رقم الهاتف.");
+      const cleanEmail = (email || '').trim().toLowerCase();
+      if (!cleanEmail) {
+        setError("يرجى إدخال البريد الإلكتروني.");
         setLoading(false);
         return;
       }
 
-      let targetAuthEmail = rawInput.toLowerCase();
-      const isEmail = rawInput.includes('@');
-
-      if (!isEmail) {
-        // تسجيل الدخول برقم الهاتف
-        const cleanPhone = cleanPhoneNumber(rawInput);
-        if (!cleanPhone || cleanPhone.length < 7) {
-          setError("يرجى إدخال رقم هاتف صحيح (مثال: 01012345678) أو بريد إلكتروني صالح.");
-          setLoading(false);
-          return;
-        }
-
-        // البحث عن الحساب المرتبط برقم الهاتف
-        let resolvedEmail = null;
-
-        // 1. فحص سحابي أولاً من دليل المنصة platform_metadata/users_directory أو قائمة الشركات لضمان أحدث ربط حي
-        try {
-          const cloudUser = await fetchUserByPhoneFromCloudDirectory(cleanPhone);
-          if (cloudUser && cloudUser.email) {
-            resolvedEmail = cloudUser.email;
-          }
-        } catch (e) {}
-
-        // 2. فحص محلي كمسار بديل سريع
-        if (!resolvedEmail) {
-          try {
-            const regRaw = localStorage.getItem('platform-all-users-registry');
-            if (regRaw) {
-              const reg = JSON.parse(regRaw);
-              const userInReg = reg['phone_' + cleanPhone] || reg[cleanPhone] ||
-                Object.values(reg).find(u => cleanPhoneNumber(u.phone || u.cleanPhone) === cleanPhone);
-              if (userInReg && userInReg.email) {
-                resolvedEmail = userInReg.email;
-              }
-            }
-          } catch (e) {}
-        }
-
-        // 3. إذا لم يُعثر على إيميل مسجل مسبقاً، نستخدم المعرف القياسي الافتراضي للحسابات الهاتفية
-        targetAuthEmail = resolvedEmail ? resolvedEmail.toLowerCase().trim() : `phone_${cleanPhone}@tashteeb.app`;
+      if (!cleanEmail.includes('@')) {
+        setError("يرجى إدخال بريد إلكتروني صالح (مثال: name@company.com).");
+        setLoading(false);
+        return;
       }
 
-      // 1. المصادقة عبر Firebase Authentication الرسمي
-      const authResult = await loginWithEmail(targetAuthEmail, password);
+      // 1. المصادقة عبر Firebase Authentication الرسمي بالبريد الإلكتروني
+      const authResult = await loginWithEmail(cleanEmail, password);
       if (authResult.success) {
         // قراءة الـ Custom Claims المشفرة من Google
         const claims = await getUserClaims(authResult.user);
 
         // 2. تحديد بيانات الشركة والمستخدم والصلاحيات
-        const tenantResult = await resolveTenantUserByEmail(targetAuthEmail, authResult.user?.uid, claims);
-
-        // 2.1 فحص وإصلاح ذاتي للحسابات القديمة برقم التليفون بأثر رجعي
-        if (isEmail && tenantResult?.success && tenantResult?.tenant?.id) {
-          const userPhone = tenantResult.user?.phone || tenantResult.tenant?.phone;
-          if (userPhone) {
-            const cPhone = cleanPhoneNumber(userPhone);
-            if (cPhone && cPhone.length >= 7) {
-              fetchUserByPhoneFromCloudDirectory(cPhone).then(cloudUser => {
-                if (!cloudUser) {
-                  console.log('[Login] Auto-syncing phone to cloud directory for existing account:', userPhone);
-                  syncTenantUsersToCloud(tenantResult.tenant.id, [{
-                    ...tenantResult.user,
-                    phone: userPhone,
-                    cleanPhone: cPhone,
-                  }]).catch(() => {});
-                }
-              }).catch(() => {});
-            }
-          }
-        }
+        const tenantResult = await resolveTenantUserByEmail(cleanEmail, authResult.user?.uid, claims);
 
         if (tenantResult.success) {
           onLogin(tenantResult.user, tenantResult.tenant, tenantResult.isSuperAdmin);
@@ -179,11 +95,7 @@ export default function Login({
           setError(tenantResult.error || "تعذر تحديد بيانات الشركة المرتبطة بهذا الحساب.");
         }
       } else {
-        if (!isEmail) {
-          setError("رقم الهاتف أو كلمة المرور غير صحيحة. يرجى التأكد من الرقم وكلمة المرور.");
-        } else {
-          setError(authResult.error || "البريد الإلكتروني أو كلمة المرور غير صحيحة.");
-        }
+        setError(authResult.error || "البريد الإلكتروني أو كلمة المرور غير صحيحة.");
       }
     } catch (err) {
       console.error("Login unexpected error:", err);
@@ -196,145 +108,33 @@ export default function Login({
   const handleOpenForgotModal = () => {
     setError(null);
     setResetSuccess(null);
-    const raw = (email || '').trim();
-    setForgotTarget(raw);
-    setEnteredCode("");
-    setNewPassword("");
-    setConfirmPassword("");
+    setForgotEmail((email || '').trim().toLowerCase());
     setModalError(null);
     setModalSuccess(null);
-    setForgotStep('input');
     setShowForgotModal(true);
   };
 
-  const handleSendOtp = async (overrideTarget = null) => {
-    setModalError(null);
-    setModalSuccess(null);
-    const target = (overrideTarget !== null ? overrideTarget : (forgotTarget || email || '')).trim();
-    if (!target) {
-      setModalError("يرجى إدخال رقم الهاتف أو البريد الإلكتروني أولاً.");
-      return;
-    }
-
-    const isEmailInput = target.includes('@');
-
-    if (!isEmailInput) {
-      const cleanPhone = cleanPhoneNumber(target);
-      if (!cleanPhone || cleanPhone.length < 7) {
-        setModalError("يرجى إدخال رقم هاتف صحيح (مثال: 01012345678).");
-        return;
-      }
-
-      setModalLoading(true);
-      try {
-        // توليد كود تحقق عشوائي آمن مكون من 6 أرقام
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        const expires = Date.now() + 15 * 60 * 1000; // 15 دقيقة
-        setGeneratedCode(otp);
-        setCodeExpiresAt(expires);
-
-        const msg = `*منصة تشطيب برو | Tashteeb Pro* 🏢\n\nكود التحقق الخاص بك لإعادة تعيين كلمة المرور هو:\n🔢 *[ ${otp} ]*\n\nالرمز صالح للاستخدام لمدة 15 دقيقة.\nيرجى إدخاله في صفحة الدخول لتعيين كلمة المرور الجديدة والدخول مباشرة. ✨`;
-
-        // إرسال الكود فورياً عبر واتساب مجاناً وبدون أي تكلفة
-        openWhatsApp(cleanPhone, msg);
-
-        setForgotStep('verify');
-        setResendTimer(45);
-        setModalSuccess(`📲 تم تجهيز وإرسال كود التحقق عبر واتساب إلى (${cleanPhone})! أدخل الرمز أدناه.`);
-      } catch (err) {
-        console.error("WhatsApp send error:", err);
-        setModalError("تعذر إرسال كود التحقق عبر واتساب. يرجى المحاولة مجدداً.");
-      } finally {
-        setModalLoading(false);
-      }
-    } else {
-      // إرسال رابط رسمي عبر البريد الإلكتروني
-      setModalLoading(true);
-      try {
-        const res = await sendPasswordReset(target.toLowerCase().trim());
-        if (res.success) {
-          setModalSuccess(`✅ تم إرسال رابط إعادة تعيين كلمة المرور إلى البريد الإلكتروني (${target}). يرجى مراجعة بريدك الإلكتروني.`);
-        } else {
-          setModalError(res.error || "تعذر إرسال رابط إعادة تعيين كلمة المرور.");
-        }
-      } catch (err) {
-        setModalError("حدث خطأ أثناء طلب إعادة تعيين كلمة المرور.");
-      } finally {
-        setModalLoading(false);
-      }
-    }
-  };
-
-  const handleConfirmReset = async (e) => {
+  const handleSendPasswordReset = async (e) => {
     e?.preventDefault?.();
     setModalError(null);
     setModalSuccess(null);
 
-    const cleanPhone = cleanPhoneNumber(forgotTarget || email);
-    if (!cleanPhone || cleanPhone.length < 7) {
-      setModalError("رقم الهاتف غير صالح.");
-      return;
-    }
-
-    const trimmed = (enteredCode || '').replace(/\D/g, '');
-    if (trimmed.length !== 6) {
-      setModalError("يرجى إدخال كود التحقق كاملاً المكون من 6 أرقام.");
-      return;
-    }
-
-    if (Date.now() > codeExpiresAt) {
-      setModalError("انتهت صلاحية كود التحقق. يرجى الضغط على 'إعادة إرسال الكود' لطلب كود جديد.");
-      return;
-    }
-
-    if (trimmed !== generatedCode) {
-      setModalError("كود التحقق غير صحيح. يرجى التأكد من الرقم المستلم عبر واتساب والمحاولة مجدداً.");
-      return;
-    }
-
-    if (!newPassword || newPassword.length < 6) {
-      setModalError("كلمة المرور الجديدة يجب أن تتكون من 6 أحرف أو أرقام على الأقل.");
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setModalError("كلمة المرور وتأكيدها غير متطابقين.");
+    const targetEmail = (forgotEmail || '').trim().toLowerCase();
+    if (!targetEmail || !targetEmail.includes('@')) {
+      setModalError("يرجى إدخال بريد إلكتروني صالح.");
       return;
     }
 
     setModalLoading(true);
     try {
-      // 1. تحديث ومزامنة كلمة المرور لحساب الهاتف في Firebase Auth
-      const syncRes = await syncAndResetPhonePassword(cleanPhone, newPassword);
-      if (!syncRes.success) {
-        throw new Error(syncRes.error || "تعذر حفظ كلمة المرور سحابياً.");
+      const res = await sendPasswordReset(targetEmail);
+      if (res.success) {
+        setModalSuccess(`تم إرسال رابط إعادة تعيين كلمة المرور إلى (${targetEmail}) بنجاح. يرجى مراجعة بريدك الإلكتروني.`);
+      } else {
+        setModalError(res.error || "تعذر إرسال رابط إعادة تعيين كلمة المرور.");
       }
-
-      const targetAuthEmail = syncRes.phoneAuthEmail || `phone_${cleanPhone}@tashteeb.app`;
-
-      // 2. تسجيل الدخول الفوري بكلمة المرور الجديدة
-      const authResult = await loginWithEmail(targetAuthEmail, newPassword);
-      if (authResult.success) {
-        let claims = await getUserClaims(authResult.user);
-        const tenantResult = await resolveTenantUserByEmail(targetAuthEmail, authResult.user?.uid, claims);
-
-        confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
-        setShowForgotModal(false);
-
-        if (tenantResult.success) {
-          onLogin(tenantResult.user, tenantResult.tenant, tenantResult.isSuperAdmin);
-          return;
-        }
-      }
-
-      // إذا نجح التعيين وتطلب الدخول يدوياً
-      setShowForgotModal(false);
-      setPassword(newPassword);
-      setEmail(forgotTarget || cleanPhone);
-      setResetSuccess("✅ تم تعيين كلمة المرور الجديدة بنجاح! اضغط الآن على 'تسجيل الدخول للمنصة'.");
     } catch (err) {
-      console.error("Confirm reset error:", err);
-      setModalError(err.message || "حدث خطأ أثناء تعيين كلمة المرور الجديدة.");
+      setModalError("حدث خطأ أثناء إرسال رابط إعادة تعيين كلمة المرور.");
     } finally {
       setModalLoading(false);
     }
@@ -701,23 +501,19 @@ export default function Login({
           {/* ══════════════ نموذج 1: تسجيل الدخول ══════════════ */}
           {mode === 'login' ? (
             <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {/* البريد أو رقم الهاتف */}
+              {/* البريد الإلكتروني */}
               <div>
                 <label style={{ display: "block", marginBottom: 7, color: "var(--muted)", fontSize: 13, fontWeight: 700 }}>
-                  البريد الإلكتروني أو رقم الهاتف
+                  البريد الإلكتروني
                 </label>
                 <div style={{ position: "relative" }}>
-                  {email && !email.includes('@') ? (
-                    <Phone size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: primaryColor }} />
-                  ) : (
-                    <Mail size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
-                  )}
+                  <Mail size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
                   <input
-                    type="text"
+                    type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    placeholder="010XXXXXXXX أو example@email.com"
+                    placeholder="name@company.com"
                     autoCapitalize="none"
                     autoCorrect="off"
                     spellCheck={false}
@@ -849,7 +645,7 @@ export default function Login({
 
                 <div>
                   <label style={{ display: "block", marginBottom: 6, color: "var(--muted)", fontSize: 12.5, fontWeight: 700 }}>
-                    رقم الواتساب / الهاتف <span style={{ color: "#EF4444" }}>*</span>
+                    رقم الهاتف للتواصل (اختياري)
                   </label>
                   <div style={{ position: "relative" }}>
                     <Phone size={15} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
@@ -857,8 +653,7 @@ export default function Login({
                       type="tel"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      required
-                      placeholder="010XXXXXXXX"
+                      placeholder="010XXXXXXXX (اختياري)"
                       style={{
                         width: "100%", padding: "10px 36px 10px 10px",
                         border: "1.5px solid var(--border)", borderRadius: 10,
@@ -1045,23 +840,21 @@ export default function Login({
                   width: 52,
                   height: 52,
                   borderRadius: 16,
-                  background: forgotStep === 'verify' ? "rgba(16, 185, 129, 0.12)" : "rgba(24, 119, 242, 0.12)",
-                  color: forgotStep === 'verify' ? "#10B981" : primaryColor,
+                  background: "rgba(24, 119, 242, 0.12)",
+                  color: primaryColor,
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
                   marginBottom: 12,
                 }}
               >
-                {forgotStep === 'verify' ? <KeyRound size={26} /> : <MessageSquare size={26} />}
+                <KeyRound size={26} />
               </div>
               <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>
-                {forgotStep === 'verify' ? "إدخال كود التحقق وتعيين كلمة المرور" : "استعادة كلمة المرور عبر كود التحقق"}
+                إعادة تعيين كلمة المرور
               </h3>
               <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--muted)", lineHeight: 1.5 }}>
-                {forgotStep === 'verify'
-                  ? "أدخل رمز التحقق المكون من 6 أرقام المستلم عبر واتساب ثم اكتب كلمة المرور الجديدة"
-                  : "أدخل رقم الهاتف لاستلام كود التحقق السري فوراً عبر رسالة واتساب مجاناً وبدون أي تكلفة"}
+                أدخل بريدك الإلكتروني المسجل، وسنرسل لك رابطاً آمناً لإعادة تعيين كلمة المرور فوراً.
               </p>
             </div>
 
@@ -1107,247 +900,55 @@ export default function Login({
               </div>
             )}
 
-            {/* ─── الخطوة 1: تحديد الرقم وإرسال كود التحقق ─── */}
-            {forgotStep === 'input' && (
-              <div>
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 7, color: "var(--muted)" }}>
-                    رقم الهاتف أو البريد الإلكتروني
-                  </label>
-                  <div style={{ position: "relative" }}>
-                    <Phone size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: primaryColor }} />
-                    <input
-                      type="text"
-                      value={forgotTarget}
-                      onChange={(e) => setForgotTarget(e.target.value)}
-                      placeholder="مثال: 01012345678"
-                      style={{
-                        width: "100%", padding: "11px 42px 11px 14px",
-                        border: "1.5px solid var(--border)", borderRadius: 12,
-                        background: "transparent", color: "var(--ink)",
-                        fontSize: 14, outline: "none", boxSizing: "border-box",
-                        direction: "ltr", textAlign: "right"
-                      }}
-                    />
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 5 }}>
-                    💡 يتم إرسال كود التحقق فوراً عبر واتساب مجاناً للرقم المسجل دون أي فواتير.
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleSendOtp()}
-                  disabled={modalLoading}
-                  style={{
-                    width: "100%",
-                    padding: "13px",
-                    background: "linear-gradient(135deg, #25D366, #128C7E)",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: 12,
-                    fontSize: 14.5,
-                    fontWeight: 800,
-                    cursor: modalLoading ? "wait" : "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    boxShadow: "0 4px 16px rgba(37, 211, 102, 0.3)",
-                    marginBottom: 12,
-                  }}
-                >
-                  <Send size={16} />
-                  <span>{modalLoading ? "جاري الإرسال..." : "إرسال كود التحقق عبر واتساب 📲 (مجاناً)"}</span>
-                </button>
-
-                {forgotTarget && forgotTarget.includes('@') && (
-                  <button
-                    type="button"
-                    onClick={() => handleSendOtp(forgotTarget)}
-                    disabled={modalLoading}
-                    style={{
-                      width: "100%",
-                      padding: "10px",
-                      background: "transparent",
-                      border: "1px solid var(--border)",
-                      borderRadius: 10,
-                      fontSize: 12,
-                      color: "var(--muted)",
-                      cursor: "pointer",
-                      marginTop: 6,
-                    }}
-                  >
-                    ✉️ إرسال رابط التعيين إلى البريد الإلكتروني بدلاً من ذلك
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* ─── الخطوة 2: إدخال الكود وتعيين كلمة المرور الجديدة ─── */}
-            {forgotStep === 'verify' && (
-              <form onSubmit={handleConfirmReset}>
-                {/* شارة رقم الهاتف */}
-                <div
-                  style={{
-                    background: "rgba(16, 185, 129, 0.08)",
-                    border: "1px solid rgba(16, 185, 129, 0.25)",
-                    borderRadius: 12,
-                    padding: "10px 14px",
-                    marginBottom: 16,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <Phone size={16} color="#10B981" />
-                    <span style={{ fontSize: 13, fontWeight: 700 }}>
-                      {forgotTarget || email}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setForgotStep('input')}
-                    style={{ background: "none", border: "none", color: primaryColor, fontSize: 11.5, cursor: "pointer", textDecoration: "underline" }}
-                  >
-                    تغيير الرقم
-                  </button>
-                </div>
-
-                {/* حقل كود التحقق المكون من 6 أرقام */}
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 7, color: "var(--muted)" }}>
-                    كود التحقق المستلم (6 أرقام) *
-                  </label>
+            {/* نموذج إرسال رابط التعيين */}
+            <form onSubmit={handleSendPasswordReset}>
+              <div style={{ marginBottom: 18 }}>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 7, color: "var(--muted)" }}>
+                  البريد الإلكتروني المسجل
+                </label>
+                <div style={{ position: "relative" }}>
+                  <Mail size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
                   <input
-                    type="text"
-                    maxLength={6}
-                    value={enteredCode}
-                    onChange={(e) => setEnteredCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="••••••"
+                    type="email"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
                     required
-                    autoFocus
+                    placeholder="name@company.com"
                     style={{
-                      width: "100%",
-                      padding: "12px",
-                      border: "2px solid #10B981",
-                      borderRadius: 12,
-                      background: "transparent",
-                      color: "var(--ink)",
-                      fontSize: 24,
-                      fontWeight: 800,
-                      letterSpacing: 10,
-                      textAlign: "center",
-                      outline: "none",
-                      boxSizing: "border-box",
-                      direction: "ltr",
+                      width: "100%", padding: "11px 42px 11px 14px",
+                      border: "1.5px solid var(--border)", borderRadius: 12,
+                      background: "transparent", color: "var(--ink)",
+                      fontSize: 14, outline: "none", boxSizing: "border-box",
+                      direction: "ltr", textAlign: "right"
                     }}
                   />
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-                    <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                      تحقق من رسالة واتساب على هاتفك
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleSendOtp()}
-                      disabled={resendTimer > 0 || modalLoading}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: resendTimer > 0 ? "var(--muted)" : primaryColor,
-                        fontSize: 11.5,
-                        fontWeight: 700,
-                        cursor: resendTimer > 0 ? "not-allowed" : "pointer",
-                        padding: 0,
-                        textDecoration: resendTimer > 0 ? "none" : "underline",
-                      }}
-                    >
-                      {resendTimer > 0 ? `إعادة الإرسال بعد (${resendTimer} ث)` : "🔄 إعادة إرسال الكود عبر واتساب"}
-                    </button>
-                  </div>
                 </div>
+              </div>
 
-                {/* كلمة المرور الجديدة */}
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 6, color: "var(--muted)" }}>
-                    كلمة المرور الجديدة *
-                  </label>
-                  <div style={{ position: "relative" }}>
-                    <Lock size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
-                    <input
-                      type={showNewPass ? "text" : "password"}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      required
-                      placeholder="6 أحرف أو أرقام على الأقل"
-                      style={{
-                        width: "100%", padding: "11px 42px",
-                        border: "1.5px solid var(--border)", borderRadius: 10,
-                        background: "transparent", color: "var(--ink)",
-                        fontSize: 13.5, outline: "none", boxSizing: "border-box",
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowNewPass(!showNewPass)}
-                      style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "var(--muted)", cursor: "pointer", padding: 0 }}
-                    >
-                      {showNewPass ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* تأكيد كلمة المرور الجديدة */}
-                <div style={{ marginBottom: 20 }}>
-                  <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 6, color: "var(--muted)" }}>
-                    تأكيد كلمة المرور الجديدة *
-                  </label>
-                  <div style={{ position: "relative" }}>
-                    <Lock size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
-                    <input
-                      type={showNewPass ? "text" : "password"}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      required
-                      placeholder="أعد كتابة كلمة المرور"
-                      style={{
-                        width: "100%", padding: "11px 42px",
-                        border: "1.5px solid var(--border)", borderRadius: 10,
-                        background: "transparent", color: "var(--ink)",
-                        fontSize: 13.5, outline: "none", boxSizing: "border-box",
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* زر تأكيد الكود وتعيين كلمة المرور والدخول */}
-                <button
-                  type="submit"
-                  disabled={modalLoading || enteredCode.length !== 6 || newPassword.length < 6}
-                  style={{
-                    width: "100%",
-                    padding: "13px",
-                    background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})`,
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: 12,
-                    fontSize: 14.5,
-                    fontWeight: 800,
-                    cursor: (modalLoading || enteredCode.length !== 6 || newPassword.length < 6) ? "not-allowed" : "pointer",
-                    opacity: (modalLoading || enteredCode.length !== 6 || newPassword.length < 6) ? 0.6 : 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    boxShadow: `0 4px 18px ${primaryColor}40`,
-                  }}
-                >
-                  <CheckCircle2 size={18} />
-                  <span>{modalLoading ? "جاري تعيين كلمة المرور..." : "تأكيد الكود وتعيين كلمة المرور والدخول 🚀"}</span>
-                </button>
-              </form>
-            )}
+              <button
+                type="submit"
+                disabled={modalLoading}
+                style={{
+                  width: "100%",
+                  padding: "13px",
+                  background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})`,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 12,
+                  fontSize: 14.5,
+                  fontWeight: 800,
+                  cursor: modalLoading ? "wait" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  boxShadow: `0 4px 18px ${primaryColor}40`,
+                }}
+              >
+                <KeyRound size={16} />
+                <span>{modalLoading ? "جاري إرسال الرابط..." : "إرسال رابط إعادة التعيين ✉️"}</span>
+              </button>
+            </form>
 
           </div>
         </div>

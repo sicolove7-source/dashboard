@@ -10,7 +10,7 @@ import {
 } from '../utils/permissions';
 import { getActiveTenantId, loadAllTenants } from '../services/tenantsManager';
 import { syncCompanyUsersToCloud, syncTenantUsersToCloud, syncTenantsListToCloud, syncTeamToCloud, sanitizeCompanyUsersForCloud, cleanPhoneNumber } from '../services/cloudSync';
-import { sendPasswordReset, callCreateCompanyUser, syncAndResetPhonePassword } from '../services/auth';
+import { sendPasswordReset, callCreateCompanyUser } from '../services/auth';
 
 // أدوار الشركة المشتركة فقط (استبعاد Super Admin الخاص بالمنصة)
 const COMPANY_ROLES = Object.fromEntries(
@@ -897,12 +897,6 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
       }
     }
 
-    // مزامنة فورية لحساب المصادقة بالهاتف في Firebase Auth بكلمة المرور المحددة (جديد أو معدل)
-    if (userData.phone && userData.password) {
-      syncAndResetPhonePassword(userData.phone, userData.password, userData.email).catch(e => {
-        console.warn('[handleSaveUser] Phone auth sync warning:', e);
-      });
-    }
 
     // ── مزامنة فورية وتلقائية مع فريق العمل (team) ──
     try {
