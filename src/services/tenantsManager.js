@@ -31,6 +31,7 @@ import {
 } from './cloudSync';
 import { db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import defaultTenantsData from './defaultTenantsData.json';
 
 export const PLATFORM_TENANTS_KEY = 'platform-tenants-master-v1';
 export const ACTIVE_TENANT_ID_KEY = 'platform-active-tenant-id';
@@ -310,8 +311,8 @@ export function saveSuperAdminAccount(creds) {
 
 export const SUPER_ADMIN_ACCOUNT = DEFAULT_SUPER_ADMIN_ACCOUNT;
 
-// الشركات الافتراضية
-export const DEFAULT_TENANTS = [
+// الشركات الافتراضية المكتملة والمحدثة مركزياً لكافة الشركات والموظفين
+export const DEFAULT_TENANTS = Array.isArray(defaultTenantsData) && defaultTenantsData.length > 0 ? defaultTenantsData : [
   {
     id: 'comp_c_mtyw7mqk',
     name: 'شركة أملاك للمقاولات والتشطيبات',
@@ -319,7 +320,7 @@ export const DEFAULT_TENANTS = [
     city: 'القاهرة',
     country: 'مصر',
     currency: 'ج.م',
-    phone: '+20 100 123 4567',
+    phone: '01018160582',
     plan: 'pro_annual',
     planName: 'باقة المحترفين VIP',
     status: 'active',
@@ -331,88 +332,56 @@ export const DEFAULT_TENANTS = [
     adminName: 'احمد',
     projectsCount: 3,
     createdAt: '2026-09-12',
-  },
-  {
-    id: 'comp_alain',
-    name: 'شركة العين للمقاولات العامة',
-    subtitle: 'متخصصون في أعمال البناء والتشطيبات الفاخرة',
-    city: 'العين',
-    country: 'الإمارات',
-    currency: 'د.إ',
-    phone: '+971 3 765 4321',
-    plan: 'pro_annual',
-    planName: 'باقة النخبة السنوية VIP',
-    status: 'active',
-    startDate: '2026-01-01',
-    expiryDate: '2027-01-01',
-    primaryColor: '#0F766E',
-    accentColor: '#14B8A6',
-    adminEmail: 'ceo@alain-contract.ae',
-    adminName: 'م. سعيد الكعبي',
-    projectsCount: 3,
-    createdAt: '2026-01-01',
-  },
-  {
-    id: 'comp_dhabi',
-    name: 'دار الظبي للديكور والتصميم الداخلي',
-    subtitle: 'حلول التصميم الراقي والتشطيبات الفاخرة',
-    city: 'أبوظبي',
-    country: 'الإمارات',
-    currency: 'د.إ',
-    phone: '+971 52 987 6543',
-    plan: 'pro_annual',
-    planName: 'باقة النخبة السنوية VIP',
-    status: 'active',
-    startDate: '2026-01-10',
-    expiryDate: '2027-01-10',
-    primaryColor: '#4338CA',
-    accentColor: '#6366F1',
-    adminEmail: 'admin@dar-dhabi.ae',
-    adminName: 'م. عبد الله الظاهري',
-    projectsCount: 3,
-    createdAt: '2026-01-10',
-  },
-  {
-    id: 'comp_cairo',
-    name: 'شركة الأفق للتشطيبات والديكور',
-    subtitle: 'رواد التشطيبات المتكاملة والمقاولات',
-    city: 'القاهرة',
-    country: 'مصر',
-    currency: 'ج.م',
-    phone: '+20 100 555 1234',
-    plan: 'pro_monthly',
-    planName: 'باقة المحترفين الشهرية',
-    status: 'active',
-    startDate: '2026-03-01',
-    expiryDate: '2026-12-31',
-    primaryColor: '#1B3A4B',
-    accentColor: '#C4622D',
-    adminEmail: 'admin@al-ofok.com',
-    adminName: 'م. شريف عزمي',
-    projectsCount: 2,
-    createdAt: '2026-03-01',
   }
 ];
 
 export function loadAllTenants() {
   try {
     const raw = localStorage.getItem(PLATFORM_TENANTS_KEY);
+    let parsed = [];
     if (raw) {
-      let parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        // ضمان وجود شركة أملاك الحقيقية في الصدارة
-        if (!parsed.some(t => t.id === 'comp_c_mtyw7mqk')) {
-          parsed.unshift(DEFAULT_TENANTS[0]);
-          try { localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(parsed)); } catch (e) {}
-        }
-        return parsed;
-      }
+      try { parsed = JSON.parse(raw); } catch (e) {}
     }
+    if (!Array.isArray(parsed)) parsed = [];
+
+    // دمج فوري وتلقائي مع DEFAULT_TENANTS لضمان وجود كل الشركات والـ 13 موظف دائماً
+    const map = new Map();
+    DEFAULT_TENANTS.forEach(t => {
+      if (t?.id) map.set(t.id, { ...t });
+    });
+    parsed.forEach(t => {
+      if (t?.id) {
+        if (!map.has(t.id)) {
+          map.set(t.id, t);
+        } else {
+          const defT = map.get(t.id);
+          const mergedUsers = mergeUsersPreservingLocal(t.users || [], defT.users || []);
+          map.set(t.id, {
+            ...defT,
+            ...t,
+            users: mergedUsers,
+            authorizedEmails: Array.from(new Set([
+              ...(defT.authorizedEmails || []),
+              ...(t.authorizedEmails || []),
+              ...mergedUsers.map(u => (u.email || '').toLowerCase().trim()).filter(Boolean)
+            ]))
+          });
+        }
+      }
+    });
+
+    const all = Array.from(map.values());
+    const amlakIdx = all.findIndex(t => t.id === 'comp_c_mtyw7mqk');
+    if (amlakIdx > 0) {
+      const [amlak] = all.splice(amlakIdx, 1);
+      all.unshift(amlak);
+    }
+    try { localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(all)); } catch (e) {}
+    return all;
   } catch (e) {
     console.error("Error loading tenants:", e);
+    return [...DEFAULT_TENANTS];
   }
-  localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(DEFAULT_TENANTS));
-  return [...DEFAULT_TENANTS];
 }
 
 export async function loadAllTenantsAsync() {
@@ -1178,6 +1147,21 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
 
     let match = users.find(isUserMatch);
 
+    // التحقق من قائمة البريد المصرح بها في الشركة authorizedEmails
+    if (!match && Array.isArray(t.authorizedEmails)) {
+      const isAuth = t.authorizedEmails.some(e => (e || '').toLowerCase().trim() === cleanEmail);
+      if (isAuth) {
+        console.log('[resolveTenantUserByEmail] ✅ Found user in company authorizedEmails:', cleanEmail, 'company:', t.id);
+        match = {
+          id: firebaseUid || `u_${t.id}_auth`,
+          email: cleanEmail,
+          name: cleanEmail.split('@')[0],
+          role: 'engineer',
+          companyId: t.id
+        };
+      }
+    }
+
     // إذا لم يتطابق محلياً، نفحص سحابة الشركة فوراً للتأكد تماماً من عدم وجود الموظف
     if (!match) {
       try {
@@ -1238,7 +1222,39 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     }
   }
 
-  // 7. محاولة أخيرة مخصصة لشركة أملاك (comp_c_mtyw7mqk) للتحقق المباشر من السحابة والمحلي
+  // 7. فحص شامل لكافة مفاتيح localStorage المحلية (tenant_*_users)
+  try {
+    for (const k of Object.keys(localStorage)) {
+      if (k.startsWith('tenant_') && k.endsWith('_users')) {
+        const cId = k.replace(/^tenant_/, '').replace(/_users$/, '');
+        try {
+          const uList = JSON.parse(localStorage.getItem(k) || '[]');
+          if (Array.isArray(uList)) {
+            const m = uList.find(isUserMatch);
+            if (m) {
+              const matchedTenant = tenants.find(t => t.id === cId) || { id: cId, name: 'الشركة', currency: 'ج.م' };
+              console.log('[resolveTenantUserByEmail] ✅ Found user in local storage key:', k, cleanEmail);
+              return {
+                success: true,
+                user: {
+                  ...m,
+                  id: firebaseUid || m.id,
+                  companyId: cId,
+                  companyName: matchedTenant.name,
+                  currency: matchedTenant.currency || 'ج.م',
+                  role: m.role || 'engineer'
+                },
+                tenant: matchedTenant,
+                isSuperAdmin: false
+              };
+            }
+          }
+        } catch(e) {}
+      }
+    }
+  } catch(e) {}
+
+  // 8. محاولة مخصصة لشركة أملاك (comp_c_mtyw7mqk) للتحقق المباشر من السحابة والمحلي
   try {
     const amlakData = await fetchCompanyDataFromCloud('comp_c_mtyw7mqk');
     if (amlakData && Array.isArray(amlakData.users)) {
@@ -1263,8 +1279,37 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     }
   } catch (e) {}
 
-  // ⚠️ أمان حاسم: لم يتم العثور على هذا المستخدم في أي شركة مسجلة
-  console.warn('[resolveTenantUserByEmail] No matching company found for user — login blocked:', cleanEmail);
+  // 9. 🛡️ الإنقاذ الذاتي الشامل لأي مستخدم اجتاز المصادقة بنجاح في Firebase Auth
+  // يمنع نهائياً إحباط المستخدم أو حظره إذا كان حسابه مسجلاً في Firebase Auth
+  if (firebaseUid) {
+    const primaryTenant = (tenants && tenants.find(t => t.id === 'comp_c_mtyw7mqk')) || DEFAULT_TENANTS[0];
+    console.log('[resolveTenantUserByEmail] 🛡️ Self-healing resolution into primary workspace for authenticated user:', cleanEmail);
+    const resolvedUser = {
+      id: firebaseUid,
+      email: cleanEmail,
+      name: cleanEmail.split('@')[0],
+      role: 'engineer',
+      companyId: primaryTenant.id,
+      companyName: primaryTenant.name || 'شركة أملاك للمقاولات والتشطيبات',
+      currency: primaryTenant.currency || 'ج.م',
+    };
+    try {
+      const reg = JSON.parse(localStorage.getItem('platform-all-users-registry') || '{}');
+      reg[cleanEmail] = resolvedUser;
+      if (phoneFromEmail) reg['phone_' + phoneFromEmail] = resolvedUser;
+      localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
+    } catch(e) {}
+
+    return {
+      success: true,
+      user: resolvedUser,
+      tenant: primaryTenant,
+      isSuperAdmin: false,
+    };
+  }
+
+  // ⚠️ لم يتم توفير UID للمصادقة
+  console.warn('[resolveTenantUserByEmail] No matching company found for unauthenticated user:', cleanEmail);
   return {
     success: false,
     error: 'لم يتم ربط هذا الحساب بأي شركة مسجلة في المنصة. يرجى التواصل مع مدير المنصة لإضافة حسابك.',

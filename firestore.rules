@@ -79,22 +79,20 @@ service cloud.firestore {
     }
 
     // 3. إعدادات المنصة المركزية
+    match /platform_metadata/superadmin {
+      allow read, write: if false;
+    }
+    match /platform_metadata/platform_settings {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+    match /platform_metadata/tenants {
+      allow read, write: if isAuthenticated();
+    }
+    match /platform_metadata/users_directory {
+      allow read, write: if isAuthenticated();
+    }
     match /platform_metadata/{docId} {
-      match /superadmin {
-        allow read, write: if false;
-      }
-      match /platform_settings {
-        allow read: if true;
-        allow write: if isSuperAdmin();
-      }
-      match /tenants {
-        allow read: if isAuthenticated();
-        allow write: if isAuthenticated();
-      }
-      match /users_directory {
-        allow read: if isAuthenticated();
-        allow write: if isAuthenticated();
-      }
       allow read, write: if isSuperAdmin();
     }
 

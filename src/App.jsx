@@ -1232,12 +1232,13 @@ export default function App() {
     const compId = tenantData?.id || userData?.companyId || getActiveTenantId() || 'comp_alain';
     setActiveTenantId(compId);
 
-    // 🔒 مسح أمني: إزالة بيانات الشركات الأخرى من LocalStorage لمنع تلوث البيانات
-    // يحافظ فقط على بيانات الشركة الحالية
+    // 🔒 مسح أمني: إزالة مسودات المشاريع غير المحفوظة للشركات الأخرى مع الحفاظ التام على أدلة المستخدمين
     if (compId && !roleIsSuperAdmin) {
       try {
         const keysToRemove = Object.keys(localStorage).filter(k => {
           if (!k.startsWith('tenant_')) return false;
+          // الحفاظ الحاسم على سجلات المستخدمين والفريق لتمكين التبديل وتسجيل الدخول السلس
+          if (k.endsWith('_users') || k.endsWith('_team')) return false;
           // استخراج الـ company ID من المفتاح: tenant_{companyId}_{field}
           const parts = k.split('_');
           if (parts.length < 3) return false;
@@ -1245,9 +1246,6 @@ export default function App() {
           return keyCompanyId !== compId;
         });
         keysToRemove.forEach(k => localStorage.removeItem(k));
-        if (keysToRemove.length > 0) {
-          console.log(`[handleLogin] Cleared ${keysToRemove.length} localStorage keys from other companies`);
-        }
       } catch (e) {}
     }
     // تم حذف استدعاء loadTenantWorkspace المزدوج هنا لأن تغيير activeCompanyId و isAuthenticated يُشغّل الـ Effect تلقائياً
