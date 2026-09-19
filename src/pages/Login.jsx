@@ -87,25 +87,25 @@ export default function Login({
         // البحث عن الحساب المرتبط برقم الهاتف
         let resolvedEmail = null;
 
-        // 1. فحص محلي سريع في platform-all-users-registry
+        // 1. فحص سحابي أولاً من دليل المنصة platform_metadata/users_directory أو قائمة الشركات لضمان أحدث ربط حي
         try {
-          const regRaw = localStorage.getItem('platform-all-users-registry');
-          if (regRaw) {
-            const reg = JSON.parse(regRaw);
-            const userInReg = reg['phone_' + cleanPhone] || reg[cleanPhone] ||
-              Object.values(reg).find(u => cleanPhoneNumber(u.phone || u.cleanPhone) === cleanPhone);
-            if (userInReg && userInReg.email) {
-              resolvedEmail = userInReg.email;
-            }
+          const cloudUser = await fetchUserByPhoneFromCloudDirectory(cleanPhone);
+          if (cloudUser && cloudUser.email) {
+            resolvedEmail = cloudUser.email;
           }
         } catch (e) {}
 
-        // 2. فحص سحابي من دليل المنصة platform_metadata/users_directory أو قائمة الشركات
+        // 2. فحص محلي كمسار بديل سريع
         if (!resolvedEmail) {
           try {
-            const cloudUser = await fetchUserByPhoneFromCloudDirectory(cleanPhone);
-            if (cloudUser && cloudUser.email) {
-              resolvedEmail = cloudUser.email;
+            const regRaw = localStorage.getItem('platform-all-users-registry');
+            if (regRaw) {
+              const reg = JSON.parse(regRaw);
+              const userInReg = reg['phone_' + cleanPhone] || reg[cleanPhone] ||
+                Object.values(reg).find(u => cleanPhoneNumber(u.phone || u.cleanPhone) === cleanPhone);
+              if (userInReg && userInReg.email) {
+                resolvedEmail = userInReg.email;
+              }
             }
           } catch (e) {}
         }
@@ -164,21 +164,69 @@ export default function Login({
   const handleForgotPassword = async () => {
     const rawInput = (email || '').trim();
     if (!rawInput) {
-      setError("يرجى إدخال بريدك الإلكتروني أولاً في الحقل المخصص، ثم الضغط على 'نسيت كلمة المرور؟'.");
+      setError("يرجى إدخال البريد الإلكتروني أو رقم الهاتف أولاً في الحقل المخصص، ثم الضغط على 'نسيت كلمة المرور؟'.");
       return;
     }
-    if (!rawInput.includes('@')) {
-      setError("إعادة تعيين كلمة المرور عبر الرابط متاحة للحسابات المسجلة ببريد إلكتروني. بالنسبة للدخول برقم الهاتف، يرجى التواصل مع مدير الشركة لتعيين كلمة مرورك.");
-      return;
-    }
+
     setError(null);
     setResetSuccess(null);
     setResetLoading(true);
 
+    let targetEmail = rawInput;
+
+    if (!rawInput.includes('@')) {
+      const cleanPhone = cleanPhoneNumber(rawInput);
+      if (!cleanPhone || cleanPhone.length < 7) {
+        setError("يرجى إدخال رقم هاتف صحيح أو بريد إلكتروني صالح.");
+        setResetLoading(false);
+        return;
+      }
+
+      // البحث عن الإيميل المرتبط برقم الهاتف
+      let resolvedEmail = null;
+
+      try {
+        const cloudUser = await fetchUserByPhoneFromCloudDirectory(cleanPhone);
+        if (cloudUser && cloudUser.email && !cloudUser.email.endsWith('@tashteeb.app')) {
+          resolvedEmail = cloudUser.email;
+        }
+      } catch (e) {}
+
+      if (!resolvedEmail) {
+        try {
+          const regRaw = localStorage.getItem('platform-all-users-registry');
+          if (regRaw) {
+            const reg = JSON.parse(regRaw);
+            const u = reg['phone_' + cleanPhone] || reg[cleanPhone] ||
+              Object.values(reg).find(x => cleanPhoneNumber(x.phone || x.cleanPhone) === cleanPhone);
+            if (u && u.email && !u.email.endsWith('@tashteeb.app')) {
+              resolvedEmail = u.email;
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (!resolvedEmail) {
+        setError("هذا الحساب مسجل برقم هاتف فقط دون بريد إلكتروني، أو لم يُعثر على الحساب. يرجى التواصل مع مدير الشركة لتعيين كلمة مرورك.");
+        setResetLoading(false);
+        return;
+      }
+
+      targetEmail = resolvedEmail;
+    }
+
     try {
-      const res = await sendPasswordReset(rawInput);
+      const res = await sendPasswordReset(targetEmail);
       if (res.success) {
-        setResetSuccess(res.message);
+        let displayEmail = targetEmail;
+        if (!rawInput.includes('@')) {
+          const [userPart, domainPart] = targetEmail.split('@');
+          const masked = userPart.length > 3
+            ? `${userPart.slice(0, 2)}***${userPart.slice(-1)}@${domainPart}`
+            : `***@${domainPart}`;
+          displayEmail = masked;
+        }
+        setResetSuccess(`✅ تم إرسال رابط إعادة تعيين كلمة المرور إلى البريد المسجل (${displayEmail}). يرجى مراجعة بريدك الإلكتروني.`);
       } else {
         setError(res.error || "تعذر إرسال رابط إعادة تعيين كلمة المرور.");
       }
