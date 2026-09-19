@@ -21,6 +21,7 @@ import {
 import {
   cleanPhoneNumber,
   fetchUserByPhoneFromCloudDirectory,
+  syncTenantUsersToCloud,
 } from "../services/cloudSync";
 import { openWhatsApp, formatPhoneNumber } from "../utils/whatsappTemplates";
 
@@ -147,29 +148,31 @@ export default function Login({
       const authResult = await loginWithEmail(targetAuthEmail, password);
       if (authResult.success) {
         // قراءة الـ Custom Claims المشفرة من Google
-        let claims = await getUserClaims(authResult.user);
-
-        // إذا كان بريد مالك المنصة المعتمد ولم يحصل على Custom Claim السوبر أدمن بعد، نقوم بتعيينها فوراً
-        const cleanEmail = targetAuthEmail;
-        if ((cleanEmail === 'sicolove7@gmail.com' || cleanEmail === 'admin@platform.com') && claims.role !== 'super_admin') {
-          try {
-            await callAssignUserClaims({
-              targetUid: authResult.user.uid,
-              companyId: 'comp_alain',
-              role: 'super_admin',
-              companyName: 'منصة تشطيب برو',
-            });
-            if (authResult.user.getIdToken) {
-              await authResult.user.getIdToken(true);
-            }
-            claims = await getUserClaims(authResult.user);
-          } catch (e) {
-            console.warn("Could not auto-assign super_admin claim:", e);
-          }
-        }
+        const claims = await getUserClaims(authResult.user);
 
         // 2. تحديد بيانات الشركة والمستخدم والصلاحيات
         const tenantResult = await resolveTenantUserByEmail(targetAuthEmail, authResult.user?.uid, claims);
+
+        // 2.1 فحص وإصلاح ذاتي للحسابات القديمة برقم التليفون بأثر رجعي
+        if (isEmail && tenantResult?.success && tenantResult?.tenant?.id) {
+          const userPhone = tenantResult.user?.phone || tenantResult.tenant?.phone;
+          if (userPhone) {
+            const cPhone = cleanPhoneNumber(userPhone);
+            if (cPhone && cPhone.length >= 7) {
+              fetchUserByPhoneFromCloudDirectory(cPhone).then(cloudUser => {
+                if (!cloudUser) {
+                  console.log('[Login] Auto-syncing phone to cloud directory for existing account:', userPhone);
+                  syncTenantUsersToCloud(tenantResult.tenant.id, [{
+                    ...tenantResult.user,
+                    phone: userPhone,
+                    cleanPhone: cPhone,
+                  }]).catch(() => {});
+                }
+              }).catch(() => {});
+            }
+          }
+        }
+
         if (tenantResult.success) {
           onLogin(tenantResult.user, tenantResult.tenant, tenantResult.isSuperAdmin);
         } else {

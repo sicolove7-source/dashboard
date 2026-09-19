@@ -49,13 +49,9 @@ export async function uploadMediaToFirebaseStorage(fileOrDataUrl, folder = 'site
 
 export function cleanCompanyId(companyId) {
   if (!companyId) return null;
-  if (typeof companyId === 'object') {
-    return companyId.id || companyId.companyId || 'comp_alain';
-  }
+  if (typeof companyId === 'object') return companyId.id || companyId.companyId || null;
   const str = String(companyId).trim();
-  if (str === '[object Object]' || str === 'undefined' || str === 'null') {
-    return 'comp_alain';
-  }
+  if (str === '[object Object]' || str === 'undefined' || str === 'null') return null;
   return str;
 }
 
@@ -667,6 +663,7 @@ export function subscribeToCloudLeads(companyId, onUpdate) {
  */
 export async function syncCompanyUsersToCloud(companyId, users) {
   const cId = cleanCompanyId(companyId);
+  if (!cId) return false;
   const cleanUsers = sanitizeCompanyUsersForCloud(users);
   const authorizedEmails = Array.isArray(cleanUsers)
     ? cleanUsers.map(u => (u.email || '').toLowerCase().trim()).filter(Boolean)

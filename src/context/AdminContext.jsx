@@ -10,7 +10,7 @@ import React, { createContext, useContext, useMemo } from 'react';
 
 export const AdminContext = createContext({
   role: 'engineer',
-  companyId: 'comp_alain',
+  companyId: null,
   isSuperAdmin: false,
   currentUser: null,
   isAuthenticated: false,
@@ -25,7 +25,7 @@ export function useAdmin() {
   if (!context) {
     return {
       role: 'engineer',
-      companyId: 'comp_alain',
+      companyId: null,
       isSuperAdmin: false,
       currentUser: null,
       isAuthenticated: false,

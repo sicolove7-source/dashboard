@@ -33,7 +33,7 @@ export default function CrmPipeline({
   onConvertToProject,
   companySettings,
   userRole,
-  activeCompanyId = "comp_alain",
+  activeCompanyId = null,
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterSource, setFilterSource] = useState("all");
@@ -44,9 +44,11 @@ export default function CrmPipeline({
   const [shareChannel, setShareChannel] = useState("all");
 
   const companyName = companySettings?.companyName || "إدارة التشطيبات";
-  const intakeCompanyId = activeCompanyId || "comp_alain";
+  const intakeCompanyId = activeCompanyId || "";
   const channelParam = shareChannel !== "all" ? `&source=${shareChannel}` : "";
-  const publicIntakeUrl = `${window.location.origin}/#request-quote?c=${intakeCompanyId}${channelParam}`;
+  const publicIntakeUrl = intakeCompanyId
+    ? `${window.location.origin}/#request-quote?c=${intakeCompanyId}${channelParam}`
+    : `${window.location.origin}/#request-quote${channelParam ? '?' + channelParam.slice(1) : ''}`;
 
   // Form State
   const [formData, setFormData] = useState({

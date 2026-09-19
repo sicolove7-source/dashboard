@@ -8,7 +8,7 @@ import {
   ROLES, NAV_PERMISSIONS, PERMISSIONS,
   CUSTOMIZABLE_NAV_TABS, CUSTOMIZABLE_ACTIONS
 } from '../utils/permissions';
-import { getActiveTenantId } from '../services/tenantsManager';
+import { getActiveTenantId, loadAllTenants } from '../services/tenantsManager';
 import { syncCompanyUsersToCloud, syncTenantUsersToCloud, syncTenantsListToCloud, syncTeamToCloud, sanitizeCompanyUsersForCloud, cleanPhoneNumber } from '../services/cloudSync';
 import { sendPasswordReset, callCreateCompanyUser, syncAndResetPhonePassword } from '../services/auth';
 
@@ -21,12 +21,14 @@ const COMPANY_ROLES = Object.fromEntries(
    Storage Helper for Isolated Company User Accounts
 ──────────────────────────────────────────────────────────── */
 export function getCompanyUsersKey(companyId) {
-  const cId = companyId || getActiveTenantId() || 'comp_c_mtyw7mqk';
-  return `tenant_${cId}_users`;
+  const cId = companyId || getActiveTenantId() || null;
+  return cId ? `tenant_${cId}_users` : null;
 }
 
 export function loadUsers(companyId) {
-  const key = getCompanyUsersKey(companyId);
+  const cId = companyId || getActiveTenantId() || null;
+  if (!cId) return [];
+  const key = getCompanyUsersKey(cId);
   try {
     const raw = localStorage.getItem(key);
     if (raw) {
@@ -35,42 +37,21 @@ export function loadUsers(companyId) {
     }
   } catch (e) {}
   
-  // إذا لم توجد مستخدمين للشركة، ننشئ الافتراضيين بما فيهم مسؤول التوريدات (بدون أي كلمات سر كنص صريح)
-  const cId = companyId || getActiveTenantId() || 'comp_c_mtyw7mqk';
-  let defaults = [];
-  if (cId === 'comp_c_mtyw7mqk') {
-    defaults = [
-      { id: 'u_mtyw_1', email: 'sicolove7@gmail.com', role: 'owner', name: 'احمد - مدير شركة أملاك', engineerName: null, companyId: 'comp_c_mtyw7mqk' },
-      { id: 'u_mtyw_2', email: 'eng@amlak-contract.com', role: 'engineer', name: 'م. سيف النيادي', engineerName: 'م. سيف النيادي', companyId: 'comp_c_mtyw7mqk' },
-      { id: 'u_mtyw_3', email: 'supply@amlak-contract.com', role: 'procurement', name: 'أ. محمود فوزي (مسؤول التوريدات)', engineerName: null, companyId: 'comp_c_mtyw7mqk' },
-    ];
-  } else if (cId === 'comp_alain') {
-    defaults = [
-      { id: 'u_alain_1', email: 'ceo@alain-contract.ae', role: 'owner', name: 'م. سعيد الكعبي', engineerName: null, companyId: 'comp_alain' },
-      { id: 'u_alain_2', email: 'eng@alain-contract.ae', role: 'engineer', name: 'م. هزاع المنصوري', engineerName: 'م. هزاع المنصوري', companyId: 'comp_alain' },
-      { id: 'u_alain_3', email: 'supply@alain-contract.ae', role: 'procurement', name: 'أ. راشد الكعبي (مسؤول التوريدات)', engineerName: null, companyId: 'comp_alain' },
-    ];
-  } else if (cId === 'comp_dhabi') {
-    defaults = [
-      { id: 'u_dhabi_1', email: 'admin@dar-dhabi.ae', role: 'owner', name: 'م. عبد الله الظاهري', engineerName: null, companyId: 'comp_dhabi' },
-      { id: 'u_dhabi_2', email: 'eng@dar-dhabi.ae', role: 'engineer', name: 'م. ناصر الهاشمي', engineerName: 'م. ناصر الهاشمي', companyId: 'comp_dhabi' },
-      { id: 'u_dhabi_3', email: 'supply@dar-dhabi.ae', role: 'procurement', name: 'أ. راشد الكعبي (مسؤول التوريدات)', engineerName: null, companyId: 'comp_dhabi' },
-    ];
-  } else if (cId === 'comp_cairo') {
-    defaults = [
-      { id: 'u_cairo_1', email: 'admin@al-ofok.com', role: 'owner', name: 'م. شريف عزمي', engineerName: null, companyId: 'comp_cairo' },
-      { id: 'u_cairo_2', email: 'eng@al-ofok.com', role: 'engineer', name: 'م. أحمد كامل', engineerName: 'م. أحمد كامل', companyId: 'comp_cairo' },
-      { id: 'u_cairo_3', email: 'supply@al-ofok.com', role: 'procurement', name: 'أ. مصطفى ممدوح (مسؤول التوريدات)', engineerName: null, companyId: 'comp_cairo' },
-    ];
-  } else {
-    const cleanComp = cId.replace(/^comp_/, '');
-    defaults = [
-      { id: `u_${cId}_admin`, email: `admin@${cleanComp}.com`, role: 'owner', name: 'مدير الشركة', engineerName: null, companyId: cId },
-      { id: `u_${cId}_eng1`, email: `eng@${cleanComp}.com`, role: 'engineer', name: 'مهندس الموقع', engineerName: 'مهندس الموقع', companyId: cId },
-      { id: `u_${cId}_supply`, email: `supply@${cleanComp}.com`, role: 'procurement', name: 'مسؤول التوريدات', engineerName: null, companyId: cId },
-    ];
+  // إذا لم توجد مستخدمين للشركة في التخزين المحلي، نحاول جلبهم من بيانات الشركة المعرّفة
+  const allTenants = loadAllTenants();
+  const tenant = allTenants.find(t => t.id === cId);
+  if (tenant && Array.isArray(tenant.users) && tenant.users.length > 0) {
+    if (key) try { localStorage.setItem(key, JSON.stringify(tenant.users)); } catch (e) {}
+    return sanitizeCompanyUsersForCloud(tenant.users);
   }
-  try { localStorage.setItem(key, JSON.stringify(defaults)); } catch (e) {}
+
+  const cleanComp = cId.replace(/^comp_/, '');
+  const defaults = [
+    { id: `u_${cId}_admin`, email: tenant?.adminEmail || `admin@${cleanComp}.com`, role: 'owner', name: tenant?.adminName || 'مدير الشركة', engineerName: null, companyId: cId },
+    { id: `u_${cId}_eng1`, email: `eng@${cleanComp}.com`, role: 'engineer', name: 'مهندس الموقع', engineerName: 'مهندس الموقع', companyId: cId },
+    { id: `u_${cId}_supply`, email: `supply@${cleanComp}.com`, role: 'procurement', name: 'مسؤول التوريدات', engineerName: null, companyId: cId },
+  ];
+  if (key) try { localStorage.setItem(key, JSON.stringify(defaults)); } catch (e) {}
   return defaults;
 }
 
@@ -777,7 +758,7 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
    Main Component
 ──────────────────────────────────────────────────────────── */
 export default function UserManagement({ currentUser, companyId, team, onTeamChange }) {
-  const activeCompId = companyId || currentUser?.companyId || getActiveTenantId() || 'comp_alain';
+  const activeCompId = companyId || currentUser?.companyId || getActiveTenantId() || null;
   const [users, setUsers] = useState(() => loadUsers(activeCompId));
   const [modal, setModal] = useState(null); // null | 'add' | user object for edit
   const [deleteId, setDeleteId] = useState(null);

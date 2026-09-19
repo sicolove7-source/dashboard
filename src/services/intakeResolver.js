@@ -11,6 +11,7 @@ import { db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { getTenantData } from './tenantsManager';
 import { loadCompanySettings } from '../utils/branding';
+import { cleanCompanyId } from './cloudSync';
 
 /**
  * فحص وتحليل رابط الـ URL لمعرفة ما إذا كان الزائر يفتح استمارة استقبال طلبات التشطيب
@@ -30,7 +31,7 @@ export function parseIntakeRouteFromUrl() {
     const hash = window.location.hash || '';
     const searchParams = new URLSearchParams(window.location.search);
 
-    // استخراج معلمات الـ Hash إن وُجدت (مثل #request-quote?c=comp_alain&source=facebook)
+    // استخراج معلمات الـ Hash إن وُجدت (مثل #request-quote?c=comp_sample&source=facebook)
     let hashSearchParams = new URLSearchParams();
     if (hash.includes('?')) {
       const qIndex = hash.indexOf('?');
@@ -65,7 +66,7 @@ export function parseIntakeRouteFromUrl() {
         }
       }
 
-      // من الـ Query مثل ?intake=comp_alain
+      // من الـ Query مثل ?intake=comp_sample
       if (!companyId && isIntakeQuery) {
         const qVal = searchParams.get('intake') || searchParams.get('request-quote') || searchParams.get('quote');
         if (qVal && qVal !== 'true' && qVal !== '1') {
@@ -76,7 +77,7 @@ export function parseIntakeRouteFromUrl() {
       const source = getParam('source') || getParam('utm_source') || getParam('src') || 'website';
 
       return {
-        companyId: companyId || 'comp_alain',
+        companyId: companyId || null,
         source: decodeURIComponent(source),
       };
     }
@@ -91,7 +92,8 @@ export function parseIntakeRouteFromUrl() {
  * جلب بيانات وهوية الشركة المعنية بالرابط لعرضها في النموذج العام
  */
 export async function resolveCompanyForIntake(companyId) {
-  const cId = companyId ? String(companyId).trim() : 'comp_alain';
+  const cId = cleanCompanyId(companyId);
+  if (!cId) return null;
 
   // 1. فحص الكاش المحلي أولاً لاستجابة فورية
   const localSettings = loadCompanySettings(cId) || getTenantData(cId)?.settings;
@@ -161,7 +163,8 @@ export async function resolveCompanyForIntake(companyId) {
  * حفظ طلب العميل الجديد في السحابة وفي الكاش المحلي
  */
 export async function submitPublicLead(companyId, leadData) {
-  const cId = companyId ? String(companyId).trim() : 'comp_alain';
+  const cId = cleanCompanyId(companyId);
+  if (!cId) return { success: false, error: 'معرف الشركة غير صالح' };
 
   // Rate Limiting: منع إرسال أكثر من طلب خلال 30 ثانية لمنع هجمات الـ Spam
   try {

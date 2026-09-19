@@ -60,7 +60,7 @@ const POPULAR_AREAS = [
 const QUICK_AREAS_M2 = [100, 130, 160, 200, 250, 350];
 
 export default function ClientIntakePage({ intakeInfo, onBack }) {
-  const companyId = intakeInfo?.companyId || 'comp_alain';
+  const companyId = intakeInfo?.companyId || null;
   const initialSource = intakeInfo?.source || 'website';
 
   const [company, setCompany] = useState(null);

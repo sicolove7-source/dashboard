@@ -28,15 +28,23 @@ exports.assignUserClaims = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "targetUid و companyId مطلوبان.");
   }
 
-  // الأمان: يُسمح للمستخدم نفسه بتعيين صلاحيات شركته، وللسوبر أدمن المعتمد
+  // الأمان: التحقق من هوية المستدعي وصلاحياته
   const callerUid = request.auth?.uid;
   const callerClaims = request.auth?.token || {};
-  const callerEmail = (request.auth?.token?.email || '').toLowerCase().trim();
-  const isMasterOwner = callerEmail === 'sicolove7@gmail.com' || callerEmail === 'admin@platform.com';
-  const isSuperAdmin = callerClaims.role === 'super_admin' || callerClaims.isSuperAdmin === true || isMasterOwner;
 
   if (!callerUid) {
     throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً.");
+  }
+
+  // التحقق هل المستدعي سوبر أدمن عبر التوكن أو مستند السوبر أدمن السحابي
+  let isSuperAdmin = callerClaims.role === 'super_admin' || callerClaims.isSuperAdmin === true;
+  if (!isSuperAdmin) {
+    try {
+      const saDoc = await db.doc('platform_metadata/superadmin').get();
+      if (saDoc.exists && saDoc.data()?.uid === callerUid) {
+        isSuperAdmin = true;
+      }
+    } catch (e) {}
   }
 
   const isSelf = callerUid === targetUid;
@@ -44,17 +52,16 @@ exports.assignUserClaims = onCall(async (request) => {
     throw new HttpsError("permission-denied", "لا تملك صلاحية تعيين Claims لمستخدمين آخرين.");
   }
 
-  // السماح بتعيين super_admin فقط للمالك المعتمد أو سوبر أدمن موثق سحابياً
-  let safeRole = role || 'owner';
-  if (role === 'super_admin') {
-    if (!isSuperAdmin) {
-      safeRole = 'owner';
-    }
+  // حماية حاسمة: منع أي مستخدم غير مصرح له من منح دور super_admin إطلاقاً
+  if (role === 'super_admin' && !isSuperAdmin) {
+    throw new HttpsError("permission-denied", "لا تملك صلاحية منح دور سوبر أدمن.");
   }
+
+  const safeRole = role || 'owner';
 
   try {
     const claimsPayload = {
-      companyId: companyId || 'comp_alain',
+      companyId: companyId,
       role: safeRole,
       companyName: companyName || companyId,
       currency: currency || 'ج.م',
@@ -125,12 +132,18 @@ exports.createCompanyUser = onCall(async (request) => {
   }
 
   const callerClaims = request.auth?.token || {};
-  const callerEmail = (callerClaims.email || '').toLowerCase().trim();
-  const isMasterOwner = callerEmail === 'sicolove7@gmail.com' || callerEmail === 'admin@platform.com';
-  const isSuperAdmin = callerClaims.role === 'super_admin' || callerClaims.isSuperAdmin === true || isMasterOwner;
+  let isSuperAdmin = callerClaims.role === 'super_admin' || callerClaims.isSuperAdmin === true;
+  if (!isSuperAdmin) {
+    try {
+      const saDoc = await db.doc('platform_metadata/superadmin').get();
+      if (saDoc.exists && saDoc.data()?.uid === callerUid) {
+        isSuperAdmin = true;
+      }
+    } catch (e) {}
+  }
   const isCompanyOwner = callerClaims.role === 'owner' && callerClaims.companyId === companyId;
 
-  if (!isSuperAdmin && !isCompanyOwner && !isMasterOwner) {
+  if (!isSuperAdmin && !isCompanyOwner) {
     throw new HttpsError("permission-denied", "لا تملك صلاحية إنشاء مستخدمين لهذه الشركة.");
   }
 

@@ -104,12 +104,13 @@ function SuppliersSection({ activeCompanyId }) {
   const commit = (next) => {
     setItems(next);
     saveLS(STORE_SUPPLIERS, next);
-    const cId = activeCompanyId || getActiveTenantId() || 'comp_alain';
-    syncSuppliersToCloud(cId, next);
+    const cId = activeCompanyId || getActiveTenantId() || null;
+    if (cId) syncSuppliersToCloud(cId, next);
   };
 
   React.useEffect(() => {
-    const cId = activeCompanyId || getActiveTenantId() || 'comp_alain';
+    const cId = activeCompanyId || getActiveTenantId() || null;
+    if (!cId) return;
     const unsub = subscribeToCloudCompanyField(cId, 'suppliers', (cloudSuppliers) => {
       if (Array.isArray(cloudSuppliers)) {
         setItems(cloudSuppliers);
@@ -421,12 +422,13 @@ function WorkersSection({ activeCompanyId }) {
   const commit = (next) => {
     setItems(next);
     saveLS(STORE_WORKERS, next);
-    const cId = activeCompanyId || getActiveTenantId() || 'comp_alain';
-    syncWorkersToCloud(cId, next);
+    const cId = activeCompanyId || getActiveTenantId() || null;
+    if (cId) syncWorkersToCloud(cId, next);
   };
 
   React.useEffect(() => {
-    const cId = activeCompanyId || getActiveTenantId() || 'comp_alain';
+    const cId = activeCompanyId || getActiveTenantId() || null;
+    if (!cId) return;
     const unsub = subscribeToCloudCompanyField(cId, 'workers', (cloudWorkers) => {
       if (Array.isArray(cloudWorkers)) {
         setItems(cloudWorkers);

@@ -68,7 +68,7 @@ function sanitizeDoc(obj) {
 
 export function useSubcontractorsData(companyId = null) {
   // تحديد معرف الشركة الفعال لضمان العزل التام للمستندات (Multi-tenancy)
-  const effectiveCompanyId = companyId || getActiveTenantId() || 'comp_alain';
+  const effectiveCompanyId = companyId || getActiveTenantId() || null;
 
   // الحالات الأساسية للبيانات
   const [subcontractors, setSubcontractors] = useState([]);
@@ -110,7 +110,7 @@ export function useSubcontractorsData(companyId = null) {
 
   // 2. ترحيل البيانات القديمة من localStorage إلى Firestore (مرة واحدة)
   const runMigrationAndSeeding = useCallback(async (currentSubs, currentOrders, currentExts) => {
-    if (migrationTriggered.current) return;
+    if (!effectiveCompanyId || migrationTriggered.current) return;
     migrationTriggered.current = true;
 
     try {
@@ -223,6 +223,13 @@ export function useSubcontractorsData(companyId = null) {
 
   // 3. الاستماع اللحظي (onSnapshot) مع دعم التخزين المؤقت والعمل دون إنترنت
   useEffect(() => {
+    if (!effectiveCompanyId) {
+      setLoading(false);
+      setSubcontractors([]);
+      setWorkOrders([]);
+      setExtracts([]);
+      return;
+    }
     let isMounted = true;
     migrationTriggered.current = false;
 
@@ -346,6 +353,7 @@ export function useSubcontractorsData(companyId = null) {
    * حفظ أو تعديل مقاول باطن
    */
   const saveSubcontractor = useCallback(async (subData) => {
+    if (!effectiveCompanyId) return null;
     const id = subData.id || `sub_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const docRef = doc(db, 'companies', effectiveCompanyId, 'subcontractors', id);
     const payload = sanitizeDoc({
@@ -367,6 +375,7 @@ export function useSubcontractorsData(companyId = null) {
    * حذف مقاول باطن
    */
   const deleteSubcontractor = useCallback(async (id) => {
+    if (!effectiveCompanyId) return;
     setSubcontractors(prev => prev.filter(s => s.id !== id));
     await deleteDoc(doc(db, 'companies', effectiveCompanyId, 'subcontractors', id));
   }, [effectiveCompanyId]);
@@ -375,6 +384,7 @@ export function useSubcontractorsData(companyId = null) {
    * حفظ أو تعديل أمر تكليف
    */
   const saveWorkOrder = useCallback(async (orderData) => {
+    if (!effectiveCompanyId) return null;
     const id = orderData.id || `wo_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const docRef = doc(db, 'companies', effectiveCompanyId, 'workOrders', id);
     const payload = sanitizeDoc({
@@ -395,6 +405,7 @@ export function useSubcontractorsData(companyId = null) {
    * حذف أمر تكليف
    */
   const deleteWorkOrder = useCallback(async (id) => {
+    if (!effectiveCompanyId) return;
     setWorkOrders(prev => prev.filter(w => w.id !== id));
     await deleteDoc(doc(db, 'companies', effectiveCompanyId, 'workOrders', id));
   }, [effectiveCompanyId]);
@@ -404,6 +415,7 @@ export function useSubcontractorsData(companyId = null) {
    * مع حماية التعارض وتوثيق سجل الحالات (Status Audit Trail)
    */
   const saveExtract = useCallback(async (extractData) => {
+    if (!effectiveCompanyId) return null;
     const id = extractData.id || `ext_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const docRef = doc(db, 'companies', effectiveCompanyId, 'extracts', id);
 
@@ -427,6 +439,7 @@ export function useSubcontractorsData(companyId = null) {
    * حذف مستخلص مالي
    */
   const deleteExtract = useCallback(async (id) => {
+    if (!effectiveCompanyId) return;
     setExtracts(prev => prev.filter(e => e.id !== id));
     await deleteDoc(doc(db, 'companies', effectiveCompanyId, 'extracts', id));
   }, [effectiveCompanyId]);
@@ -435,6 +448,7 @@ export function useSubcontractorsData(companyId = null) {
    * الإفراج عن مبلغ الضمان المحتجز لمستخلص
    */
   const releaseRetention = useCallback(async (extractId) => {
+    if (!effectiveCompanyId) return;
     const today = new Date().toISOString().slice(0, 10);
     const updateData = {
       retentionReleased: true,
@@ -451,6 +465,7 @@ export function useSubcontractorsData(companyId = null) {
    * اعتماد وصرف مستخلص مالي
    */
   const payExtract = useCallback(async (extractId, paymentMethod = 'نقداً', amount = null) => {
+    if (!effectiveCompanyId) return;
     const today = new Date().toISOString().slice(0, 10);
     
     setExtracts(prev => prev.map(e => {
@@ -488,6 +503,8 @@ export function useSubcontractorsData(companyId = null) {
     const nextList = typeof nextSubs === 'function' ? nextSubs(subcontractors) : nextSubs;
     setSubcontractors(nextList);
 
+    if (!effectiveCompanyId) return;
+
     try {
       const nextMap = new Map(nextList.map(s => [s.id, s]));
       const currentMap = new Map(subcontractors.map(s => [s.id, s]));
@@ -518,6 +535,8 @@ export function useSubcontractorsData(companyId = null) {
     const nextList = typeof nextOrders === 'function' ? nextOrders(workOrders) : nextOrders;
     setWorkOrders(nextList);
 
+    if (!effectiveCompanyId) return;
+
     try {
       const nextMap = new Map(nextList.map(w => [w.id, w]));
       const currentMap = new Map(workOrders.map(w => [w.id, w]));
@@ -545,6 +564,8 @@ export function useSubcontractorsData(companyId = null) {
   const updateExts = useCallback(async (nextExts) => {
     const nextList = typeof nextExts === 'function' ? nextExts(extracts) : nextExts;
     setExtracts(nextList);
+
+    if (!effectiveCompanyId) return;
 
     try {
       const nextMap = new Map(nextList.map(e => [e.id, e]));

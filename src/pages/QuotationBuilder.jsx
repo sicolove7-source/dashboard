@@ -41,8 +41,8 @@ function loadQuotations() {
 
 function saveQuotations(data, companyId) {
   try { localStorage.setItem(STORE_QUOTATIONS, JSON.stringify(data)); } catch {}
-  const cId = companyId || getActiveTenantId() || 'comp_alain';
-  syncQuotationsToCloud(cId, data);
+  const cId = companyId || getActiveTenantId() || null;
+  if (cId) syncQuotationsToCloud(cId, data);
 }
 
 export default function QuotationBuilder({ onConvertToProject, activeCompanyId }) {
@@ -52,7 +52,8 @@ export default function QuotationBuilder({ onConvertToProject, activeCompanyId }
   const [activeQuotation, setActiveQuotation] = useState(null);
 
   useEffect(() => {
-    const cId = activeCompanyId || getActiveTenantId() || 'comp_alain';
+    const cId = activeCompanyId || getActiveTenantId() || null;
+    if (!cId) return;
     const unsub = subscribeToCloudCompanyField(cId, 'quotations', (cloudQuotations) => {
       if (Array.isArray(cloudQuotations)) {
         setQuotations(cloudQuotations);

@@ -20,8 +20,8 @@ function getSuppliers() {
 }
 function saveWorkers(arr, companyId) {
   try { localStorage.setItem('db-workers-v1', JSON.stringify(arr)); } catch {}
-  const cId = companyId || getActiveTenantId() || 'comp_alain';
-  syncWorkersToCloud(cId, arr);
+  const cId = companyId || getActiveTenantId() || null;
+  if (cId) syncWorkersToCloud(cId, arr);
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────── */

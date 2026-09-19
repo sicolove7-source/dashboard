@@ -87,7 +87,8 @@ service cloud.firestore {
       allow write: if isSuperAdmin();
     }
     match /platform_metadata/tenants {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin();
     }
     match /platform_metadata/users_directory {
       allow read, write: if isAuthenticated();

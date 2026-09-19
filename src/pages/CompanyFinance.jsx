@@ -181,10 +181,10 @@ function getProjectExpenses(p) {
 export default function CompanyFinance({ projects = [], onUpdateProject, activeCompanyId }) {
   const [activeTab, setActiveTab] = useState('overview'); // overview | monthly | quarterly | expenses
   const [showAddExpense, setShowAddExpense] = useState(false);
-  const expenseStorageKey = `tenant_${activeCompanyId || 'comp_alain'}_company_expenses`;
+  const expenseStorageKey = activeCompanyId ? `tenant_${activeCompanyId}_company_expenses` : null;
   const [companyExpenses, setCompanyExpenses] = useState(() => {
     try {
-      const saved = localStorage.getItem(expenseStorageKey) || localStorage.getItem('amlak_company_expenses');
+      const saved = expenseStorageKey ? (localStorage.getItem(expenseStorageKey) || localStorage.getItem('amlak_company_expenses')) : null;
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -193,16 +193,19 @@ export default function CompanyFinance({ projects = [], onUpdateProject, activeC
 
   // الاستماع اللحظي لمصاريف الشركة سحابياً عبر Firestore
   useEffect(() => {
-    const cId = activeCompanyId || 'comp_alain';
+    const cId = activeCompanyId || null;
+    if (!cId) return;
     let isMounted = true;
 
     const unsub = subscribeToCloudCompanyField(cId, 'expenses', (cloudExpenses) => {
       if (!isMounted) return;
       if (Array.isArray(cloudExpenses)) {
         setCompanyExpenses(cloudExpenses);
-        try {
-          localStorage.setItem(expenseStorageKey, JSON.stringify(cloudExpenses));
-        } catch (e) {}
+        if (expenseStorageKey) {
+          try {
+            localStorage.setItem(expenseStorageKey, JSON.stringify(cloudExpenses));
+          } catch (e) {}
+        }
       }
     });
 
@@ -215,8 +218,8 @@ export default function CompanyFinance({ projects = [], onUpdateProject, activeC
   // ترحيل البيانات تلقائياً (Migration) من المفاتيح القديمة إلى Firestore مرة واحدة مع إزالة التكرار
   const migrationRanRef = useRef(false);
   useEffect(() => {
-    const cId = activeCompanyId || 'comp_alain';
-    if (migrationRanRef.current) return;
+    const cId = activeCompanyId || null;
+    if (!cId || migrationRanRef.current) return;
     migrationRanRef.current = true;
 
     async function migrateLocalExpenses() {
@@ -307,19 +310,23 @@ export default function CompanyFinance({ projects = [], onUpdateProject, activeC
   const [expandedProject, setExpandedProject] = useState(null);
 
   function saveExpense(form) {
-    const cId = activeCompanyId || 'comp_alain';
+    const cId = activeCompanyId || null;
     const next = [{ ...form, id: 'exp-' + Date.now() }, ...companyExpenses];
     setCompanyExpenses(next);
-    try { localStorage.setItem(expenseStorageKey, JSON.stringify(next)); } catch (e) {}
-    syncExpensesToCloud(cId, next);
+    if (expenseStorageKey) {
+      try { localStorage.setItem(expenseStorageKey, JSON.stringify(next)); } catch (e) {}
+    }
+    if (cId) syncExpensesToCloud(cId, next);
   }
 
   function deleteExpense(id) {
-    const cId = activeCompanyId || 'comp_alain';
+    const cId = activeCompanyId || null;
     const next = companyExpenses.filter(e => e.id !== id);
     setCompanyExpenses(next);
-    try { localStorage.setItem(expenseStorageKey, JSON.stringify(next)); } catch (e) {}
-    syncExpensesToCloud(cId, next);
+    if (expenseStorageKey) {
+      try { localStorage.setItem(expenseStorageKey, JSON.stringify(next)); } catch (e) {}
+    }
+    if (cId) syncExpensesToCloud(cId, next);
   }
 
   /* ── Computed KPIs ── */

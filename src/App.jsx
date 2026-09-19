@@ -243,68 +243,10 @@ function getInitialCompanyId() {
       if (parsed?.companyId) return parsed.companyId;
     }
   } catch (e) {}
-  return getActiveTenantId() || 'comp_c_mtyw7mqk';
+  return getActiveTenantId() || null;
 }
 
 export default function App() {
-  useEffect(() => {
-    // مزامنة سحابية وتأكيد سلامة بيانات شركة أملاك ومشاريعها الحقيقية
-    import('firebase/firestore').then(async ({ collection, getDocs, doc, getDoc, setDoc, deleteDoc }) => {
-      try {
-        const alainProjDoc = await getDoc(doc(db, 'companies', 'comp_alain', 'projects', 'p_cairo_2'));
-        if (alainProjDoc.exists()) {
-          const cairoData = alainProjDoc.data();
-          // نقل مشروع القاهرة إلى شركة أملاك في السحابة
-          await setDoc(doc(db, 'companies', 'comp_c_mtyw7mqk', 'projects', 'p_cairo_2'), {
-            ...cairoData,
-            companyId: 'comp_c_mtyw7mqk'
-          }, { merge: true });
-          // حذفه من شركة العين الإماراتية
-          await deleteDoc(doc(db, 'companies', 'comp_alain', 'projects', 'p_cairo_2'));
-        }
-
-        // تحديث وتثبيت وثيقة شركة أملاك السحابية
-        await setDoc(doc(db, 'companies', 'comp_c_mtyw7mqk'), {
-          companyId: 'comp_c_mtyw7mqk',
-          name: 'شركة أملاك للمقاولات والتشطيبات',
-          adminEmail: 'sicolove7@gmail.com',
-          adminName: 'احمد',
-          settings: {
-            companyName: 'شركة أملاك للمقاولات والتشطيبات',
-            companySubtitle: 'متخصصون في تشطيب الشقق والقصور والفلل الفاخرة',
-            city: 'القاهرة',
-            country: 'مصر',
-            currency: 'ج.م',
-            phone: '+20 100 123 4567',
-            adminEmail: 'sicolove7@gmail.com',
-            adminName: 'احمد',
-          },
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-
-        // إعادة وثيقة شركة العين لهويتها الإماراتية في السحابة
-        await setDoc(doc(db, 'companies', 'comp_alain'), {
-          companyId: 'comp_alain',
-          name: 'شركة العين للمقاولات العامة',
-          adminEmail: 'ceo@alain-contract.ae',
-          adminName: 'م. سعيد الكعبي',
-          settings: {
-            companyName: 'شركة العين للمقاولات العامة',
-            companySubtitle: 'متخصصون في أعمال البناء والتشطيبات الفاخرة',
-            city: 'العين',
-            country: 'الإمارات',
-            currency: 'د.إ',
-            phone: '+971 3 765 4321',
-            adminEmail: 'ceo@alain-contract.ae',
-            adminName: 'م. سعيد الكعبي',
-          },
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-      } catch (e) {
-        console.warn("Cloud reconciliation non-blocking error:", e);
-      }
-    }).catch(() => {});
-  }, []);
   const [projects, setProjects] = useState(() => {
     try {
       const initial = getTenantData(getInitialCompanyId());
@@ -417,9 +359,9 @@ export default function App() {
   const activeCompanyId = useMemo(() => {
     if (isDemoUser) return 'comp_demo';
     if (currentUser?.isSuperAdmin || currentUser?.role === 'super_admin') {
-      return getActiveTenantId() || 'comp_alain';
+      return getActiveTenantId() || currentUser?.companyId || null;
     }
-    return currentUser?.companyId || 'comp_alain';
+    return currentUser?.companyId || null;
   }, [currentUser, isDemoUser]);
 
   // Mobile sidebar state
@@ -1110,7 +1052,7 @@ export default function App() {
 
           const resolvedUser = tenantRes.user;
           const role = claimRole || resolvedUser.role || (isSuperAdminClaim ? 'super_admin' : 'engineer');
-          const companyId = claims.companyId || resolvedUser.companyId || (isSuperAdminClaim ? (getActiveTenantId() || 'comp_alain') : null);
+          const companyId = claims.companyId || resolvedUser.companyId || (isSuperAdminClaim ? (getActiveTenantId() || null) : null);
           const isSuperAdmin = role === 'super_admin' || isSuperAdminClaim || !!resolvedUser.isSuperAdmin;
 
           // إذا كان الحساب فرعياً (ليس سوبر أدمن) ودخول الحسابات الفرعية مقفل سحابياً أو محلياً -> إنهاء الجلسة فوراً
@@ -1229,8 +1171,10 @@ export default function App() {
     setView('list');
     setActiveId(null);
 
-    const compId = tenantData?.id || userData?.companyId || getActiveTenantId() || 'comp_alain';
-    setActiveTenantId(compId);
+    const compId = tenantData?.id || userData?.companyId || getActiveTenantId() || null;
+    if (compId) {
+      setActiveTenantId(compId);
+    }
 
     // 🔒 مسح أمني: إزالة مسودات المشاريع غير المحفوظة للشركات الأخرى مع الحفاظ التام على أدلة المستخدمين
     if (compId && !roleIsSuperAdmin) {

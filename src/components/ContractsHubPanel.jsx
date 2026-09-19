@@ -24,7 +24,7 @@ export default function ContractsHubPanel({
   const [copiedLink, setCopiedLink] = useState(false);
 
   // Generate public client portal URL with token as document identifier
-  const companyId = activeCompanyId || project.companyId || currentUser?.companyId || getActiveTenantId() || 'comp_alain';
+  const companyId = activeCompanyId || project.companyId || currentUser?.companyId || getActiveTenantId() || null;
   const activeToken = project.clientPortalToken || ('cpt_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36));
   const isPortalActive = project.clientPortalEnabled === true;
   const portalUrl = `${window.location.origin}/portal/${activeToken}`;
