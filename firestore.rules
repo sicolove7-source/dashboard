@@ -6,13 +6,11 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // التعرف على السوبر أدمن عبر الـ Custom Claims أو الإيميل المباشر
+    // التعرف على السوبر أدمن عبر الـ Custom Claims حصراً
     function isSuperAdmin() {
       return isAuthenticated() && (
         request.auth.token.role == 'super_admin' ||
-        request.auth.token.isSuperAdmin == true ||
-        request.auth.token.email == 'admin@platform.com' ||
-        request.auth.token.email == 'sicolove7@gmail.com'
+        request.auth.token.isSuperAdmin == true
       );
     }
 
@@ -21,54 +19,40 @@ service cloud.firestore {
              get(/databases/$(database)/documents/platform_metadata/platform_settings).data.subAccountsAllowed != false;
     }
 
-    // عزل الشركات: السماح إذا كان التوكن يحمل معرف الشركة أو عبر البريد المصرح له
+    // عزل الشركات: الاعتماد الحصري على التوكن الموثق (Custom Claims) أو السوبر أدمن
     function isAuthorized(companyId) {
       return isAuthenticated() && (
         isSuperAdmin() || (
-          (
-            request.auth.token.companyId == companyId ||
-            (
-              request.auth.token.email != null &&
-              exists(/databases/$(database)/documents/companies/$(companyId)) &&
-              (
-                get(/databases/$(database)/documents/companies/$(companyId)).data.adminEmail == request.auth.token.email ||
-                (get(/databases/$(database)/documents/companies/$(companyId)).data.settings != null && get(/databases/$(database)/documents/companies/$(companyId)).data.settings.adminEmail == request.auth.token.email) ||
-                (get(/databases/$(database)/documents/companies/$(companyId)).data.authorizedEmails != null && request.auth.token.email in get(/databases/$(database)/documents/companies/$(companyId)).data.authorizedEmails)
-              )
-            )
-          ) &&
+          request.auth.token.companyId == companyId &&
           isSubAccountsAllowed()
         )
       );
     }
 
     function hasValidCompanyPayload(companyId) {
-      return !('companyId' in request.resource.data) ||
+      return request.resource == null ||
+             !('companyId' in request.resource.data) ||
              request.resource.data.companyId == companyId ||
              isSuperAdmin();
     }
 
-    // 1. حماية بيانات الشركات
+    // 1. حماية بيانات الشركات والمشاريع
     match /companies/{companyId} {
       allow read: if isAuthorized(companyId);
-      allow create: if isAuthorized(companyId) || (
-        isAuthenticated() &&
-        hasValidCompanyPayload(companyId) &&
-        (
-          request.resource.data.adminEmail == request.auth.token.email ||
-          (request.resource.data.settings != null && request.resource.data.settings.adminEmail == request.auth.token.email)
-        )
-      );
+      allow create: if isAuthenticated() && hasValidCompanyPayload(companyId);
       allow update: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
       allow delete: if isAuthorized(companyId);
 
       match /projects/{projectId} {
-        allow read, write: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
+        allow read: if isAuthorized(companyId);
+        allow create, update: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
+        allow delete: if isAuthorized(companyId);
       }
 
       match /{subcollection}/{docId} {
         allow read: if isAuthorized(companyId);
-        allow create, update, delete: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
+        allow create, update: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
+        allow delete: if isAuthorized(companyId);
       }
     }
 
