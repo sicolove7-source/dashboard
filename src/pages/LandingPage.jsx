@@ -101,12 +101,27 @@ const LANDING_LIGHT_STYLES = `
     border-color: #C7D2FE;
   }
 
+  .landing-mobile-menu-btn {
+    display: none;
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    color: #0F172A;
+    border-radius: 9999px;
+    padding: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .landing-mobile-menu-btn:hover {
+    background: #F1F5F9;
+  }
+
   /* Responsive Adjustments & Mobile Nav */
   @media (max-width: 900px) {
     .ws-desktop-nav-links { display: none !important; }
     .landing-mobile-menu-btn { display: flex !important; align-items: center; justify-content: center; }
-    .ws-floating-nav { padding: 10px 16px !important; width: calc(100% - 24px) !important; }
+    .ws-floating-nav { padding: 8px 14px !important; width: calc(100% - 20px) !important; }
     .ws-stats-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
+    .ws-quick-value-grid { grid-template-columns: repeat(2, 1fr) !important; }
     .ws-pillars-grid { grid-template-columns: repeat(2, 1fr) !important; }
     .ws-pricing-grid { grid-template-columns: 1fr !important; }
     .ws-timeline-card-wrapper { width: 100% !important; padding-right: 48px !important; padding-left: 0 !important; text-align: right !important; }
@@ -114,11 +129,13 @@ const LANDING_LIGHT_STYLES = `
     .ws-timeline-dot { right: 6px !important; left: auto !important; }
   }
   @media (max-width: 600px) {
+    .ws-nav-login-btn { display: none !important; }
+    .ws-brand-subtitle { display: none !important; }
     .ws-stats-grid { grid-template-columns: 1fr !important; }
+    .ws-quick-value-grid { grid-template-columns: 1fr !important; }
     .ws-pillars-grid { grid-template-columns: 1fr !important; }
     .ws-hero-cta-group { flex-direction: column !important; width: 100% !important; }
     .ws-hero-cta-group button { width: 100% !important; }
-    .ws-quick-value-grid { grid-template-columns: 1fr !important; }
   }
 `;
 
@@ -525,7 +542,7 @@ export default function LandingPage({ onGoToLogin }) {
                 <span>تشطيب برو</span>
                 <span style={{ fontSize: 10, background: '#FFF7ED', color: '#EA580C', border: '1px solid #FED7AA', padding: '2px 7px', borderRadius: 9999, fontWeight: 900 }}>PRO</span>
               </div>
-              <div style={{ fontSize: 11, color: '#64748B', fontWeight: 700 }}>
+              <div className="ws-brand-subtitle" style={{ fontSize: 11, color: '#64748B', fontWeight: 700 }}>
                 منظومة شركات التشطيب والمقاولات
               </div>
             </div>
@@ -552,6 +569,7 @@ export default function LandingPage({ onGoToLogin }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
             <button
               onClick={() => onGoToLogin('login')}
+              className="ws-nav-login-btn"
               style={{
                 background: 'transparent',
                 border: 'none',
@@ -589,16 +607,6 @@ export default function LandingPage({ onGoToLogin }) {
             <button
               onClick={() => setMobileNavOpen(true)}
               aria-label="فتح القائمة الرئيسية"
-              style={{
-                display: 'none',
-                background: '#F8FAFC',
-                border: '1px solid #E2E8F0',
-                color: '#0F172A',
-                borderRadius: 9999,
-                padding: 8,
-                cursor: 'pointer',
-                transition: 'background 0.2s'
-              }}
               className="landing-mobile-menu-btn"
             >
               <Menu size={20} />
