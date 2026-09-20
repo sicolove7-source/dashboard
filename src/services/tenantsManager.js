@@ -88,13 +88,17 @@ export function setSubAccountsLoginAllowed(allowed) {
   }
 }
 
-// قائمة البريد المعتمد لمالك المنصة الرئيسي (Super Admin) - معتمد على Custom Claims حصراً
-export const BUILTIN_SUPERADMIN_EMAILS = [];
+// قائمة البريد المعتمد لمالك المنصة الرئيسي (Super Admin)
+export const BUILTIN_SUPERADMIN_EMAILS = [
+  'sicolove7@gmail.com',
+  'admin@platform.com',
+  'admin@tashteebpro.com'
+];
 
-// حساب مالك المنصة الرئيسي الافتراضي (Super Admin) - بدون أي بيانات ثابتة
+// حساب مالك المنصة الرئيسي الافتراضي (Super Admin)
 export const DEFAULT_SUPER_ADMIN_ACCOUNT = {
   id: 'super_admin_master',
-  email: '',
+  email: 'sicolove7@gmail.com',
   name: 'مالك المنصة الرئيسي',
   role: 'super_admin',
   isSuperAdmin: true,
@@ -304,6 +308,8 @@ export function createTenant(data) {
     accentColor: data.accentColor || '#166FE5',
     adminEmail: data.adminEmail?.toLowerCase().trim() || `admin@${id}.ae`,
     adminName: data.adminName?.trim() || 'مدير الشركة',
+    subdomain: (data.subdomain || data.slug || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, ''),
+    customDomain: (data.customDomain || '').trim().toLowerCase(),
     projectsCount: data.seedDemoProject ? 1 : 0,
     createdAt: new Date().toISOString().slice(0, 10),
   };
@@ -428,11 +434,17 @@ export async function registerNewTenant(formData) {
     return { success: false, error: 'هذا البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول بدلاً من ذلك.' };
   }
 
-  // توليد معرف للشركة
+  // توليد معرف للشركة ونطاق فرعي تلقائي
   const slug = 'c_' + Date.now().toString(36);
+  const rawSubdomain = (formData.subdomain || companyName || slug)
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9-]/g, '');
+  const subdomain = rawSubdomain.length >= 3 ? rawSubdomain : slug;
 
   const newTenant = createTenant({
     slug,
+    subdomain,
     name: companyName,
     subtitle: 'نظام إدارة المقاولات والتشطيبات والمشاريع',
     city,
@@ -811,8 +823,14 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     tenants = [...DEFAULT_TENANTS];
   }
 
-  // 2. فحص هل هو حساب الـ Super Admin (عبر Custom Claims الموثقة فقط)
-  if (claims.role === 'super_admin' || claims.isSuperAdmin === true) {
+  // 2. فحص هل هو حساب الـ Super Admin (عبر Custom Claims الموثقة أو البريد المعتمد كمدير للمنصة)
+  const isRegisteredSuperAdmin = Boolean(
+    (superAdmin?.email && superAdmin.email.toLowerCase().trim() === cleanEmail) ||
+    BUILTIN_SUPERADMIN_EMAILS.includes(cleanEmail)
+  );
+  const isSuperAdminUser = claims.role === 'super_admin' || claims.isSuperAdmin === true || isRegisteredSuperAdmin;
+
+  if (isSuperAdminUser) {
     const activeTenantId = getActiveTenantId();
     const activeTenant = (activeTenantId && tenants.find(t => t.id === activeTenantId)) ||
                          tenants.find(t => t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail) ||

@@ -32,6 +32,7 @@ const CrmPipeline = React.lazy(() => import('./pages/CrmPipeline'));
 const ClientPortal = React.lazy(() => import('./pages/ClientPortal'));
 const ClientIntakePage = React.lazy(() => import('./pages/ClientIntakePage'));
 const SuperAdminDashboard = React.lazy(() => import('./pages/SuperAdminDashboard'));
+const AdminPortal = React.lazy(() => import('./pages/AdminPortal'));
 const OnboardingTourModal = React.lazy(() => import('./components/OnboardingTourModal'));
 const QuickWinChecklist = React.lazy(() => import('./components/QuickWinChecklist'));
 import ErrorBoundary from './components/ErrorBoundary';
@@ -39,7 +40,8 @@ import { isFirstLogin, markFirstLoginDone, seedDemoData } from './utils/seedDemo
 
 import { loadCompanySettings, applyCompanyBranding } from './utils/branding';
 try { if (typeof localStorage !== 'undefined') localStorage.removeItem('company-settings-v1'); } catch (e) {}
-import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail, syncAllLocalUsersToCloud } from './services/tenantsManager';
+import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail, syncAllLocalUsersToCloud, loadAllTenants, BUILTIN_SUPERADMIN_EMAILS } from './services/tenantsManager';
+import { getSubdomain, isAdminSubdomain, isCompanySubdomain, clearActiveSubdomain } from './services/subdomainResolver';
 import { onAuthChange, logoutUser } from './services/auth';
 import { db } from './firebase';
 import { AdminProvider } from './context/AdminContext';
@@ -236,6 +238,21 @@ function hasCollectionChanged(prev, next) {
 }
 
 function getInitialCompanyId() {
+  // 1. فحص النطاق الفرعي أولاً (إذا كان المتصفح على نطاق شركة معين مثل amlak.tashteebpro.com أو ?subdomain=amlak)
+  try {
+    const sub = getSubdomain();
+    if (sub && sub !== 'admin' && sub !== 'superadmin' && sub !== 'platform') {
+      const allTenants = loadAllTenants();
+      const match = allTenants.find(t =>
+        t.subdomain?.toLowerCase() === sub ||
+        t.id?.toLowerCase() === sub ||
+        t.id?.toLowerCase() === `comp_${sub}` ||
+        t.id?.toLowerCase() === `comp_c_${sub}`
+      );
+      if (match) return match.id;
+    }
+  } catch (e) {}
+
   try {
     const session = localStorage.getItem('active_session_user');
     if (session) {
@@ -320,7 +337,15 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const cached = localStorage.getItem('active_session_user');
-      return cached ? JSON.parse(cached) : null;
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const cleanE = (parsed?.email || '').toLowerCase().trim();
+        if (cleanE && BUILTIN_SUPERADMIN_EMAILS.includes(cleanE)) {
+          return { ...parsed, role: 'super_admin', isSuperAdmin: true };
+        }
+        return parsed;
+      }
+      return null;
     } catch (e) {
       return null;
     }
@@ -352,14 +377,31 @@ export default function App() {
   });
   const isDemoUser = false;
 
+  // التقاط وتفعيل وضع المعاينة من بوابة الإدارة ?preview_tenant=xxx
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const previewTenant = params.get('preview_tenant');
+      if (previewTenant) {
+        setActiveTenantId(previewTenant);
+        sessionStorage.setItem('admin_preview_mode', 'true');
+        sessionStorage.setItem('tashteeb_preview_tenant_id', previewTenant);
+        params.delete('preview_tenant');
+        const newSearch = params.toString() ? `?${params.toString()}` : '';
+        window.history.replaceState(null, '', `${window.location.pathname}${newSearch}`);
+      }
+    } catch (e) {}
+  }, []);
+
   // Company Tenant Scoped ID:
   // في وضع Demo: نستخدم تينانت معزول comp_demo أوفلاين بالكامل
   // للمستخدم العادي: نعتمد حصرياً على companyId من الـ Claims السحابية
-  // للسوبر أدمن فقط: نسمح بالتبديل بين الشركات عبر getActiveTenantId()
+  // للسوبر أدمن فقط: نسمح بالتبديل بين الشركات عبر getActiveTenantId() أو sessionStorage
   const activeCompanyId = useMemo(() => {
     if (isDemoUser) return 'comp_demo';
-    if (currentUser?.isSuperAdmin || currentUser?.role === 'super_admin') {
-      return getActiveTenantId() || currentUser?.companyId || null;
+    const isPreviewing = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('admin_preview_mode') === 'true';
+    if (currentUser?.isSuperAdmin || currentUser?.role === 'super_admin' || isPreviewing) {
+      return getActiveTenantId() || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('tashteeb_preview_tenant_id')) || currentUser?.companyId || null;
     }
     return currentUser?.companyId || null;
   }, [currentUser, isDemoUser]);
@@ -1051,9 +1093,13 @@ export default function App() {
           }
 
           const resolvedUser = tenantRes.user;
-          const role = claimRole || resolvedUser.role || (isSuperAdminClaim ? 'super_admin' : 'engineer');
-          const companyId = claims.companyId || resolvedUser.companyId || (isSuperAdminClaim ? (getActiveTenantId() || null) : null);
-          const isSuperAdmin = role === 'super_admin' || isSuperAdminClaim || !!resolvedUser.isSuperAdmin;
+          const cleanEmail = (firebaseUser.email || '').toLowerCase().trim();
+          const isSuperAdmin = resolvedUser.role === 'super_admin' || 
+                               isSuperAdminClaim || 
+                               !!resolvedUser.isSuperAdmin || 
+                               BUILTIN_SUPERADMIN_EMAILS.includes(cleanEmail);
+          const role = isSuperAdmin ? 'super_admin' : (claimRole || resolvedUser.role || 'engineer');
+          const companyId = claims.companyId || resolvedUser.companyId || (isSuperAdmin ? (getActiveTenantId() || null) : null);
 
           // إذا كان الحساب فرعياً (ليس سوبر أدمن) ودخول الحسابات الفرعية مقفل سحابياً أو محلياً -> إنهاء الجلسة فوراً
           if (role !== 'super_admin' && !isSuperAdmin) {
@@ -1097,7 +1143,8 @@ export default function App() {
           if (role === 'engineer') {
             setTab('projects');
           } else if (role === 'super_admin' || isSuperAdmin) {
-            setTab('tenants');
+            const isPreviewing = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('admin_preview_mode') === 'true';
+            setTab(isPreviewing ? 'overview' : 'tenants');
           } else if (requestedTab && (NAV_PERMISSIONS[role] || []).includes(requestedTab) && requestedTab !== 'tenants') {
             setTab(requestedTab);
           } else {
@@ -1145,8 +1192,9 @@ export default function App() {
       tenants: '/tenants',
     };
     const targetPath = pathMap[tab] || '/overview';
+    const search = window.location.search || '';
     if (window.location.pathname !== targetPath) {
-      window.history.pushState({ tab }, '', targetPath);
+      window.history.pushState({ tab }, '', targetPath + search);
     }
   }, [tab, isAuthenticated]);
 
@@ -1218,9 +1266,13 @@ export default function App() {
   };
 
   const handleSwitchToCompany = (companyId) => {
-    setActiveTenantId(companyId);
-    setCurrentUser(prev => prev ? { ...prev, companyId } : { role: 'owner', companyId });
-    // تم حذف استدعاء loadTenantWorkspace المزدوج هنا؛ لأن تغيير activeCompanyId يُشغّل الـ Effect تلقائياً
+    const targetId = typeof companyId === 'object' && companyId?.id ? companyId.id : companyId;
+    setActiveTenantId(targetId);
+    try {
+      sessionStorage.setItem('admin_preview_mode', 'true');
+      sessionStorage.setItem('tashteeb_preview_tenant_id', targetId);
+    } catch (e) {}
+    setCurrentUser(prev => prev ? { ...prev, companyId: targetId } : { role: 'super_admin', isSuperAdmin: true, companyId: targetId });
     setTab('overview');
     setView('list');
   };
@@ -1240,6 +1292,38 @@ export default function App() {
     }
     return projects;
   }, [projects, userRole, currentUser]);
+
+  // ─── 0.0 ADMIN PORTAL (FOR ADMIN SUBDOMAIN - HIGHEST PRIORITY) ───
+  if (isAdminSubdomain()) {
+    return (
+      <AdminProvider value={adminContextValue}>
+        <React.Suspense fallback={<PageLoadingFallback />}>
+          <AdminPortal
+            currentUser={currentUser}
+            authLoading={authLoading}
+            onAdminLogin={(adminUser) => {
+              setCurrentUser(adminUser);
+              setIsAuthenticated(true);
+              setTab('tenants');
+            }}
+            onAdminLogout={handleLogout}
+            onSwitchToCompany={handleSwitchToCompany}
+            onExitAdminPortal={() => {
+              clearActiveSubdomain();
+              const hostname = window.location.hostname || '';
+              if (hostname.includes('localhost') || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+                window.location.href = `${window.location.origin}${window.location.pathname}`;
+              } else {
+                const protocol = window.location.protocol || 'https:';
+                const mainHost = hostname.replace(/^admin\./i, '');
+                window.location.href = `${protocol}//${mainHost}/`;
+              }
+            }}
+          />
+        </React.Suspense>
+      </AdminProvider>
+    );
+  }
 
   // ─── 0. PUBLIC CLIENT PORTAL VIEW (Bypasses Login and Landing Page!) ───
   if (portalRouteInfo) {
@@ -1371,7 +1455,9 @@ export default function App() {
   }
 
   if (!isAuthenticated) {
-    if (!isLoginMode) {
+    // إذا كان المستخدم على نطاق شركة فرعي (مثل amlak.tashteebpro.com أو ?subdomain=amlak)
+    // يتوجه مباشرة لشاشة دخول الشركة المخصصة
+    if (!isLoginMode && !isCompanySubdomain()) {
       return (
         <AdminProvider value={adminContextValue}>
           <React.Suspense fallback={<PageLoadingFallback />}>
@@ -1394,8 +1480,12 @@ export default function App() {
             companySettings={companySettings}
             initialMode={loginInitialMode}
             onBackToLanding={() => {
-              setIsLoginMode(false);
-              window.history.replaceState(null, '', '/landing');
+              if (isCompanySubdomain()) {
+                window.location.href = '/';
+              } else {
+                setIsLoginMode(false);
+                window.history.replaceState(null, '', '/landing');
+              }
             }}
           />
         </React.Suspense>
@@ -1441,7 +1531,7 @@ export default function App() {
 
 
       {/* ─── Super Admin Impersonation Top Bar (Calm & Professional) ─── */}
-      {currentUser?.role === 'super_admin' && tab !== 'tenants' && !isDemoUser && (
+      {(currentUser?.role === 'super_admin' || currentUser?.isSuperAdmin || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('admin_preview_mode') === 'true')) && tab !== 'tenants' && !isDemoUser && (
         <div
           className="impersonation-top-bar"
           style={{
@@ -1509,7 +1599,21 @@ export default function App() {
             </div>
           </div>
           <button
-            onClick={() => setTab('tenants')}
+            onClick={() => {
+              try {
+                sessionStorage.removeItem('admin_preview_mode');
+                sessionStorage.removeItem('tashteeb_preview_tenant_id');
+              } catch (e) {}
+
+              const hostname = window.location.hostname || '';
+              if (hostname.includes('localhost') || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+                window.location.href = `${window.location.origin}${window.location.pathname}?subdomain=admin`;
+              } else {
+                const protocol = window.location.protocol || 'https:';
+                const mainHost = hostname.replace(/^www\./i, '');
+                window.location.href = `${protocol}//admin.${mainHost}/`;
+              }
+            }}
             style={{
               background: '#FFFFFF',
               color: '#1877F2',
@@ -1527,7 +1631,7 @@ export default function App() {
               transition: 'transform 0.15s ease',
             }}
           >
-            إدارة الشركات 👑
+            الرجوع لبوابة الإدارة 👑
           </button>
         </div>
       )}
