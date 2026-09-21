@@ -3,12 +3,13 @@ import {
   Building2, Upload, Save, CheckCircle2, Image, Trash2,
   RefreshCw, AlertTriangle, Headphones, Hammer, Wallet, ClipboardList, X,
   Globe, ShieldCheck, Server, CheckCircle, Zap, Users, Phone, Mail,
-  FileText, MapPin, Hash, Check
+  FileText, MapPin, Hash, Check, Copy
 } from 'lucide-react';
 
 import { setGlobalCurrency } from '../utils/helpers';
 import { getActiveTenantId } from '../services/tenantsManager';
 import { syncSettingsToCloud, syncCompanyUsersToCloud, syncTenantUsersToCloud } from '../services/cloudSync';
+import { callCreateCompanyUser } from '../services/auth';
 import AutomationsCenter from './AutomationsCenter';
 import UserManagement, { loadUsers, saveUsers } from './UserManagement';
 import {
@@ -169,6 +170,11 @@ export default function CompanySettings({
   const [teamInputs, setTeamInputs] = useState({
     engineers: '', accountants: '', techOffice: '', customerService: ''
   });
+  const [teamEmailInputs, setTeamEmailInputs] = useState({
+    engineers: '', accountants: '', techOffice: '', customerService: ''
+  });
+  const [teamAdding, setTeamAdding] = useState({});
+  const [teamResetLinks, setTeamResetLinks] = useState({});
   const [teamErrors, setTeamErrors] = useState({});
   const [teamSuccess, setTeamSuccess] = useState({});
 
@@ -217,55 +223,92 @@ export default function CompanySettings({
   }
 
   // ── Team Management ──
-  function handleAddMember(groupKey) {
+  async function handleAddMember(groupKey) {
     const name = (teamInputs[groupKey] || '').trim();
-    if (!name) { setTeamErrors(e => ({ ...e, [groupKey]: 'الرجاء إدخال اسم' })); return; }
-    const current = team?.[groupKey] || [];
-    if (current.includes(name)) { setTeamErrors(e => ({ ...e, [groupKey]: 'هذا الاسم موجود مسبقاً' })); return; }
-    const nextTeam = { ...team, [groupKey]: [name, ...current] };
-    onTeamChange?.(nextTeam);
-    setTeamInputs(prev => ({ ...prev, [groupKey]: '' }));
-    setTeamErrors(e => ({ ...e, [groupKey]: '' }));
-    setTeamSuccess(s => ({ ...s, [groupKey]: `✓ تم إضافة ${name} بنجاح!` }));
-    setTimeout(() => setTeamSuccess(s => ({ ...s, [groupKey]: '' })), 2500);
+    const rawEmail = (teamEmailInputs[groupKey] || '').trim().toLowerCase();
 
-    // مزامنة تلقائية لإنشاء حساب مستخدم لهذا العضو إذا لم يكن موجوداً
+    if (!name) {
+      setTeamErrors(e => ({ ...e, [groupKey]: 'الرجاء إدخال اسم العضو' }));
+      return;
+    }
+
+    if (!rawEmail || !rawEmail.includes('@') || !rawEmail.includes('.')) {
+      setTeamErrors(e => ({ ...e, [groupKey]: 'الرجاء إدخال بريد إلكتروني حقيقي صالح لتسجيل الحساب (مثال: name@gmail.com)' }));
+      return;
+    }
+
+    const current = team?.[groupKey] || [];
+    if (current.includes(name)) {
+      setTeamErrors(e => ({ ...e, [groupKey]: 'هذا الاسم موجود مسبقاً في هذا القسم' }));
+      return;
+    }
+
+    const roleMap = {
+      engineers: 'engineer',
+      accountants: 'accountant',
+      techOffice: 'tech_office',
+      customerService: 'customer_service'
+    };
+    const userRole = roleMap[groupKey] || 'engineer';
+
+    setTeamAdding(prev => ({ ...prev, [groupKey]: true }));
+    setTeamErrors(e => ({ ...e, [groupKey]: '' }));
+
     try {
-      const roleMap = {
-        engineers: 'engineer',
-        accountants: 'accountant',
-        techOffice: 'tech_office',
-        customerService: 'customer_service'
-      };
-      const userRole = roleMap[groupKey];
-      if (userRole) {
-        const existingUsers = loadUsers(activeCompanyId);
-        const alreadyHasUser = existingUsers.some(u => 
-          (u.name && u.name.trim() === name) || (u.engineerName && u.engineerName.trim() === name)
-        );
-        if (!alreadyHasUser) {
-          const translit = name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || ('user' + Date.now().toString().slice(-4));
-          const domain = settings.customDomain || (settings.subdomain ? `${settings.subdomain}.com` : 'company.com');
-          const autoEmail = `${translit}_${Date.now().toString().slice(-3)}@${domain}`;
-          const newUser = {
-            id: 'u_' + Date.now(),
-            name: name,
-            email: autoEmail,
-            password: '123456',
-            role: userRole,
-            engineerName: userRole === 'engineer' ? name : null,
-            companyId: activeCompanyId,
-          };
-          const nextUsers = [newUser, ...existingUsers];
-          saveUsers(nextUsers, activeCompanyId);
-          try {
-            syncCompanyUsersToCloud(activeCompanyId, nextUsers).catch(() => {});
-            syncTenantUsersToCloud(activeCompanyId, nextUsers).catch(() => {});
-          } catch (e) {}
-        }
+      // إنشاء حساب موظف حقيقي عبر Admin SDK دون المساس بجلسة المالك الحالية
+      const res = await callCreateCompanyUser({
+        email: rawEmail,
+        name: name,
+        role: userRole,
+        companyId: activeCompanyId,
+      });
+
+      if (!res.success) {
+        setTeamErrors(e => ({ ...e, [groupKey]: res.error || 'فشل إنشاء حساب الموظف.' }));
+        setTeamAdding(prev => ({ ...prev, [groupKey]: false }));
+        return;
       }
-    } catch (e) {
-      console.warn("Auto create user from team member error:", e);
+
+      // إضافة العضو للقسم
+      const nextTeam = { ...team, [groupKey]: [name, ...current] };
+      onTeamChange?.(nextTeam);
+
+      // حفظ ومزامنة بيانات الموظف المعتمد
+      const existingUsers = loadUsers(activeCompanyId);
+      const newUser = {
+        id: res.uid || ('u_' + Date.now()),
+        uid: res.uid,
+        name: name,
+        email: rawEmail,
+        role: userRole,
+        engineerName: userRole === 'engineer' ? name : null,
+        companyId: activeCompanyId,
+        createdAt: new Date().toISOString(),
+      };
+      const nextUsers = [newUser, ...existingUsers.filter(u => u.email?.toLowerCase().trim() !== rawEmail)];
+      saveUsers(nextUsers, activeCompanyId);
+
+      try {
+        syncCompanyUsersToCloud(activeCompanyId, nextUsers).catch(() => {});
+        syncTenantUsersToCloud(activeCompanyId, nextUsers).catch(() => {});
+      } catch (e) {}
+
+      // تفريغ المدخلات وحفظ رابط تعيين كلمة المرور للمالك
+      setTeamInputs(prev => ({ ...prev, [groupKey]: '' }));
+      setTeamEmailInputs(prev => ({ ...prev, [groupKey]: '' }));
+      if (res.resetLink) {
+        setTeamResetLinks(prev => ({ ...prev, [groupKey]: { email: rawEmail, link: res.resetLink } }));
+      }
+      setTeamSuccess(s => ({
+        ...s,
+        [groupKey]: `✓ تم إنشاء حساب ${name} بنجاح! تم إرسال رابط تعيين كلمة المرور.`
+      }));
+      setTimeout(() => setTeamSuccess(s => ({ ...s, [groupKey]: '' })), 5000);
+    } catch (err) {
+      console.error('Add team member error:', err);
+      setTeamErrors(e => ({ ...e, [groupKey]: err?.message || 'حدث خطأ غير متوقع أثناء إنشاء حساب العضو.' }));
+    } finally {
+      setTeamAdding(prev => ({ ...prev, [groupKey]: false }));
     }
   }
 
@@ -943,28 +986,72 @@ export default function CompanySettings({
                       </span>
                     </div>
 
-                    {/* Add Input & Button */}
-                    <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8 }}>
-                      <input
-                        type="text"
-                        className="filter-input"
-                        style={{ flex: 1, fontSize: 12 }}
-                        placeholder={`إضافة عضو جديد...`}
-                        value={teamInputs[g.key] || ''}
-                        onChange={(e) => {
-                          setTeamInputs(prev => ({ ...prev, [g.key]: e.target.value }));
-                          setTeamErrors(prev => ({ ...prev, [g.key]: '' }));
-                        }}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddMember(g.key)}
-                      />
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        style={{ fontSize: 11, padding: '5px 12px', whiteSpace: 'nowrap' }}
-                        onClick={() => handleAddMember(g.key)}
-                      >
-                        + إضافة
-                      </button>
+                    {/* Add Inputs (Name + Real Email) & Button */}
+                    <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <input
+                          type="text"
+                          className="filter-input"
+                          style={{ flex: '1 1 110px', minWidth: 100, fontSize: 12 }}
+                          placeholder="الاسم (مثال: م. أحمد)"
+                          value={teamInputs[g.key] || ''}
+                          onChange={(e) => {
+                            setTeamInputs(prev => ({ ...prev, [g.key]: e.target.value }));
+                            setTeamErrors(prev => ({ ...prev, [g.key]: '' }));
+                          }}
+                          onKeyDown={(e) => e.key === 'Enter' && handleAddMember(g.key)}
+                          disabled={teamAdding[g.key]}
+                        />
+                        <input
+                          type="email"
+                          className="filter-input"
+                          style={{ flex: '1.3 1 140px', minWidth: 130, fontSize: 12, direction: 'ltr', textAlign: 'left' }}
+                          placeholder="البريد الحقيقي (user@domain.com)"
+                          value={teamEmailInputs[g.key] || ''}
+                          onChange={(e) => {
+                            setTeamEmailInputs(prev => ({ ...prev, [g.key]: e.target.value }));
+                            setTeamErrors(prev => ({ ...prev, [g.key]: '' }));
+                          }}
+                          onKeyDown={(e) => e.key === 'Enter' && handleAddMember(g.key)}
+                          disabled={teamAdding[g.key]}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          style={{ fontSize: 11, padding: '5px 12px', whiteSpace: 'nowrap', minHeight: 32 }}
+                          onClick={() => handleAddMember(g.key)}
+                          disabled={teamAdding[g.key]}
+                        >
+                          {teamAdding[g.key] ? 'جاري الإنشاء...' : '+ إضافة'}
+                        </button>
+                      </div>
+                      {teamResetLinks[g.key] && (
+                        <div style={{ padding: '8px 10px', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 8, fontSize: 11 }}>
+                          <div style={{ fontWeight: 700, color: '#2563EB', marginBottom: 4 }}>
+                            🔗 رابط تعيين كلمة المرور ({teamResetLinks[g.key].email}):
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input
+                              type="text"
+                              readOnly
+                              value={teamResetLinks[g.key].link}
+                              style={{ flex: 1, fontSize: 10.5, direction: 'ltr', background: '#fff', border: '1px solid #CBD5E1', padding: '3px 6px', borderRadius: 4 }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(teamResetLinks[g.key].link);
+                                setTeamSuccess(s => ({ ...s, [g.key]: '✓ تم نسخ رابط تعيين كلمة المرور بنجاح!' }));
+                                setTimeout(() => setTeamSuccess(s => ({ ...s, [g.key]: '' })), 3000);
+                              }}
+                              className="btn btn-secondary"
+                              style={{ padding: '3px 8px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
+                            >
+                              <Copy size={11} /> نسخ
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     {teamErrors[g.key] && (
                       <div style={{ padding: '6px 12px', background: 'rgba(239,68,68,0.07)', color: 'var(--danger)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
