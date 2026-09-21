@@ -27,6 +27,8 @@
     "country": "مصر",
     "currency": "ج.م",
     "id": "comp_c_mtyw7mqk",
+    "subdomain": "amlak",
+    "slug": "amlak",
     "adminEmail": "sicolove7@gmail.com",
     "users": [
       {
@@ -917,6 +919,21 @@
     "adminEmail": "",
     "adminName": "",
     "phone": "",
+    "users": [],
+    "authorizedEmails": []
+  },
+  {
+    "id": "comp_bbfdd",
+    "name": "شركة تشطيب برو",
+    "subdomain": "bbfdd",
+    "slug": "bbfdd",
+    "adminEmail": "admin@bbfdd.com",
+    "adminName": "مدير الشركة",
+    "phone": "01000000000",
+    "city": "القاهرة",
+    "country": "مصر",
+    "currency": "ج.م",
+    "status": "active",
     "users": [],
     "authorizedEmails": []
   }

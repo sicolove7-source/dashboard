@@ -17,8 +17,10 @@ import {
   registerNewTenant,
   loadAllTenants,
 } from "../services/tenantsManager";
-import { isCompanySubdomain, getSubdomain, getSubdomainUrl, getCrossSubdomainCookie } from "../services/subdomainResolver";
-import { auth } from "../firebase";
+import { isCompanySubdomain, getSubdomain, getSubdomainUrl, getCrossSubdomainCookie, setCrossSubdomainCookie } from "../services/subdomainResolver";
+import { auth, db } from "../firebase";
+import { doc, setDoc } from "firebase/firestore";
+import { syncTenantsListToCloud, syncCompanyDataToCloud } from "../services/cloudSync";
 
 export default function Login({
   onLogin,
@@ -381,6 +383,49 @@ export default function Login({
           console.warn('assignUserClaims non-blocking error:', e);
         }
       }
+
+      // حفظ بيانات الشركة في tenant_directory والكوكي المشترك ومزامنة السحابة
+      try {
+        const dirRef = doc(db, 'tenant_directory', cleanSubdomain);
+        await setDoc(dirRef, {
+          companyId: res.tenant.id,
+          name: res.tenant.name,
+          logo: res.tenant?.logo || null,
+          subdomain: cleanSubdomain,
+          adminEmail: cleanEmail,
+          createdAt: new Date().toISOString(),
+        }, { merge: true });
+        console.log('[handleRegister] ✅ tenant_directory written with auth:', cleanSubdomain);
+      } catch (dirErr) {
+        console.warn('[handleRegister] ⚠️ Post-auth tenant_directory write:', dirErr);
+      }
+
+      try {
+        setCrossSubdomainCookie('tashteeb_last_registered_tenant', res.tenant);
+        setCrossSubdomainCookie('tashteeb_session_auth', {
+          email: cleanEmail,
+          companyId: res.tenant.id,
+          role: 'owner',
+          subdomain: cleanSubdomain,
+          name: adminName?.trim() || 'مدير الشركة',
+        });
+      } catch (e) {}
+
+      try {
+        const all = loadAllTenants();
+        syncTenantsListToCloud(all).catch(() => {});
+        syncCompanyDataToCloud(res.tenant.id, {
+          adminEmail: cleanEmail,
+          adminName: adminName?.trim() || 'مدير الشركة',
+          settings: {
+            companyName: res.tenant.name,
+            subdomain: cleanSubdomain,
+            phone: cleanPhone,
+            city: res.tenant.city || 'القاهرة',
+            currency: 'ج.م',
+          }
+        }).catch(() => {});
+      } catch (e) {}
 
       // 4. توجيه فوري لرابط الشركة المخصص مع حفظ الجلسة مسبقاً للانتقال السلس
       // في بيئة الإنتاج: subdomain.tashteebpro.com | في التطوير: localhost/?subdomain=xxx

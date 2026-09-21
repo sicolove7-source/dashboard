@@ -41,6 +41,7 @@ import { getActiveTenantId, setActiveTenantId, ACTIVE_TENANT_ID_KEY, getTenantDa
 import { getSubdomain, isAdminSubdomain, isCompanySubdomain, clearActiveSubdomain, getSubdomainUrl, getCrossSubdomainCookie } from './services/subdomainResolver';
 import { onAuthChange, logoutUser } from './services/auth';
 import { db } from './firebase';
+import { doc, setDoc } from 'firebase/firestore';
 import { AdminProvider } from './context/AdminContext';
 import {
   syncProjectsToCloud,
@@ -61,6 +62,7 @@ import {
 } from './services/cloudSync';
 import { parseClientPortalFromUrl, resolveClientPortalProject, submitClientPortalApproval } from './services/portalResolver';
 import { parseIntakeRouteFromUrl } from './services/intakeResolver';
+import { AREAS } from './utils/constants';
 
 function PageLoadingFallback() {
   return (
@@ -298,56 +300,159 @@ export default function App() {
 
     if (isCompanySubdomain() && sub) {
       setSubdomainResolving(true);
-      fetchTenantBySubdomain(sub)
-        .then(async (result) => {
-          if (!isMounted) return;
-          if (result && result.id) {
-            setActiveTenantId(result.id);
 
-            // تسجيل وتحديث بيانات الشركة في الذاكرة المحلية لضمان توافق باقي المكونات
-            try {
-              const all = loadAllTenants();
-              if (!all.some(t => t.id === result.id)) {
-                saveAllTenants([result, ...all]);
+      const resolveSubdomainTenant = async () => {
+        let result = null;
+
+        // 1. محاولة الجلب السحابي من Firestore (tenant_directory ثم platform_metadata/tenants)
+        try {
+          result = await fetchTenantBySubdomain(sub);
+        } catch (e) {
+          console.warn('[App] fetchTenantBySubdomain error:', e);
+        }
+
+        // 2. فحص معلمات الرابط (URL Query Params) عند التحويل الفوري بعد التسجيل
+        if (!result || !result.id) {
+          try {
+            const params = new URLSearchParams(window.location.search);
+            const urlTenantId = params.get('tenant_id');
+            const urlCompName = params.get('company_name');
+            if (urlTenantId) {
+              result = {
+                id: urlTenantId,
+                companyId: urlTenantId,
+                name: urlCompName || sub,
+                companyName: urlCompName || sub,
+                subdomain: sub,
+                slug: sub,
+              };
+              console.log('[App] ✅ Resolved tenant from URL params:', result);
+            }
+          } catch (e) {}
+        }
+
+        // 3. فحص الكوكي المشترك للشركة المسجلة حديثاً (tashteeb_last_registered_tenant)
+        if (!result || !result.id) {
+          try {
+            const lastReg = getCrossSubdomainCookie('tashteeb_last_registered_tenant');
+            if (lastReg && (
+              (lastReg.subdomain || '').toLowerCase() === sub ||
+              (lastReg.slug || '').toLowerCase() === sub ||
+              (lastReg.id || '').toLowerCase() === sub
+            )) {
+              result = lastReg;
+              console.log('[App] ✅ Resolved tenant from cross-subdomain cookie:', result);
+            }
+          } catch (e) {}
+        }
+
+        // 4. فحص كاش الشركات المشترك في الكوكيز (tashteeb_tenants_cache)
+        if (!result || !result.id) {
+          try {
+            const cookieList = getCrossSubdomainCookie('tashteeb_tenants_cache');
+            if (Array.isArray(cookieList)) {
+              const match = cookieList.find(t =>
+                (t.subdomain || '').toLowerCase() === sub ||
+                (t.slug || '').toLowerCase() === sub ||
+                (t.id || '').toLowerCase() === sub
+              );
+              if (match) {
+                result = match;
+                console.log('[App] ✅ Resolved tenant from cookie cache:', result);
               }
-            } catch (e) {}
+            }
+          } catch (e) {}
+        }
 
-            // بناء الإعدادات والهوية البصرية الحديثة من السحابة
-            let resolvedSettings = {
-              ...DEFAULT_COMPANY_SETTINGS,
-              companyName: result.name || result.companyName || DEFAULT_COMPANY_SETTINGS.companyName,
-              companySubtitle: result.subtitle || result.companySubtitle || DEFAULT_COMPANY_SETTINGS.companySubtitle,
-              companyLogo: result.logo || result.companyLogo || null,
-              primaryColor: result.primaryColor || DEFAULT_COMPANY_SETTINGS.primaryColor,
-              accentColor: result.accentColor || DEFAULT_COMPANY_SETTINGS.accentColor,
-              currency: result.currency || DEFAULT_COMPANY_SETTINGS.currency,
-              city: result.city || '',
-              country: result.country || '',
-              phone: result.phone || '',
-              subdomain: result.subdomain || result.slug || sub,
-            };
+        // 5. فحص قائمة الشركات المحلية والتلقائية (loadAllTenants)
+        if (!result || !result.id) {
+          try {
+            const all = loadAllTenants();
+            const match = all.find(t =>
+              (t.subdomain || '').toLowerCase() === sub ||
+              (t.slug || '').toLowerCase() === sub ||
+              (t.id || '').toLowerCase() === sub ||
+              (t.id || '').toLowerCase() === `comp_${sub}` ||
+              (t.id || '').toLowerCase() === `comp_c_${sub}`
+            );
+            if (match) {
+              result = match;
+              console.log('[App] ✅ Resolved tenant from local/default tenants:', result);
+            }
+          } catch (e) {}
+        }
 
-            // فحص إضافي لوثيقة الشركة التفصيلية من السحابة إذا كانت متوفرة
-            try {
-              const companyDoc = await fetchCompanyDataFromCloud(result.id);
-              if (companyDoc?.settings) {
-                resolvedSettings = { ...resolvedSettings, ...companyDoc.settings };
-              }
-            } catch (e) {}
+        // 6. إعادة محاولة ثانية سحابياً بعد ثانية ونصف في حال كان انتشار السحابة بطيئاً
+        if (!result || !result.id) {
+          try {
+            await new Promise(r => setTimeout(r, 1500));
+            if (!isMounted) return;
+            result = await fetchTenantBySubdomain(sub);
+          } catch (e) {}
+        }
 
-            // تخزين الإعدادات المحدثة محلياً لسرعة الوصول اللاحق
-            try {
-              localStorage.setItem(`tenant_${result.id}_settings`, JSON.stringify(resolvedSettings));
-            } catch (e) {}
+        if (!isMounted) return;
 
-            setCompanySettings(resolvedSettings);
-            applyCompanyBranding(resolvedSettings);
-            setSubdomainCompanyName(result.name || result.companyName || null);
-            setSubdomainNotFound(false);
-          } else {
-            setSubdomainNotFound(true);
-          }
-        })
+        if (result && result.id) {
+          setActiveTenantId(result.id);
+
+          // تسجيل وتحديث بيانات الشركة في الذاكرة المحلية لضمان توافق باقي المكونات
+          try {
+            const all = loadAllTenants();
+            if (!all.some(t => t.id === result.id)) {
+              saveAllTenants([result, ...all]);
+            }
+          } catch (e) {}
+
+          // بناء الإعدادات والهوية البصرية الحديثة من السحابة
+          let resolvedSettings = {
+            ...DEFAULT_COMPANY_SETTINGS,
+            companyName: result.name || result.companyName || DEFAULT_COMPANY_SETTINGS.companyName,
+            companySubtitle: result.subtitle || result.companySubtitle || DEFAULT_COMPANY_SETTINGS.companySubtitle,
+            companyLogo: result.logo || result.companyLogo || null,
+            primaryColor: result.primaryColor || DEFAULT_COMPANY_SETTINGS.primaryColor,
+            accentColor: result.accentColor || DEFAULT_COMPANY_SETTINGS.accentColor,
+            currency: result.currency || DEFAULT_COMPANY_SETTINGS.currency,
+            city: result.city || '',
+            country: result.country || '',
+            phone: result.phone || '',
+            subdomain: result.subdomain || result.slug || sub,
+          };
+
+          // فحص إضافي لوثيقة الشركة التفصيلية من السحابة إذا كانت متوفرة
+          try {
+            const companyDoc = await fetchCompanyDataFromCloud(result.id);
+            if (companyDoc?.settings) {
+              resolvedSettings = { ...resolvedSettings, ...companyDoc.settings };
+            }
+          } catch (e) {}
+
+          // تخزين الإعدادات المحدثة محلياً لسرعة الوصول اللاحق
+          try {
+            localStorage.setItem(`tenant_${result.id}_settings`, JSON.stringify(resolvedSettings));
+          } catch (e) {}
+
+          setCompanySettings(resolvedSettings);
+          applyCompanyBranding(resolvedSettings);
+          setSubdomainCompanyName(result.name || result.companyName || null);
+          setSubdomainNotFound(false);
+
+          // مزامنة علاجية تلقائية لـ tenant_directory في السحابة إن أمكن
+          try {
+            setDoc(doc(db, 'tenant_directory', sub), {
+              companyId: result.id,
+              name: result.name || result.companyName || sub,
+              logo: result.logo || null,
+              subdomain: sub,
+              updatedAt: new Date().toISOString(),
+            }, { merge: true }).catch(() => {});
+          } catch (e) {}
+        } else {
+          setSubdomainNotFound(true);
+        }
+      };
+
+      resolveSubdomainTenant()
         .catch((err) => {
           console.warn("Subdomain resolution error:", err);
           if (isMounted) setSubdomainNotFound(true);
