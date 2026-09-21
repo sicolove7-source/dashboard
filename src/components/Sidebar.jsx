@@ -21,6 +21,7 @@ import {
   Hammer,
   FileText,
   X,
+  Globe,
 } from 'lucide-react';
 import { NAV } from '../utils/constants';
 import { canSeeNav, ROLES, can } from '../utils/permissions';
@@ -165,7 +166,7 @@ function importData(file, onDone) {
 export default function Sidebar({ 
   tab, setTab, setView, view, projectCount, 
   isDarkMode, setIsDarkMode, userRole, currentUser, 
-  companySettings, sidebarOpen, setSidebarOpen, onOpenTour, onLogout 
+  companySettings, companySubdomain, sidebarOpen, setSidebarOpen, onOpenTour, onLogout 
 }) {
   const fileRef = useRef(null);
   const [importMsg, setImportMsg] = useState(null); // null | 'ok' | 'err'
@@ -322,6 +323,39 @@ export default function Sidebar({
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="title" style={{ fontSize: 14, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{companyName}</div>
           <div className="sub" style={{ fontSize: 11.5, marginTop: 2 }}>{isPlatformHubTab ? 'لوحة المالك والاشتراكات' : (isSuperAdmin ? 'إشراف المالك • ' + (companySettings?.companySubtitle || `المشاريع: ${projectCount}`) : `المشاريع: ${projectCount}`)}</div>
+          
+          {/* رابط النطاق الفرعي الخاص بالشركة */}
+          {!isPlatformHubTab && !isSuperAdmin && companySubdomain && (
+            <div style={{ marginTop: 5 }}>
+              <a
+                href={`https://${companySubdomain}.tashteebpro.com`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="رابط مساحة عمل شركتك المباشر — اضغط لفتحه"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '2px 8px',
+                  background: isDarkMode ? 'rgba(24,119,242,0.18)' : '#EFF6FF',
+                  border: '1px solid rgba(24,119,242,0.25)',
+                  borderRadius: 6,
+                  color: '#1877F2',
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                  direction: 'ltr',
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Globe size={11} />
+                <span>{companySubdomain}.tashteebpro.com</span>
+              </a>
+            </div>
+          )}
         </div>
       </div>
 

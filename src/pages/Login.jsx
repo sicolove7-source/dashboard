@@ -36,11 +36,20 @@ export default function Login({
   const [mode, setMode] = useState(initialMode);
 
   // Common State
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => {
+    try {
+      const p = new URLSearchParams(window.location.search).get('email');
+      return p ? p.trim().toLowerCase() : "";
+    } catch (e) {
+      return "";
+    }
+  });
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(null);
+  const [registeredTenantInfo, setRegisteredTenantInfo] = useState(null);
+  const [copiedSubdomain, setCopiedSubdomain] = useState(false);
 
   // Register Fields (البيانات الإلزامية لتأسيس مساحة عمل الشركة)
   const [companyTitle, setCompanyTitle] = useState("");
@@ -252,17 +261,21 @@ export default function Login({
 
       try {
         confetti({
-          particleCount: 80,
-          spread: 70,
+          particleCount: 90,
+          spread: 80,
           origin: { y: 0.6 }
         });
       } catch (e) {}
 
-      // 4. الانتقال المباشر لبيئة العمل وتطهير علامة الأمان
-      setTimeout(() => {
-        try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
-        onLogin(res.user, res.tenant, false);
-      }, 400);
+      // 4. عرض شاشة التهنئة برابط النطاق الفرعي وإتاحة الانتقال الفوري أو المتابعة المباشرة
+      setRegisteredTenantInfo({
+        companyName: cleanCompany,
+        subdomain: cleanSubdomain,
+        email: cleanEmail,
+        user: res.user,
+        tenant: res.tenant
+      });
+      setLoading(false);
 
     } catch (err) {
       try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
@@ -393,6 +406,129 @@ export default function Login({
             backdropFilter: "blur(12px)",
           }}
         >
+          {registeredTenantInfo ? (
+            /* ══════════════ بطاقة التهنئة وتأكيد رابط النطاق الفرعي ══════════════ */
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, textAlign: "center" }}>
+              <div style={{
+                width: 60, height: 60, borderRadius: "50%",
+                background: "rgba(16,185,129,0.12)", color: "#10B981",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                margin: "0 auto", fontSize: 28
+              }}>
+                🎉
+              </div>
+
+              <div>
+                <h2 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 800, color: "var(--ink)" }}>
+                  مبروك! تم تأسيس مساحة عمل شركتك بنجاح
+                </h2>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink)" }}>
+                  {registeredTenantInfo.companyName}
+                </div>
+              </div>
+
+              {/* بطاقة الرابط المخصص */}
+              <div style={{
+                background: "rgba(24,119,242,0.06)",
+                border: "1.5px dashed rgba(24,119,242,0.35)",
+                borderRadius: 14,
+                padding: "16px 14px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                textAlign: "right"
+              }}>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: "#1877F2", display: "flex", alignItems: "center", gap: 6 }}>
+                  <Globe size={15} />
+                  <span>رابط الدخول المخصص الحصري لشركتك وفريقك:</span>
+                </div>
+
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  background: "var(--card, #fff)",
+                  padding: "9px 12px",
+                  borderRadius: 9,
+                  border: "1px solid var(--border)",
+                  direction: "ltr",
+                  gap: 8,
+                }}>
+                  <span style={{ fontWeight: 800, fontSize: 13.5, color: "#0F172A", wordBreak: "break-all" }}>
+                    https://{registeredTenantInfo.subdomain}.tashteebpro.com
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`https://${registeredTenantInfo.subdomain}.tashteebpro.com`);
+                      setCopiedSubdomain(true);
+                      setTimeout(() => setCopiedSubdomain(false), 2500);
+                    }}
+                    style={{
+                      background: copiedSubdomain ? "#10B981" : "rgba(24,119,242,0.12)",
+                      color: copiedSubdomain ? "#fff" : "#1877F2",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "5px 10px",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      fontFamily: "'Cairo', sans-serif",
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {copiedSubdomain ? "✓ تم النسخ" : "نسخ الرابط"}
+                  </button>
+                </div>
+
+                <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.7 }}>
+                  📌 <strong>كيف تدخل أنت ومهندسو موقعك مستقبلاً؟</strong><br />
+                  • <strong>الدخول المباشر:</strong> احفظ هذا الرابط في المتصفح أو أرسله لمهندسي شركتك للدخول المباشر لمساحة عملكم دون المرور بالموقع التعريفي.<br />
+                  • <strong>أو عبر المنصة:</strong> يمكنك أيضاً الدخول دائماً من <strong>tashteebpro.com</strong> ببريدك الإلكتروني وكلمة المرور.
+                </div>
+              </div>
+
+              {/* أزرار المتابعة */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
+                <a
+                  href={`https://${registeredTenantInfo.subdomain}.tashteebpro.com/?email=${encodeURIComponent(registeredTenantInfo.email)}`}
+                  style={{
+                    width: "100%", padding: "12px",
+                    background: "linear-gradient(135deg, #1877F2, #166FE5)",
+                    color: "#fff", border: "none", borderRadius: 12,
+                    fontFamily: "'Cairo', sans-serif", fontSize: 14.5, fontWeight: 800,
+                    textDecoration: "none",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    boxShadow: "0 4px 16px rgba(24,119,242,0.35)",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <Globe size={16} />
+                  <span>الانتقال إلى رابط شركتي المخصص الآن 🚀</span>
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
+                    onLogin(registeredTenantInfo.user, registeredTenantInfo.tenant, false);
+                  }}
+                  style={{
+                    width: "100%", padding: "10px",
+                    background: "var(--sidebar-hover-bg, #F8FAFC)",
+                    color: "var(--ink)", border: "1px solid var(--border)", borderRadius: 10,
+                    fontFamily: "'Cairo', sans-serif", fontSize: 13, fontWeight: 700,
+                    cursor: "pointer",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  المتابعة والبدء في إضافة المشاريع هنا →
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
           {/* ─── التبديل بين تسجيل الدخول وإنشاء حساب ─── */}
           <div
             style={{
@@ -886,6 +1022,8 @@ export default function Login({
               </button>
             </form>
           )}
+          </>
+        )}
 
           {onBackToLanding && (
             <div style={{ textAlign: "center", marginTop: 14 }}>

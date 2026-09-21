@@ -145,6 +145,7 @@ export default function CompanySettings({
   onTeamChange,
   currentUser,
   activeCompanyId,
+  companySubdomain,
   projects = [],
   leads = [],
   userRole = 'owner',
@@ -419,6 +420,75 @@ export default function CompanySettings({
       {/* ─── TAB 1: Branding & Company Info ─── */}
       {activeTab === 'branding' && (
         <div className="tab-fade cs-branding-section" style={{ display: 'flex', flexDirection: 'column', gap: 20, width: '100%', boxSizing: 'border-box' }}>
+          {/* بطاقة رابط مساحة العمل الحصري للشركة */}
+          {companySubdomain && (
+            <div className="panel" style={{
+              background: 'rgba(24,119,242,0.04)',
+              border: '1.5px solid rgba(24,119,242,0.25)',
+              padding: '16px 20px',
+              borderRadius: 12,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 16,
+              flexWrap: 'wrap',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                <div style={{
+                  width: 42, height: 42, borderRadius: 10,
+                  background: '#EFF6FF', color: '#1877F2',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <Globe size={20} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--ink)' }}>
+                    رابط مساحة عمل شركتك المخصص (Workspace Subdomain)
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                    هذا الرابط المباشر يتيح لك ولمهندسي موقعك وموظفيك تسجيل الدخول مباشرة لمساحة عملكم دون المرور بالموقع العام.
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <code style={{
+                  direction: 'ltr',
+                  padding: '6px 12px',
+                  background: 'var(--card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: '#1877F2',
+                }}>
+                  https://{companySubdomain}.tashteebpro.com
+                </code>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`https://${companySubdomain}.tashteebpro.com`);
+                    alert('تم نسخ رابط مساحة عمل شركتك بنجاح! 📋');
+                  }}
+                  className="btn btn-secondary"
+                  style={{ fontSize: 12, padding: '7px 14px' }}
+                >
+                  نسخ الرابط 📋
+                </button>
+                <a
+                  href={`https://${companySubdomain}.tashteebpro.com`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-primary"
+                  style={{ fontSize: 12, padding: '7px 14px', textDecoration: 'none' }}
+                >
+                  فتح الرابط 🔗
+                </a>
+              </div>
+            </div>
+          )}
+
           {/* Section 1: Logo & Company Name */}
           <div className="cs-logo-info-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 20 }}>
 

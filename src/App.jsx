@@ -40,7 +40,7 @@ import { isFirstLogin, markFirstLoginDone, seedDemoData } from './utils/seedDemo
 
 import { loadCompanySettings, applyCompanyBranding } from './utils/branding';
 try { if (typeof localStorage !== 'undefined') localStorage.removeItem('company-settings-v1'); } catch (e) {}
-import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail, syncAllLocalUsersToCloud, loadAllTenants, BUILTIN_SUPERADMIN_EMAILS } from './services/tenantsManager';
+import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail, syncAllLocalUsersToCloud, loadAllTenants, loadAllTenantsAsync, BUILTIN_SUPERADMIN_EMAILS } from './services/tenantsManager';
 import { getSubdomain, isAdminSubdomain, isCompanySubdomain, clearActiveSubdomain } from './services/subdomainResolver';
 import { onAuthChange, logoutUser } from './services/auth';
 import { db } from './firebase';
@@ -405,6 +405,41 @@ export default function App() {
     }
     return currentUser?.companyId || null;
   }, [currentUser, isDemoUser]);
+
+  // استخراج النطاق الفرعي الخاص بالشركة الحالية لعرضه وتسهيل نسخه
+  const companySubdomain = useMemo(() => {
+    try {
+      const all = loadAllTenants();
+      const match = all.find(t => t.id === activeCompanyId);
+      return match?.subdomain || match?.slug || null;
+    } catch (e) {
+      return null;
+    }
+  }, [activeCompanyId]);
+
+  // تحميل بيانات الشركة سحابياً فوراً عند الدخول من نطاق فرعي خاص بالشركة (مثل mmm.tashteebpro.com)
+  useEffect(() => {
+    const sub = getSubdomain();
+    if (sub && sub !== 'admin' && sub !== 'superadmin' && sub !== 'platform') {
+      loadAllTenantsAsync().then(allTenants => {
+        const match = allTenants.find(t =>
+          t.subdomain?.toLowerCase() === sub ||
+          t.slug?.toLowerCase() === sub ||
+          t.id?.toLowerCase() === sub ||
+          t.id?.toLowerCase() === `comp_${sub}` ||
+          t.id?.toLowerCase() === `comp_c_${sub}`
+        );
+        if (match) {
+          setActiveTenantId(match.id);
+          const loadedSettings = loadCompanySettings(match.id);
+          if (loadedSettings) {
+            setCompanySettings(loadedSettings);
+            applyCompanyBranding(loadedSettings);
+          }
+        }
+      }).catch(() => {});
+    }
+  }, []);
 
   // Mobile sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1675,6 +1710,7 @@ export default function App() {
         userRole={userRole}
         currentUser={currentUser}
         companySettings={companySettings}
+        companySubdomain={companySubdomain}
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
         onOpenTour={() => setShowTour(true)}
@@ -1818,6 +1854,7 @@ export default function App() {
               {(tab === "settings" || tab === "automations") && can(currentUser || userRole, 'company_settings_view') && (
                 <CompanySettings
                   companySettings={companySettings}
+                  companySubdomain={companySubdomain}
                   onCompanySettingsChange={(updated) => {
                     setCompanySettings(updated);
                     applyCompanyBranding(updated);
