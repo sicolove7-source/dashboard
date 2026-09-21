@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   Building2, Lock, Mail, AlertTriangle, ShieldCheck, User, Phone,
-  Sparkles, ArrowRight, CheckCircle2, KeyRound, Eye, EyeOff, X
+  Sparkles, ArrowRight, CheckCircle2, KeyRound, Eye, EyeOff, X, Globe
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import {
@@ -42,10 +42,23 @@ export default function Login({
   const [loading, setLoading] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(null);
 
-  // Register Fields (رقم الهاتف متاح كبيانات تفاصيل للتواصل فقط)
+  // Register Fields (البيانات الإلزامية لتأسيس مساحة عمل الشركة)
   const [companyTitle, setCompanyTitle] = useState("");
+  const [subdomain, setSubdomain] = useState("");
+  const [subdomainTouched, setSubdomainTouched] = useState(false);
   const [adminName, setAdminName] = useState("");
   const [phone, setPhone] = useState("");
+
+  // اقتراح تلقائي لامتداد النطاق من اسم الشركة إذا كان به حروف إنجليزية
+  const handleCompanyTitleChange = (val) => {
+    setCompanyTitle(val);
+    if (!subdomainTouched) {
+      const latinOnly = val.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (latinOnly.length >= 3) {
+        setSubdomain(latinOnly.slice(0, 25));
+      }
+    }
+  };
 
   // حالة نافذة استعادة كلمة المرور عبر البريد الإلكتروني الرسمي
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -147,8 +160,42 @@ export default function Login({
     setLoading(true);
 
     const cleanEmail = (email || '').toLowerCase().trim();
-    if (!cleanEmail || !companyTitle?.trim()) {
-      setError('يرجى ملء جميع الحقول المطلوبة (اسم الشركة والبريد الإلكتروني).');
+    const cleanCompany = (companyTitle || '').trim();
+    const cleanPhone = (phone || '').trim();
+    const cleanSubdomain = (subdomain || '').toLowerCase().trim().replace(/[^a-z0-9-]/g, '');
+
+    if (!cleanCompany) {
+      setError('يرجى إدخال اسم شركة المقاولات / مكتب التشطيب.');
+      setLoading(false);
+      return;
+    }
+
+    if (!cleanSubdomain || cleanSubdomain.length < 3) {
+      setError('يرجى تحديد امتداد النطاق الفرعي للشركة (3 أحرف إنجليزية على الأقل، مثال: amlak).');
+      setLoading(false);
+      return;
+    }
+
+    if (cleanSubdomain.startsWith('-') || cleanSubdomain.endsWith('-')) {
+      setError('امتداد النطاق الفرعي لا يمكن أن يبدأ أو ينتهي بشرطة (-).');
+      setLoading(false);
+      return;
+    }
+
+    if (!cleanPhone || cleanPhone.length < 8) {
+      setError('يرجى إدخال رقم الهاتف والواتساب للتواصل (8 أرقام على الأقل).');
+      setLoading(false);
+      return;
+    }
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setError('يرجى إدخال بريد إلكتروني صالح للدخول (مثال: name@company.com).');
+      setLoading(false);
+      return;
+    }
+
+    if (!password || password.length < 6) {
+      setError('يرجى إدخال كلمة مرور قوية مكونة من 6 أحرف أو أرقام على الأقل.');
       setLoading(false);
       return;
     }
@@ -159,9 +206,10 @@ export default function Login({
     try {
       // 1. تسجيل بيانات الشركة والمستخدم أولاً محلياً وسحابياً لتكون جاهزة فور إطلاق حدث المصادقة
       const res = await registerNewTenant({
-        companyName: companyTitle,
-        adminName: adminName,
-        phone: phone,
+        companyName: cleanCompany,
+        subdomain: cleanSubdomain,
+        adminName: adminName?.trim() || 'مدير الشركة',
+        phone: cleanPhone,
         email: cleanEmail,
         password: password,
         currency: 'ج.م',
@@ -604,7 +652,7 @@ export default function Login({
                   <input
                     type="text"
                     value={companyTitle}
-                    onChange={(e) => setCompanyTitle(e.target.value)}
+                    onChange={(e) => handleCompanyTitleChange(e.target.value)}
                     required
                     placeholder="مثال: شركة النيل للتشطيبات والديكور"
                     style={{
@@ -615,6 +663,102 @@ export default function Login({
                       outline: "none", boxSizing: "border-box",
                     }}
                   />
+                </div>
+              </div>
+
+              {/* امتداد النطاق الفرعي للشركة (Company Subdomain) */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <label style={{ margin: 0, color: "var(--muted)", fontSize: 13, fontWeight: 700 }}>
+                    امتداد النطاق ورابط مساحة العمل <span style={{ color: "#EF4444" }}>*</span>
+                  </label>
+                  <span style={{ fontSize: 11, color: "var(--muted)", direction: "ltr" }}>
+                    حروف إنجليزية وأرقام
+                  </span>
+                </div>
+                <div style={{
+                  display: "flex",
+                  alignItems: "stretch",
+                  border: "1.5px solid var(--border)",
+                  borderRadius: 10,
+                  overflow: "hidden",
+                  background: "var(--card, #fff)",
+                  direction: "ltr",
+                  transition: "border-color 0.2s",
+                }}>
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "0 12px",
+                    background: "var(--sidebar-hover-bg, #F8FAFC)",
+                    color: "var(--muted)",
+                    borderRight: "1px solid var(--border)",
+                  }}>
+                    <Globe size={16} />
+                  </div>
+                  <input
+                    type="text"
+                    value={subdomain}
+                    onChange={(e) => {
+                      setSubdomainTouched(true);
+                      setSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''));
+                    }}
+                    required
+                    placeholder="company-name"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    style={{
+                      flex: 1,
+                      padding: "10px 12px",
+                      border: "none",
+                      background: "transparent",
+                      color: "var(--ink)",
+                      fontFamily: "'Cairo', monospace, sans-serif",
+                      fontSize: 14,
+                      outline: "none",
+                      direction: "ltr",
+                      textAlign: "left",
+                    }}
+                  />
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "0 12px",
+                    background: "var(--sidebar-hover-bg, #F1F5F9)",
+                    color: "var(--muted)",
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    borderLeft: "1px solid var(--border)",
+                    userSelect: "none",
+                  }}>
+                    .tashteebpro.com
+                  </div>
+                </div>
+
+                {/* المعاينة الحية للرابط */}
+                <div style={{
+                  marginTop: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "5px 10px",
+                  borderRadius: 7,
+                  background: subdomain.trim().length >= 3 ? "rgba(16,185,129,0.06)" : "var(--sidebar-hover-bg, #F8FAFC)",
+                  border: `1px dashed ${subdomain.trim().length >= 3 ? "rgba(16,185,129,0.35)" : "var(--border)"}`,
+                  fontSize: 11.5,
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, direction: "ltr" }}>
+                    <span>🔗</span>
+                    <span style={{
+                      fontWeight: 700,
+                      color: subdomain.trim().length >= 3 ? "#059669" : "var(--muted)",
+                      letterSpacing: "0.2px"
+                    }}>
+                      https://{subdomain.trim() || 'your-company'}.tashteebpro.com
+                    </span>
+                  </div>
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>رابط الدخول المباشر لمكتبكم</span>
                 </div>
               </div>
 
@@ -645,7 +789,7 @@ export default function Login({
 
                 <div>
                   <label style={{ display: "block", marginBottom: 6, color: "var(--muted)", fontSize: 12.5, fontWeight: 700 }}>
-                    رقم الهاتف للتواصل (اختياري)
+                    رقم الهاتف والواتساب <span style={{ color: "#EF4444" }}>*</span>
                   </label>
                   <div style={{ position: "relative" }}>
                     <Phone size={15} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
@@ -653,13 +797,16 @@ export default function Login({
                       type="tel"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      placeholder="010XXXXXXXX (اختياري)"
+                      required
+                      placeholder="010XXXXXXXX"
                       style={{
                         width: "100%", padding: "10px 36px 10px 10px",
                         border: "1.5px solid var(--border)", borderRadius: 10,
                         background: "transparent", color: "var(--ink)",
                         fontFamily: "'Cairo', sans-serif", fontSize: 13,
                         outline: "none", boxSizing: "border-box",
+                        direction: "ltr",
+                        textAlign: "right"
                       }}
                     />
                   </div>

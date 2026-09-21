@@ -423,10 +423,37 @@ export async function registerNewTenant(formData) {
     return { success: false, error: 'يرجى إدخال اسم الشركة والبريد الإلكتروني.' };
   }
 
+  // التحقق الإلزامي من رقم الهاتف للتواصل
+  if (!phone || phone.length < 8) {
+    return { success: false, error: 'يرجى إدخال رقم هاتف وواتساب صالح للتواصل (8 أرقام على الأقل).' };
+  }
+
+  // التحقق الإلزامي من امتداد النطاق الفرعي (Subdomain) والتأكد من شروطه
+  const RESERVED_SUBS = [
+    'www', 'app', 'api', 'static', 'assets', 'cdn', 'mail', 'portal',
+    'admin', 'superadmin', 'platform', 'root', 'dashboard', 'control', 'billing'
+  ];
+  const rawSubdomain = (formData.subdomain || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9-]/g, '');
+
+  if (!rawSubdomain || rawSubdomain.length < 3) {
+    return { success: false, error: 'يرجى تحديد امتداد النطاق الفرعي للشركة بالإنجليزية (3 أحرف على الأقل، مثال: amlak).' };
+  }
+
+  if (rawSubdomain.startsWith('-') || rawSubdomain.endsWith('-')) {
+    return { success: false, error: 'امتداد النطاق لا يمكن أن يبدأ أو ينتهي بشرطة (-).' };
+  }
+
+  if (RESERVED_SUBS.includes(rawSubdomain)) {
+    return { success: false, error: `امتداد النطاق (${rawSubdomain}) محجوز لخدمات المنصة. يرجى اختيار امتداد آخر لشركتك.` };
+  }
+
   // التأكد من عدم تكرار البريد الإلكتروني
   const allTenants = await loadAllTenantsAsync();
   const superAdmin = getSuperAdminAccount();
-  if (cleanEmail === superAdmin.email.toLowerCase().trim()) {
+  if (cleanEmail === superAdmin.email.toLowerCase().trim() || BUILTIN_SUPERADMIN_EMAILS.includes(cleanEmail)) {
     return { success: false, error: 'هذا البريد الإلكتروني محجوز لإدارة المنصة.' };
   }
   const exists = allTenants.some(t => t.adminEmail?.toLowerCase().trim() === cleanEmail);
@@ -434,17 +461,17 @@ export async function registerNewTenant(formData) {
     return { success: false, error: 'هذا البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول بدلاً من ذلك.' };
   }
 
-  // توليد معرف للشركة ونطاق فرعي تلقائي
-  const slug = 'c_' + Date.now().toString(36);
-  const rawSubdomain = (formData.subdomain || companyName || slug)
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9-]/g, '');
-  const subdomain = rawSubdomain.length >= 3 ? rawSubdomain : slug;
+  const subExists = allTenants.some(t => 
+    (t.subdomain || '').toLowerCase().trim() === rawSubdomain || 
+    (t.slug || '').toLowerCase().trim() === rawSubdomain
+  );
+  if (subExists) {
+    return { success: false, error: `النطاق الفرعي (${rawSubdomain}.tashteebpro.com) محجوز لشركة أخرى بالفعل. يرجى اختيار امتداد مختلف.` };
+  }
 
   const newTenant = createTenant({
-    slug,
-    subdomain,
+    slug: rawSubdomain,
+    subdomain: rawSubdomain,
     name: companyName,
     subtitle: 'نظام إدارة المقاولات والتشطيبات والمشاريع',
     city,
