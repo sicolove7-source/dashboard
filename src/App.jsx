@@ -1,9 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  LayoutDashboard, Building2, Users, Wallet, ClipboardList, Search,
-  AlertTriangle, CheckCircle2, Clock, X, TrendingUp, FileText, Hammer,
-  Plus, Pencil, Trash2, ArrowRight, Save, ListChecks, CalendarDays, Boxes,
-  UserPlus, CalendarRange, Info, Sun, Moon, Compass
+  Users, Search, Clock, Plus, Save, Info, Compass
 } from "lucide-react";
 
 // Core Components
@@ -40,7 +37,7 @@ import { isFirstLogin, markFirstLoginDone, seedDemoData } from './utils/seedDemo
 
 import { loadCompanySettings, applyCompanyBranding, DEFAULT_COMPANY_SETTINGS } from './utils/branding';
 try { if (typeof localStorage !== 'undefined') localStorage.removeItem('company-settings-v1'); } catch (e) {}
-import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail, syncAllLocalUsersToCloud, loadAllTenants, loadAllTenantsAsync, saveAllTenants, BUILTIN_SUPERADMIN_EMAILS } from './services/tenantsManager';
+import { getActiveTenantId, setActiveTenantId, ACTIVE_TENANT_ID_KEY, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail, syncAllLocalUsersToCloud, loadAllTenants, loadAllTenantsAsync, saveAllTenants, BUILTIN_SUPERADMIN_EMAILS } from './services/tenantsManager';
 import { getSubdomain, isAdminSubdomain, isCompanySubdomain, clearActiveSubdomain, getSubdomainUrl, getCrossSubdomainCookie } from './services/subdomainResolver';
 import { onAuthChange, logoutUser } from './services/auth';
 import { db } from './firebase';
@@ -59,9 +56,6 @@ import {
   mergeTeamsPreservingLocal,
   syncSettingsToCloud,
   subscribeToCloudCompanyField,
-  syncWorkersToCloud,
-  syncSuppliersToCloud,
-  syncQuotationsToCloud,
   fetchCompanyDataFromCloud,
   fetchTenantBySubdomain,
 } from './services/cloudSync';
@@ -85,127 +79,17 @@ function PageLoadingFallback() {
 }
 
 // Utils
-import { NAV, ENGINEERS, ACCOUNTANTS, TECH_OFFICE, TYPES, AREAS, SUBMITTAL_ITEMS, SUB_STATUS, DIARY_WORK_SAMPLES, DIARY_ISSUE_SAMPLES, LABOR_TRADES, MATERIALS_LIST, MATERIAL_STATUS, EQUIPMENT_LIST, STAGES, SEED_LEADS } from './utils/constants';
-import { mulberry32, todayISO, setGlobalCurrency } from './utils/helpers';
+import { NAV } from './utils/constants';
+import { todayISO, setGlobalCurrency } from './utils/helpers';
 import { DEFAULT_TAB, can, NAV_PERMISSIONS } from './utils/permissions';
 
 // Styles
 import './styles/index.css';
 
 /* ---------------------------------------------------------------
-   توليد بيانات أولية
---------------------------------------------------------------- */
-function generateSeedProjects() {
-  const rand = mulberry32(1379);
-  const pick = (arr) => arr[Math.floor(rand() * arr.length)];
-
-  return Array.from({ length: 20 }, (_, i) => {
-    const id = "p" + (i + 1);
-    const type = pick(TYPES);
-    const area = pick(AREAS);
-    const statusRoll = rand();
-    const status = statusRoll < 0.55 ? "on_track" : statusRoll < 0.8 ? "at_risk" : "delayed";
-    let progress;
-    if (status === "on_track") progress = 35 + rand() * 55;
-    else if (status === "at_risk") progress = 20 + rand() * 45;
-    else progress = 10 + rand() * 35;
-    progress = Math.round(progress);
-
-    const budget = Math.round((150000 + rand() * 1050000) / 5000) * 5000;
-    const spendFactor = status === "delayed" ? 1.08 : status === "at_risk" ? 1.0 : 0.93;
-    const spent = Math.min(budget, Math.round(((progress / 100) * budget * spendFactor) / 1000) * 1000);
-
-    const start = new Date();
-    start.setDate(start.getDate() - Math.round(20 + rand() * 60));
-    const dueInDays = status === "delayed" ? -Math.round(rand() * 20 + 1) : Math.round(rand() * 60 + 5);
-    const due = new Date();
-    due.setDate(due.getDate() + dueInDays);
-
-    const submittals = Array.from({ length: 3 }, () => ({
-      item: pick(SUBMITTAL_ITEMS),
-      status: pick(SUB_STATUS),
-    }));
-
-    const base = {
-      id,
-      name: `تشطيب ${type} - ${area}`,
-      client: "أ. عميل " + (i + 1), // Using simple names for seed
-      area, type,
-      engineer: ENGINEERS[i % ENGINEERS.length],
-      accountant: ACCOUNTANTS[i % ACCOUNTANTS.length],
-      techOffice: TECH_OFFICE[i % TECH_OFFICE.length],
-      progress, status, budget, spent,
-      startDate: start.toISOString().slice(0, 10),
-      dueDate: due.toISOString().slice(0, 10),
-      submittals,
-      files: [],
-      snags: [],
-    };
-    return {
-      ...base,
-      tasks: genTasks(base, rand, pick),
-      dailyLogs: genDailyLogs(base, rand, pick),
-      resources: genResources(rand, pick),
-    };
-  });
-}
-
-function genTasks(project, rand, pick) {
-  const start = new Date(project.startDate);
-  const due = new Date(project.dueDate);
-  const totalDays = Math.max(1, Math.round((due - start) / 86400000));
-  let cum = 0;
-  return STAGES.map((s) => {
-    const stageStart = new Date(start); stageStart.setDate(stageStart.getDate() + Math.round((cum / 100) * totalDays));
-    cum += s.weight;
-    const stageEnd = new Date(start); stageEnd.setDate(stageEnd.getDate() + Math.round((cum / 100) * totalDays));
-    const status = project.progress >= cum ? "done" : project.progress > cum - s.weight ? "in_progress" : "pending";
-    return {
-      id: "t" + s.key,
-      stage: s.key,
-      title: "تنفيذ " + s.label,
-      start: stageStart.toISOString().slice(0, 10),
-      end: stageEnd.toISOString().slice(0, 10),
-      assignee: project.engineer,
-      status,
-    };
-  });
-}
-
-function genDailyLogs(project, rand, pick) {
-  const start = new Date(project.startDate);
-  const count = 2 + Math.floor(rand() * 3);
-  return Array.from({ length: count }, (_, i) => {
-    const d = new Date(start); d.setDate(d.getDate() + Math.floor(rand() * 25) + i * 4);
-    return {
-      id: "d" + project.id + "-" + i,
-      date: d.toISOString().slice(0, 10),
-      author: rand() > 0.5 ? project.engineer : project.techOffice,
-      work: pick(DIARY_WORK_SAMPLES),
-      issues: pick(DIARY_ISSUE_SAMPLES),
-      workers: 3 + Math.floor(rand() * 9),
-    };
-  }).sort((a, b) => (a.date < b.date ? 1 : -1));
-}
-
-function genResources(rand, pick) {
-  const labor = Array.from(new Set(Array.from({ length: 3 }, () => pick(LABOR_TRADES))))
-    .map((trade, i) => ({ id: "l" + i, trade, count: 2 + Math.floor(rand() * 6) }));
-  const materials = Array.from(new Set(Array.from({ length: 3 }, () => pick(MATERIALS_LIST))))
-    .map((name, i) => ({ id: "m" + i, name, qty: (10 + Math.floor(rand() * 90)), unit: "وحدة", status: pick(MATERIAL_STATUS) }));
-  const equipment = Array.from(new Set(Array.from({ length: 2 }, () => pick(EQUIPMENT_LIST))))
-    .map((name, i) => ({ id: "e" + i, name, qty: 1 + Math.floor(rand() * 3) }));
-  return { labor, materials, equipment };
-}
-
-
-/* ---------------------------------------------------------------
    التطبيق الرئيسي
 --------------------------------------------------------------- */
-const STORAGE_KEY = "finishing-projects-v2";
-const TEAM_KEY = "finishing-team-v2";
 const THEME_KEY = "finishing-theme-v2";
-const LEADS_KEY = "crm-leads-v1";
 
 function getTabFromPath() {
   try {
@@ -302,30 +186,7 @@ export default function App() {
       return [];
     }
   });
-  const [workers, setWorkers] = useState(() => {
-    try {
-      const cId = getInitialCompanyId();
-      return JSON.parse(localStorage.getItem(`tenant_${cId}_workers`) || '[]');
-    } catch (e) {
-      return [];
-    }
-  });
-  const [suppliers, setSuppliers] = useState(() => {
-    try {
-      const cId = getInitialCompanyId();
-      return JSON.parse(localStorage.getItem(`tenant_${cId}_suppliers`) || '[]');
-    } catch (e) {
-      return [];
-    }
-  });
-  const [quotations, setQuotations] = useState(() => {
-    try {
-      const cId = getInitialCompanyId();
-      return JSON.parse(localStorage.getItem(`tenant_${cId}_quotations`) || '[]');
-    } catch (e) {
-      return [];
-    }
-  });
+
   const [companySettings, setCompanySettings] = useState(() => loadCompanySettings(getInitialCompanyId()));
   const [tab, setTab] = useState(() => {
     const p = getTabFromPath();
@@ -392,36 +253,16 @@ export default function App() {
     const p = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
     return p === 'register' || p === 'signup' ? 'register' : 'login';
   });
-  const isDemoUser = false;
-
-  // التقاط وتفعيل وضع المعاينة من بوابة الإدارة ?preview_tenant=xxx
-  useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const previewTenant = params.get('preview_tenant');
-      if (previewTenant) {
-        setActiveTenantId(previewTenant);
-        sessionStorage.setItem('admin_preview_mode', 'true');
-        sessionStorage.setItem('tashteeb_preview_tenant_id', previewTenant);
-        params.delete('preview_tenant');
-        const newSearch = params.toString() ? `?${params.toString()}` : '';
-        window.history.replaceState(null, '', `${window.location.pathname}${newSearch}`);
-      }
-    } catch (e) {}
-  }, []);
-
   // Company Tenant Scoped ID:
-  // في وضع Demo: نستخدم تينانت معزول comp_demo أوفلاين بالكامل
   // للمستخدم العادي: نعتمد حصرياً على companyId من الـ Claims السحابية
   // للسوبر أدمن فقط: نسمح بالتبديل بين الشركات عبر getActiveTenantId() أو sessionStorage
   const activeCompanyId = useMemo(() => {
-    if (isDemoUser) return 'comp_demo';
     const isPreviewing = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('admin_preview_mode') === 'true';
     if (currentUser?.isSuperAdmin || currentUser?.role === 'super_admin' || isPreviewing) {
       return getActiveTenantId() || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('tashteeb_preview_tenant_id')) || currentUser?.companyId || null;
     }
     return currentUser?.companyId || null;
-  }, [currentUser, isDemoUser]);
+  }, [currentUser]);
 
   // استخراج النطاق الفرعي الخاص بالشركة الحالية لعرضه وتسهيل نسخه
   const companySubdomain = useMemo(() => {
@@ -562,7 +403,7 @@ export default function App() {
 
   // أول دخول: بذار بيانات تجريبية وفتح الجولة الاستكشافية بالتينانت الفعلي فقط بعد نجاح تسجيل الدخول
   useEffect(() => {
-    if (!isAuthenticated || !activeCompanyId || isDemoUser || activeCompanyId === 'comp_demo') return;
+    if (!isAuthenticated || !activeCompanyId) return;
     if (isFirstLogin(activeCompanyId)) {
       const seeded = seedDemoData(`tenant_${activeCompanyId}_projects`, `tenant_${activeCompanyId}_team`, activeCompanyId);
       markFirstLoginDone(activeCompanyId);
@@ -578,7 +419,7 @@ export default function App() {
       const timer = setTimeout(() => setShowTour(true), 1200);
       return () => clearTimeout(timer);
     }
-  }, [activeCompanyId, isAuthenticated, isDemoUser]);
+  }, [activeCompanyId, isAuthenticated]);
 
   // Theme State (Default to Clean Calm Light Mode, initialized directly from storage to eliminate flash)
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -743,8 +584,7 @@ export default function App() {
       setGlobalCurrency(localData.settings.currency);
     }
 
-    // إذا كان في وضع Demo أوفلاين، لا نجلب أي بيانات من السحابة إطلاقاً
-    if (isDemoUser || companyId === 'comp_demo') return;
+    if (!companyId) return;
 
     // 2. فحص وجلب أحدث البيانات سحابياً من Firestore مع الحفاظ التام على أحدث التعديلات المحلية
     try {
@@ -769,52 +609,7 @@ export default function App() {
         }
         if (Array.isArray(cloudData.leads)) setLeads(cloudData.leads);
 
-        // قراءة ودمج العمالة والموردين وعروض الأسعار سحابياً بنفس طريقة team
-        try {
-          const cloudCompanyRaw = await fetchCompanyDataFromCloud(companyId);
-          const cloudWorkers = cloudData.workers || cloudCompanyRaw?.workers;
-          const cloudSuppliers = cloudData.suppliers || cloudCompanyRaw?.suppliers;
-          const cloudQuotations = cloudData.quotations || cloudCompanyRaw?.quotations;
 
-          if (Array.isArray(cloudWorkers)) {
-            setWorkers(prev => {
-              const localRaw = localStorage.getItem(`tenant_${companyId}_workers`);
-              const local = (prev && prev.length > 0) ? prev : (localRaw ? JSON.parse(localRaw) : []);
-              const map = new Map();
-              cloudWorkers.forEach(item => { if (item?.id) map.set(item.id, item); });
-              local.forEach(item => { if (item?.id) map.set(item.id, item); });
-              const merged = Array.from(map.values());
-              try { localStorage.setItem(`tenant_${companyId}_workers`, JSON.stringify(merged)); } catch (e) {}
-              return merged;
-            });
-          }
-          if (Array.isArray(cloudSuppliers)) {
-            setSuppliers(prev => {
-              const localRaw = localStorage.getItem(`tenant_${companyId}_suppliers`);
-              const local = (prev && prev.length > 0) ? prev : (localRaw ? JSON.parse(localRaw) : []);
-              const map = new Map();
-              cloudSuppliers.forEach(item => { if (item?.id) map.set(item.id, item); });
-              local.forEach(item => { if (item?.id) map.set(item.id, item); });
-              const merged = Array.from(map.values());
-              try { localStorage.setItem(`tenant_${companyId}_suppliers`, JSON.stringify(merged)); } catch (e) {}
-              return merged;
-            });
-          }
-          if (Array.isArray(cloudQuotations)) {
-            setQuotations(prev => {
-              const localRaw = localStorage.getItem(`tenant_${companyId}_quotations`);
-              const local = (prev && prev.length > 0) ? prev : (localRaw ? JSON.parse(localRaw) : []);
-              const map = new Map();
-              cloudQuotations.forEach(item => { if (item?.id) map.set(item.id, item); });
-              local.forEach(item => { if (item?.id) map.set(item.id, item); });
-              const merged = Array.from(map.values());
-              try { localStorage.setItem(`tenant_${companyId}_quotations`, JSON.stringify(merged)); } catch (e) {}
-              return merged;
-            });
-          }
-        } catch (e) {
-          console.warn("Could not merge cloud workers/suppliers/quotations:", e);
-        }
 
         if (cloudData.settings) {
           const mergedSettings = {
@@ -850,27 +645,28 @@ export default function App() {
     return () => window.removeEventListener('company_settings_updated', handleSettingsUpdated);
   }, [activeCompanyId]);
 
-  // استماع ومزامنة سحابية حية لمشاريع الشركة عبر Firebase (بدون إتلاف اليوميات المسجلة محلياً)
+  // استماع ومزامنة سحابية حية للمشاريع لحظياً
   useEffect(() => {
-    if (!isAuthenticated || !activeCompanyId || isDemoUser || activeCompanyId === 'comp_demo') return;
+    if (!isAuthenticated || !activeCompanyId) return;
     const unsub = subscribeToCloudProjects(activeCompanyId, (cloudProjects) => {
-      if (Array.isArray(cloudProjects) && cloudProjects.length > 0) {
+      if (Array.isArray(cloudProjects)) {
         setProjects((prev) => {
-          const merged = mergeProjectsPreservingLocal(prev, cloudProjects, activeCompanyId);
-          try {
-            const lean = merged.map(p => sanitizeProjectForCloud(p));
-            localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(lean));
-          } catch (e) {}
-          return merged;
+          if (hasCollectionChanged(prev, cloudProjects)) {
+            try {
+              localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(cloudProjects));
+            } catch (e) {}
+            return cloudProjects;
+          }
+          return prev;
         });
       }
     });
     return () => { if (typeof unsub === 'function') unsub(); };
-  }, [activeCompanyId, isAuthenticated, isDemoUser]);
+  }, [activeCompanyId, isAuthenticated]);
 
-  // استماع ومزامنة سحابية حية لعملاء الـ CRM والطلبات الواردة لحظياً
+  // استماع ومزامنة سحابية حية للعملاء المحتملين (CRM Leads) لحظياً
   useEffect(() => {
-    if (!isAuthenticated || !activeCompanyId || isDemoUser || activeCompanyId === 'comp_demo') return;
+    if (!isAuthenticated || !activeCompanyId) return;
     const unsub = subscribeToCloudLeads(activeCompanyId, (cloudLeads) => {
       if (Array.isArray(cloudLeads)) {
         setLeads((prev) => {
@@ -885,64 +681,9 @@ export default function App() {
       }
     });
     return () => { if (typeof unsub === 'function') unsub(); };
-  }, [activeCompanyId, isAuthenticated, isDemoUser]);
+  }, [activeCompanyId, isAuthenticated]);
 
-  // استماع ومزامنة سحابية حية للعمالة لحظياً
-  useEffect(() => {
-    if (!isAuthenticated || !activeCompanyId || isDemoUser || activeCompanyId === 'comp_demo') return;
-    const unsub = subscribeToCloudCompanyField(activeCompanyId, 'workers', (cloudWorkers) => {
-      if (Array.isArray(cloudWorkers)) {
-        setWorkers((prev) => {
-          if (hasCollectionChanged(prev, cloudWorkers)) {
-            try {
-              localStorage.setItem(`tenant_${activeCompanyId}_workers`, JSON.stringify(cloudWorkers));
-            } catch (e) {}
-            return cloudWorkers;
-          }
-          return prev;
-        });
-      }
-    });
-    return () => { if (typeof unsub === 'function') unsub(); };
-  }, [activeCompanyId, isAuthenticated, isDemoUser]);
 
-  // استماع ومزامنة سحابية حية للموردين لحظياً
-  useEffect(() => {
-    if (!isAuthenticated || !activeCompanyId || isDemoUser || activeCompanyId === 'comp_demo') return;
-    const unsub = subscribeToCloudCompanyField(activeCompanyId, 'suppliers', (cloudSuppliers) => {
-      if (Array.isArray(cloudSuppliers)) {
-        setSuppliers((prev) => {
-          if (hasCollectionChanged(prev, cloudSuppliers)) {
-            try {
-              localStorage.setItem(`tenant_${activeCompanyId}_suppliers`, JSON.stringify(cloudSuppliers));
-            } catch (e) {}
-            return cloudSuppliers;
-          }
-          return prev;
-        });
-      }
-    });
-    return () => { if (typeof unsub === 'function') unsub(); };
-  }, [activeCompanyId, isAuthenticated, isDemoUser]);
-
-  // استماع ومزامنة سحابية حية لعروض الأسعار لحظياً
-  useEffect(() => {
-    if (!isAuthenticated || !activeCompanyId || isDemoUser || activeCompanyId === 'comp_demo') return;
-    const unsub = subscribeToCloudCompanyField(activeCompanyId, 'quotations', (cloudQuotations) => {
-      if (Array.isArray(cloudQuotations)) {
-        setQuotations((prev) => {
-          if (hasCollectionChanged(prev, cloudQuotations)) {
-            try {
-              localStorage.setItem(`tenant_${activeCompanyId}_quotations`, JSON.stringify(cloudQuotations));
-            } catch (e) {}
-            return cloudQuotations;
-          }
-          return prev;
-        });
-      }
-    });
-    return () => { if (typeof unsub === 'function') unsub(); };
-  }, [activeCompanyId, isAuthenticated, isDemoUser]);
 
   function flashSave(ok) {
     setSaveState(ok ? "saved" : "offline");
@@ -956,7 +697,7 @@ export default function App() {
       flashSave(true); 
     }
     catch (e) { console.error("storage error", e); flashSave(false); }
-    if (!isDemoUser && activeCompanyId !== 'comp_demo') {
+    if (activeCompanyId) {
       syncProjectsToCloud(activeCompanyId, next).catch(err => {
         console.warn("Cloud sync projects error:", err);
         flashSave(false);
@@ -971,7 +712,7 @@ export default function App() {
       flashSave(true); 
     }
     catch (e) { console.error("storage error", e); flashSave(false); }
-    if (!isDemoUser && activeCompanyId !== 'comp_demo') {
+    if (activeCompanyId) {
       syncTeamToCloud(activeCompanyId, next).catch(err => {
         console.warn("Cloud sync team error:", err);
         flashSave(false);
@@ -986,7 +727,7 @@ export default function App() {
       flashSave(true); 
     }
     catch (e) { console.error("storage error", e); flashSave(false); }
-    if (!isDemoUser && activeCompanyId !== 'comp_demo') {
+    if (activeCompanyId) {
       syncLeadsToCloud(activeCompanyId, next).catch(err => {
         console.warn("Cloud sync leads error:", err);
         flashSave(false);
@@ -1116,7 +857,7 @@ export default function App() {
         } catch (e) {
           flashSave(false);
         }
-        if (!isDemoUser && activeCompanyId !== 'comp_demo') {
+        if (activeCompanyId) {
           syncSingleProjectToCloud(activeCompanyId, id, newProject).catch(err => {
             console.warn("Cloud sync single project error:", err);
             flashSave(false);
@@ -1138,7 +879,7 @@ export default function App() {
       } catch (e) {
         flashSave(false);
       }
-      if (!isDemoUser && activeCompanyId !== 'comp_demo') {
+      if (activeCompanyId) {
         deleteSingleProjectFromCloud(activeCompanyId, id).catch(err => {
           console.warn("Cloud delete project error:", err);
           flashSave(false);
@@ -1162,7 +903,7 @@ export default function App() {
         console.error("localStorage save error", e);
         flashSave(false);
       }
-      if (!isDemoUser && activeCompanyId !== 'comp_demo') {
+      if (activeCompanyId) {
         const fullProject = updated.find(p => p.id === id);
         syncSingleProjectToCloud(activeCompanyId, id, fullProject || { ...patch, updatedAt: now }).catch(err => {
           console.warn("Cloud sync update project error:", err);
@@ -1298,11 +1039,9 @@ export default function App() {
           setAuthLoading(false);
         }
       } else {
-        if (!isDemoUser) {
-          try { localStorage.removeItem('active_session_user'); } catch (e) {}
-          setCurrentUser(null);
-          setIsAuthenticated(false);
-        }
+        try { localStorage.removeItem('active_session_user'); } catch (e) {}
+        setCurrentUser(null);
+        setIsAuthenticated(false);
         setAuthLoading(false);
       }
     });
@@ -1310,7 +1049,7 @@ export default function App() {
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [isDemoUser]);
+  }, []);
 
   // Sync browser URL with active tab (استخدام pushState لتمكين التنقل بزر الرجوع بالمتصفح)
   useEffect(() => {
@@ -1436,16 +1175,23 @@ export default function App() {
     } catch (e) {
       console.error('Logout error:', e);
     }
-    // مسح جلسة المستخدم الحالية فقط دون تدمير بيانات الشركات والمستخدمين المحلية
+    // مسح جلسة المستخدم الحالية والمفاتيح وسجلات المستخدمين المحلية
     try {
       localStorage.removeItem('active_session_user');
+      localStorage.removeItem(ACTIVE_TENANT_ID_KEY);
+      localStorage.removeItem('platform-active-tenant-id');
       localStorage.removeItem('active_tenant_id');
+      localStorage.removeItem('platform-all-users-registry');
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.clear();
       }
     } catch (e) {}
     setCurrentUser(null);
     setIsAuthenticated(false);
+    setActiveTenantId(null);
+    setProjects([]);
+    setTeam({ engineers: [], accountants: [], techOffice: [], customerService: [] });
+    setLeads([]);
     setTab('overview');
     setView('list');
     setActiveId(null);
@@ -1867,7 +1613,7 @@ export default function App() {
 
 
       {/* ─── Super Admin Impersonation Top Bar (Calm & Professional) ─── */}
-      {(currentUser?.role === 'super_admin' || currentUser?.isSuperAdmin || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('admin_preview_mode') === 'true')) && tab !== 'tenants' && !isDemoUser && (
+      {(currentUser?.role === 'super_admin' || currentUser?.isSuperAdmin || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('admin_preview_mode') === 'true')) && tab !== 'tenants' && (
         <div
           className="impersonation-top-bar"
           style={{
