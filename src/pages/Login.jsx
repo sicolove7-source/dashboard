@@ -15,7 +15,9 @@ import {
 import {
   resolveTenantUserByEmail,
   registerNewTenant,
+  loadAllTenants,
 } from "../services/tenantsManager";
+import { isCompanySubdomain, getSubdomain, getSubdomainUrl, getCrossSubdomainCookie } from "../services/subdomainResolver";
 
 export default function Login({
   onLogin,
@@ -23,17 +25,47 @@ export default function Login({
   onBackToLanding,
   initialMode = 'login'
 }) {
-  // Always use the real platform branding for the main login portal
-  // Only override if explicitly an enterprise tenant with verified custom white-label branding
-  const isWhiteLabel = !!companySettings?.isCustomBranding && !!companySettings?.companyLogo;
-  const companyName = isWhiteLabel ? companySettings.companyName : 'Tashteeb Pro | تشطيب برو';
-  const companySubtitle = isWhiteLabel ? companySettings.companySubtitle : 'المنصة الذكية لإدارة التشطيبات والمقاولات والمشاريع';
-  const companyLogo = isWhiteLabel ? companySettings.companyLogo : null;
+  const currentSub = isCompanySubdomain() ? getSubdomain() : null;
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const paramCompName = urlParams?.get('company_name');
+
+  // استخراج اسم الشركة بدقة من الإعدادات أو الكاش أو الكوكيز المشترك أو السب-دومين
+  let resolvedCompanyName = companySettings?.companyName;
+  if (!resolvedCompanyName && currentSub) {
+    if (paramCompName) resolvedCompanyName = decodeURIComponent(paramCompName);
+    if (!resolvedCompanyName) {
+      try {
+        const allTenants = loadAllTenants();
+        const matched = allTenants.find(t =>
+          (t.subdomain || t.slug || t.id || '').toLowerCase().trim() === currentSub ||
+          t.id?.toLowerCase().trim() === `comp_${currentSub}`
+        );
+        if (matched?.name) resolvedCompanyName = matched.name;
+      } catch (e) {}
+    }
+    if (!resolvedCompanyName) {
+      try {
+        const lastReg = getCrossSubdomainCookie('tashteeb_last_registered_tenant');
+        if (lastReg && (lastReg.subdomain?.toLowerCase() === currentSub || lastReg.id === `comp_${currentSub}`)) {
+          resolvedCompanyName = lastReg.name;
+        }
+      } catch (e) {}
+    }
+    if (!resolvedCompanyName) {
+      resolvedCompanyName = currentSub;
+    }
+  }
+
+  // استخدام هوية الشركة الخاصة إذا كنا على نطاق فرعي للشركة أو إذا تم تفعيل White-label
+  const isCompanyPortal = isCompanySubdomain() || (!!companySettings?.isCustomBranding && !!companySettings?.companyLogo);
+  const companyName = isCompanyPortal && resolvedCompanyName ? resolvedCompanyName : 'Tashteeb Pro | تشطيب برو';
+  const companySubtitle = isCompanyPortal ? 'بوابة إدارة المشروعات والتشطيبات الخاصة بموظفي الشركة' : 'المنصة الذكية لإدارة التشطيبات والمقاولات والمشاريع';
+  const companyLogo = (isCompanyPortal && companySettings?.companyLogo) ? companySettings.companyLogo : null;
   const primaryColor = companySettings?.primaryColor || '#1877F2';
   const accentColor = companySettings?.accentColor || '#166FE5';
 
   // Mode: 'login' | 'register'
-  const [mode, setMode] = useState(initialMode);
+  const [mode, setMode] = useState(isCompanyPortal ? 'login' : initialMode);
 
   // Common State
   const [email, setEmail] = useState(() => {
@@ -108,13 +140,83 @@ export default function Login({
         // قراءة الـ Custom Claims المشفرة من Google
         const claims = await getUserClaims(authResult.user);
 
-        // 2. تحديد بيانات الشركة والمستخدم والصلاحيات
-        const tenantResult = await resolveTenantUserByEmail(cleanEmail, authResult.user?.uid, claims);
+        // 2. تحديد بيانات الشركة والمستخدم والصلاحيات مع إعادة المحاولة للمستخدمين المسجلين حديثاً
+        // السبب: عند التسجيل الجديد، قد لا تكون البيانات السحابية انتشرت بعد
+        // لذا نحاول 4 مرات بفواصل زمنية متزايدة قبل إصدار رسالة الخطأ
+        const isNewlyRegistered = (() => {
+          try {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('registered') === '1' || isCompanySubdomain();
+          } catch (e) { return false; }
+        })();
 
-        if (tenantResult.success) {
+        const MAX_RETRIES = isNewlyRegistered ? 4 : 1;
+        const RETRY_DELAYS = [0, 2000, 3000, 4000]; // بالمللي ثانية
+
+        let tenantResult = null;
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+          if (attempt > 0) {
+            // انتظر قبل المحاولة التالية مع إظهار رسالة للمستخدم
+            setError(`⏳ جاري مزامنة بيانات الشركة... (محاولة ${attempt + 1}/${MAX_RETRIES})`);
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt] || 2000));
+            setError(null);
+          }
+          tenantResult = await resolveTenantUserByEmail(cleanEmail, authResult.user?.uid, claims);
+          if (tenantResult?.success) break;
+          console.log(`[handleLogin] Attempt ${attempt + 1}/${MAX_RETRIES} failed:`, tenantResult?.error);
+        }
+
+        if (tenantResult?.success) {
+          // 🔒 فحص عزل الشركات: هل المستخدم على رابط شركة أخرى غير شركته؟
+          const currentSub = isCompanySubdomain() ? getSubdomain() : null;
+          const userTenant = tenantResult.tenant;
+          const roleIsSuperAdmin = tenantResult.isSuperAdmin || tenantResult.user?.role === 'super_admin';
+
+          if (currentSub && !roleIsSuperAdmin && userTenant) {
+            const userSub = (userTenant.subdomain || userTenant.slug || '').toLowerCase().trim();
+            const userId = (userTenant.id || '').toLowerCase().trim();
+            const subMatches = userSub === currentSub || userId === currentSub || userId === `comp_${currentSub}` || userId === `comp_c_${currentSub}`;
+            if (!subMatches) {
+              const correctUrl = getSubdomainUrl(userSub || currentSub);
+              setError(
+                <div style={{ textAlign: 'right', lineHeight: 1.6 }}>
+                  <span>❌ هذا الحساب مسجل في شركة <strong>{userTenant.name || 'أخرى'}</strong> ولا يملك صلاحية الدخول لبوابة هذه الشركة.</span>
+                  <div style={{ marginTop: 8 }}>
+                    <a
+                      href={correctUrl}
+                      style={{ color: '#1877F2', fontWeight: 800, textDecoration: 'underline' }}
+                    >
+                      الانتقال فوراً إلى رابط شركتك ({userSub || userTenant.name}) ←
+                    </a>
+                  </div>
+                </div>
+              );
+              setLoading(false);
+              return;
+            }
+          }
+
           onLogin(tenantResult.user, tenantResult.tenant, tenantResult.isSuperAdmin);
         } else {
-          setError(tenantResult.error || "تعذر تحديد بيانات الشركة المرتبطة بهذا الحساب.");
+          // فحص إضافي: هل المستخدم على السب-دومين الخاص بشركته وفشل البحث السحابي؟
+          if (isCompanySubdomain()) {
+            setError(
+              <span>
+                تعذر التحقق من بيانات الشركة. إذا سجّلت للتو، يرجى الانتظار 30 ثانية وإعادة المحاولة.
+                <br />
+                إذا استمرت المشكلة، يمكنك الدخول من{' '}
+                <a
+                  href="https://tashteebpro.com/login"
+                  style={{ color: '#1877F2', fontWeight: 700 }}
+                >
+                  الصفحة الرئيسية
+                </a>
+                {' '}ببريدك وكلمة مرورك.
+              </span>
+            );
+          } else {
+            setError(tenantResult?.error || "تعذر تحديد بيانات الشركة المرتبطة بهذا الحساب.");
+          }
         }
       } else {
         setError(authResult.error || "البريد الإلكتروني أو كلمة المرور غير صحيحة.");
@@ -126,6 +228,7 @@ export default function Login({
       setLoading(false);
     }
   };
+
 
   const handleOpenForgotModal = () => {
     setError(null);
@@ -259,6 +362,11 @@ export default function Login({
         }
       }
 
+      // 4. توجيه فوري لرابط الشركة المخصص مع حفظ الجلسة مسبقاً للانتقال السلس
+      // في بيئة الإنتاج: subdomain.tashteebpro.com | في التطوير: localhost/?subdomain=xxx
+      const subUrl = getSubdomainUrl(cleanSubdomain);
+      const targetUrl = `${subUrl}${subUrl.includes('?') ? '&' : '?'}email=${encodeURIComponent(cleanEmail)}&registered=1&tenant_id=${encodeURIComponent(res.tenant?.id || '')}&company_name=${encodeURIComponent(cleanCompany)}`;
+
       try {
         confetti({
           particleCount: 90,
@@ -267,15 +375,29 @@ export default function Login({
         });
       } catch (e) {}
 
-      // 4. عرض شاشة التهنئة برابط النطاق الفرعي وإتاحة الانتقال الفوري أو المتابعة المباشرة
+      // حفظ بيانات الجلسة مبكراً لتفادي شاشة Login عند الانتقال
+      try {
+        localStorage.setItem('active_session_user', JSON.stringify(res.user));
+      } catch (e) {}
+
+      // انتظار لحظة لتأكيد انتشار البيانات السحابية قبل الانتقال
       setRegisteredTenantInfo({
         companyName: cleanCompany,
         subdomain: cleanSubdomain,
         email: cleanEmail,
         user: res.user,
-        tenant: res.tenant
+        tenant: res.tenant,
+        subUrl: targetUrl,
       });
       setLoading(false);
+
+      // انتقال تلقائي بعد 3 ثوانٍ لرابط الشركة إذا لم يضغط المستخدم على أي زر
+      const autoRedirectTimer = setTimeout(() => {
+        try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
+        window.location.href = targetUrl;
+      }, 4000);
+      // حفظ المؤقت لإمكانية إلغائه عند ضغط أزرار يدوية
+      window._autoRedirectTimer = autoRedirectTimer;
 
     } catch (err) {
       try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
@@ -343,7 +465,7 @@ export default function Login({
               width: 88,
               height: 88,
               borderRadius: 24,
-              background: companyLogo ? "#FFFFFF" : "#0A0F1D",
+              background: companyLogo ? "#FFFFFF" : isCompanyPortal ? (primaryColor || "#1877F2") : "#0A0F1D",
               boxShadow: companyLogo
                 ? "0 10px 30px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06)"
                 : "0 16px 40px rgba(0, 0, 0, 0.35), 0 0 0 1.5px rgba(56, 189, 248, 0.35)",
@@ -363,6 +485,10 @@ export default function Login({
                   imageRendering: "-webkit-optimize-contrast"
                 }}
               />
+            ) : isCompanyPortal ? (
+              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: primaryColor || '#1877F2' }}>
+                <Building2 size={40} color="#fff" />
+              </div>
             ) : (
               <img
                 src="/app-icon.png"
@@ -491,8 +617,13 @@ export default function Login({
 
               {/* أزرار المتابعة */}
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
+                {/* الزر الرئيسي: الانتقال فوراً للسب-دومين (يعمل في التطوير والإنتاج) */}
                 <a
-                  href={`https://${registeredTenantInfo.subdomain}.tashteebpro.com/?email=${encodeURIComponent(registeredTenantInfo.email)}`}
+                  href={registeredTenantInfo.subUrl}
+                  onClick={() => {
+                    try { if (window._autoRedirectTimer) clearTimeout(window._autoRedirectTimer); } catch (e) {}
+                    try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
+                  }}
                   style={{
                     width: "100%", padding: "12px",
                     background: "linear-gradient(135deg, #1877F2, #166FE5)",
@@ -508,11 +639,13 @@ export default function Login({
                   <span>الانتقال إلى رابط شركتي المخصص الآن 🚀</span>
                 </a>
 
+                {/* زر المتابعة: يوجه للسب-دومين أيضاً (لا يبقى على الدومين الرئيسي) */}
                 <button
                   type="button"
                   onClick={() => {
+                    try { if (window._autoRedirectTimer) clearTimeout(window._autoRedirectTimer); } catch (e) {}
                     try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
-                    onLogin(registeredTenantInfo.user, registeredTenantInfo.tenant, false);
+                    window.location.href = registeredTenantInfo.subUrl;
                   }}
                   style={{
                     width: "100%", padding: "10px",
@@ -523,77 +656,99 @@ export default function Login({
                     boxSizing: "border-box",
                   }}
                 >
-                  المتابعة والبدء في إضافة المشاريع هنا →
+                  البدء في إضافة المشاريع ← (ستنتقل تلقائياً خلال ثوانٍ)
                 </button>
               </div>
+
             </div>
           ) : (
             <>
-          {/* ─── التبديل بين تسجيل الدخول وإنشاء حساب ─── */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              background: "var(--sidebar-hover-bg, #F1F5F9)",
-              borderRadius: 12,
-              padding: 4,
-              marginBottom: 22,
-              border: "1px solid var(--border, #E2E8F0)",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => { setMode('login'); setError(null); }}
+          {/* ─── التبديل بين تسجيل الدخول وإنشاء حساب أو شارة بوابة الشركة الخاصة ─── */}
+          {isCompanyPortal ? (
+            <div
               style={{
-                padding: "9px 12px",
-                borderRadius: 9,
-                border: "none",
-                background: mode === 'login' ? "var(--card, #fff)" : "transparent",
-                color: mode === 'login' ? primaryColor : "var(--muted, #64748B)",
-                fontWeight: mode === 'login' ? 800 : 600,
-                fontSize: 13,
-                cursor: "pointer",
-                boxShadow: mode === 'login' ? "0 2px 8px rgba(0,0,0,0.08)" : "none",
-                transition: "all 0.2s",
-                fontFamily: "'Cairo', sans-serif",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 6,
+                gap: 8,
+                background: "rgba(24, 119, 242, 0.08)",
+                border: "1px solid rgba(24, 119, 242, 0.22)",
+                borderRadius: 12,
+                padding: "10px 14px",
+                marginBottom: 20,
               }}
             >
-              <Lock size={15} />
-              <span>تسجيل الدخول</span>
-            </button>
+              <ShieldCheck size={18} color="#1877F2" />
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#1877F2" }}>
+                بوابة خاصة ومحمية لموظفي ومهندسي الشركة فقط
+              </span>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                background: "var(--sidebar-hover-bg, #F1F5F9)",
+                borderRadius: 12,
+                padding: 4,
+                marginBottom: 22,
+                border: "1px solid var(--border, #E2E8F0)",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => { setMode('login'); setError(null); }}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: 9,
+                  border: "none",
+                  background: mode === 'login' ? "var(--card, #fff)" : "transparent",
+                  color: mode === 'login' ? primaryColor : "var(--muted, #64748B)",
+                  fontWeight: mode === 'login' ? 800 : 600,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  boxShadow: mode === 'login' ? "0 2px 8px rgba(0,0,0,0.08)" : "none",
+                  transition: "all 0.2s",
+                  fontFamily: "'Cairo', sans-serif",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                }}
+              >
+                <Lock size={15} />
+                <span>تسجيل الدخول</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => { setMode('register'); setError(null); }}
-              style={{
-                padding: "9px 12px",
-                borderRadius: 9,
-                border: "none",
-                background: mode === 'register' ? "var(--card, #fff)" : "transparent",
-                color: mode === 'register' ? "#10B981" : "var(--muted, #64748B)",
-                fontWeight: mode === 'register' ? 800 : 600,
-                fontSize: 13,
-                cursor: "pointer",
-                boxShadow: mode === 'register' ? "0 2px 8px rgba(0,0,0,0.08)" : "none",
-                transition: "all 0.2s",
-                fontFamily: "'Cairo', sans-serif",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-              }}
-            >
-              <Sparkles size={15} />
-              <span>حساب شركة جديد</span>
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => { setMode('register'); setError(null); }}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: 9,
+                  border: "none",
+                  background: mode === 'register' ? "var(--card, #fff)" : "transparent",
+                  color: mode === 'register' ? "#10B981" : "var(--muted, #64748B)",
+                  fontWeight: mode === 'register' ? 800 : 600,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  boxShadow: mode === 'register' ? "0 2px 8px rgba(0,0,0,0.08)" : "none",
+                  transition: "all 0.2s",
+                  fontFamily: "'Cairo', sans-serif",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                }}
+              >
+                <Sparkles size={15} />
+                <span>حساب شركة جديد</span>
+              </button>
+            </div>
+          )}
 
           {/* شارة التجربة المجانية عند التسجيل */}
-          {mode === 'register' && (
+          {!isCompanyPortal && mode === 'register' && (
             <div
               style={{
                 background: "rgba(16,185,129,0.08)",
@@ -772,8 +927,19 @@ export default function Login({
                   marginTop: 6,
                 }}
               >
-                {loading ? "⏳ جاري التحقق والدخول..." : "تسجيل الدخول للمنصة →"}
+                {loading ? "⏳ جاري التحقق والدخول..." : (isCompanyPortal ? "تسجيل الدخول لبوابة الشركة ←" : "تسجيل الدخول للمنصة ←")}
               </button>
+              {isCompanyPortal && (
+                <div style={{ textAlign: "center", marginTop: 14, fontSize: 12, color: "var(--muted)" }}>
+                  لست موظفاً في هذه الشركة؟{' '}
+                  <a
+                    href="https://tashteebpro.com"
+                    style={{ color: primaryColor, fontWeight: 700, textDecoration: 'underline' }}
+                  >
+                    الانتقال للمنصة الرئيسية
+                  </a>
+                </div>
+              )}
             </form>
           ) : (
             /* ══════════════ نموذج 2: تسجيل شركة جديدة (Sign Up) ══════════════ */

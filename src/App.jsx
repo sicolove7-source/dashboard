@@ -38,10 +38,10 @@ const QuickWinChecklist = React.lazy(() => import('./components/QuickWinChecklis
 import ErrorBoundary from './components/ErrorBoundary';
 import { isFirstLogin, markFirstLoginDone, seedDemoData } from './utils/seedDemoData';
 
-import { loadCompanySettings, applyCompanyBranding } from './utils/branding';
+import { loadCompanySettings, applyCompanyBranding, DEFAULT_COMPANY_SETTINGS } from './utils/branding';
 try { if (typeof localStorage !== 'undefined') localStorage.removeItem('company-settings-v1'); } catch (e) {}
-import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail, syncAllLocalUsersToCloud, loadAllTenants, loadAllTenantsAsync, BUILTIN_SUPERADMIN_EMAILS } from './services/tenantsManager';
-import { getSubdomain, isAdminSubdomain, isCompanySubdomain, clearActiveSubdomain } from './services/subdomainResolver';
+import { getActiveTenantId, setActiveTenantId, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail, syncAllLocalUsersToCloud, loadAllTenants, loadAllTenantsAsync, saveAllTenants, BUILTIN_SUPERADMIN_EMAILS } from './services/tenantsManager';
+import { getSubdomain, isAdminSubdomain, isCompanySubdomain, clearActiveSubdomain, getSubdomainUrl, getCrossSubdomainCookie } from './services/subdomainResolver';
 import { onAuthChange, logoutUser } from './services/auth';
 import { db } from './firebase';
 import { AdminProvider } from './context/AdminContext';
@@ -63,6 +63,7 @@ import {
   syncSuppliersToCloud,
   syncQuotationsToCloud,
   fetchCompanyDataFromCloud,
+  fetchTenantBySubdomain,
 } from './services/cloudSync';
 import { parseClientPortalFromUrl, resolveClientPortalProject, submitClientPortalApproval } from './services/portalResolver';
 import { parseIntakeRouteFromUrl } from './services/intakeResolver';
@@ -250,6 +251,19 @@ function getInitialCompanyId() {
         t.id?.toLowerCase() === `comp_c_${sub}`
       );
       if (match) return match.id;
+
+      // فحص الكوكي المشترك لآخر شركة مسجلة
+      const lastReg = getCrossSubdomainCookie('tashteeb_last_registered_tenant');
+      if (lastReg && (lastReg.subdomain?.toLowerCase() === sub || lastReg.id === `comp_${sub}`)) {
+        return lastReg.id;
+      }
+
+      // فحص معلمات الرابط
+      const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+      const paramTenantId = params?.get('tenant_id');
+      if (paramTenantId) return paramTenantId;
+
+      return `comp_${sub}`;
     }
   } catch (e) {}
 
@@ -369,6 +383,9 @@ export default function App() {
   // Landing Page vs Login state
   const [isLoginMode, setIsLoginMode] = useState(() => {
     const p = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+    // إذا وصل المستخدم بعد إنشاء حساب جديد (?registered=1) → نعرض صفحة Login مباشرة
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('registered') === '1') return true;
     return p === 'login' || p === 'register' || p === 'signup' || p === 'contractors' || p === 'projects' || p === 'finance';
   });
   const [loginInitialMode, setLoginInitialMode] = useState(() => {
@@ -417,29 +434,114 @@ export default function App() {
     }
   }, [activeCompanyId]);
 
-  // تحميل بيانات الشركة سحابياً فوراً عند الدخول من نطاق فرعي خاص بالشركة (مثل mmm.tashteebpro.com)
-  useEffect(() => {
-    const sub = getSubdomain();
-    if (sub && sub !== 'admin' && sub !== 'superadmin' && sub !== 'platform') {
-      loadAllTenantsAsync().then(allTenants => {
-        const match = allTenants.find(t =>
-          t.subdomain?.toLowerCase() === sub ||
-          t.slug?.toLowerCase() === sub ||
-          t.id?.toLowerCase() === sub ||
-          t.id?.toLowerCase() === `comp_${sub}` ||
-          t.id?.toLowerCase() === `comp_c_${sub}`
+  // Multi-Tenant Subdomain Cloud Resolution States
+  const [subdomainResolving, setSubdomainResolving] = useState(() => isCompanySubdomain());
+  const [subdomainNotFound, setSubdomainNotFound] = useState(false);
+  // اسم الشركة المكتشفة من السب-دومين لعرضه في شاشة التحميل
+  const [subdomainCompanyName, setSubdomainCompanyName] = useState(() => {
+    try {
+      const sub = getSubdomain();
+      if (sub) {
+        const all = loadAllTenants();
+        const match = all.find(t =>
+          (t.subdomain || '').toLowerCase() === sub ||
+          (t.slug || '').toLowerCase() === sub ||
+          (t.id || '').toLowerCase() === sub ||
+          (t.id || '').toLowerCase() === `comp_${sub}`
         );
-        if (match) {
-          setActiveTenantId(match.id);
-          const loadedSettings = loadCompanySettings(match.id);
-          if (loadedSettings) {
-            setCompanySettings(loadedSettings);
-            applyCompanyBranding(loadedSettings);
+        return match?.name || null;
+      }
+    } catch (e) {}
+    return null;
+  });
+
+  // حل وتحديد هوية الشركة سحابياً فوراً عند الدخول من نطاق فرعي مخصص (مثل amlak.tashteebpro.com أو ?subdomain=amlak)
+  useEffect(() => {
+    let isMounted = true;
+    const sub = getSubdomain();
+
+    if (isCompanySubdomain() && sub) {
+      setSubdomainResolving(true);
+      fetchTenantBySubdomain(sub)
+        .then(async (result) => {
+          if (!isMounted) return;
+          if (result && result.id) {
+            setActiveTenantId(result.id);
+
+            // تسجيل وتحديث بيانات الشركة في الذاكرة المحلية لضمان توافق باقي المكونات
+            try {
+              const all = loadAllTenants();
+              if (!all.some(t => t.id === result.id)) {
+                saveAllTenants([result, ...all]);
+              }
+            } catch (e) {}
+
+            // بناء الإعدادات والهوية البصرية الحديثة من السحابة
+            let resolvedSettings = {
+              ...DEFAULT_COMPANY_SETTINGS,
+              companyName: result.name || result.companyName || DEFAULT_COMPANY_SETTINGS.companyName,
+              companySubtitle: result.subtitle || result.companySubtitle || DEFAULT_COMPANY_SETTINGS.companySubtitle,
+              companyLogo: result.logo || result.companyLogo || null,
+              primaryColor: result.primaryColor || DEFAULT_COMPANY_SETTINGS.primaryColor,
+              accentColor: result.accentColor || DEFAULT_COMPANY_SETTINGS.accentColor,
+              currency: result.currency || DEFAULT_COMPANY_SETTINGS.currency,
+              city: result.city || '',
+              country: result.country || '',
+              phone: result.phone || '',
+              subdomain: result.subdomain || result.slug || sub,
+            };
+
+            // فحص إضافي لوثيقة الشركة التفصيلية من السحابة إذا كانت متوفرة
+            try {
+              const companyDoc = await fetchCompanyDataFromCloud(result.id);
+              if (companyDoc?.settings) {
+                resolvedSettings = { ...resolvedSettings, ...companyDoc.settings };
+              }
+            } catch (e) {}
+
+            // تخزين الإعدادات المحدثة محلياً لسرعة الوصول اللاحق
+            try {
+              localStorage.setItem(`tenant_${result.id}_settings`, JSON.stringify(resolvedSettings));
+            } catch (e) {}
+
+            setCompanySettings(resolvedSettings);
+            applyCompanyBranding(resolvedSettings);
+            setSubdomainCompanyName(result.name || result.companyName || null);
+            setSubdomainNotFound(false);
+          } else {
+            setSubdomainNotFound(true);
           }
-        }
-      }).catch(() => {});
+        })
+        .catch((err) => {
+          console.warn("Subdomain resolution error:", err);
+          if (isMounted) setSubdomainNotFound(true);
+        })
+        .finally(() => {
+          if (isMounted) setSubdomainResolving(false);
+        });
+    } else {
+      setSubdomainResolving(false);
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
+
+  const handleGoToMainDomain = () => {
+    // مسح جميع بيانات السب-دومين من localStorage والذاكرة المؤقتة
+    clearActiveSubdomain();
+    try { localStorage.removeItem('platform-active-tenant-id'); } catch (e) {}
+    try { if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('tashteeb_active_subdomain'); } catch (e) {}
+    try {
+      const hostname = window.location.hostname;
+      if (hostname.includes('localhost') || hostname === '127.0.0.1') {
+        window.location.href = window.location.origin + '/?cleared=1';
+        return;
+      }
+    } catch (e) {}
+    window.location.href = 'https://tashteebpro.com/';
+  };
 
   // Mobile sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1244,7 +1346,56 @@ export default function App() {
   const handleLogin = (userData, tenantData, isSuperAdmin) => {
     const roleIsSuperAdmin = isSuperAdmin || userData?.role === 'super_admin' || userData?.isSuperAdmin;
     const defaultTab = roleIsSuperAdmin ? 'tenants' : (DEFAULT_TAB[userData?.role] || 'overview');
-    
+
+    const compId = tenantData?.id || userData?.companyId || getActiveTenantId() || null;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 🔒 منطق الحماية والتوجيه للسب-دومين
+    // ═══════════════════════════════════════════════════════════════════
+
+    // 1. حماية السب-دومين: التحقق أن المستخدم ينتمي للشركة التي فتح سب-دومينها
+    if (isCompanySubdomain() && !roleIsSuperAdmin && compId) {
+      const currentSub = getSubdomain();
+      if (currentSub && tenantData) {
+        const tenantSub   = (tenantData.subdomain || tenantData.slug || '').toLowerCase().trim();
+        const tenantId    = (tenantData.id || '').toLowerCase().trim();
+        const subMatchesTenant =
+          tenantSub === currentSub ||
+          tenantId === currentSub ||
+          tenantId === `comp_${currentSub}` ||
+          tenantId === `comp_c_${currentSub}`;
+
+        if (!subMatchesTenant) {
+          // ❌ هذا المستخدم لا ينتمي لهذه الشركة — وجّهه لسب-دومين شركته الصحيح
+          console.warn(`[Security] User ${userData?.email} belongs to ${tenantData.subdomain || tenantId} but tried to access ${currentSub}`);
+          try {
+            const correctUrl = getSubdomainUrl(tenantData.subdomain || tenantData.slug || currentSub);
+            alert(`هذا الحساب مسجل في شركة أخرى. سيتم توجيهك لرابط شركتك الصحيح.`);
+            clearActiveSubdomain();
+            window.location.href = correctUrl;
+            return; // لا نُتمم تسجيل الدخول هنا
+          } catch (e) {}
+        }
+      }
+    }
+
+    // 2. إذا المستخدم على الدومين الرئيسي وله سب-دومين → وجّهه فوراً
+    if (!isCompanySubdomain() && !isAdminSubdomain() && !roleIsSuperAdmin && compId && tenantData) {
+      const tenantSub = tenantData.subdomain || tenantData.slug || null;
+      if (tenantSub) {
+        try {
+          // حفظ الجلسة أولاً قبل الانتقال
+          localStorage.setItem('active_session_user', JSON.stringify(userData));
+          setActiveTenantId(compId);
+        } catch (e) {}
+        const subUrl = getSubdomainUrl(tenantSub);
+        console.log(`[handleLogin] Redirecting to company subdomain: ${subUrl}`);
+        window.location.href = subUrl;
+        return; // توقف — الصفحة ستُعاد تحميلها على السب-دومين
+      }
+    }
+
+    // 3. تسجيل الدخول العادي (إما على سب-دومين الشركة الصحيح، أو الإدارة، أو سوبر أدمن)
     setCurrentUser(userData);
     setIsAuthenticated(true);
     try {
@@ -1254,7 +1405,6 @@ export default function App() {
     setView('list');
     setActiveId(null);
 
-    const compId = tenantData?.id || userData?.companyId || getActiveTenantId() || null;
     if (compId) {
       setActiveTenantId(compId);
     }
@@ -1277,6 +1427,7 @@ export default function App() {
     }
     // تم حذف استدعاء loadTenantWorkspace المزدوج هنا لأن تغيير activeCompanyId و isAuthenticated يُشغّل الـ Effect تلقائياً
   };
+
 
 
   const handleLogout = async () => {
@@ -1490,8 +1641,158 @@ export default function App() {
   }
 
   if (!isAuthenticated) {
-    // إذا كان المستخدم على نطاق شركة فرعي (مثل amlak.tashteebpro.com أو ?subdomain=amlak)
-    // يتوجه مباشرة لشاشة دخول الشركة المخصصة
+    // إذا كان المستخدم على نطاق فرعي لشركة (مثل amlak.tashteebpro.com أو ?subdomain=amlak)
+    if (isCompanySubdomain()) {
+      // 1. شاشة التحميل المخصصة أثناء جلب بيانات مساحة العمل من السحابة
+      if (subdomainResolving) {
+        const loadingAccent = companySettings?.primaryColor || companySettings?.accentColor || '#38BDF8';
+        return (
+          <div style={{
+            minHeight: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#0F172A',
+            color: '#F8FAFC',
+            fontFamily: 'Cairo, system-ui, -apple-system, sans-serif',
+            direction: 'rtl',
+            padding: '24px',
+            textAlign: 'center',
+            gap: '0',
+          }}>
+            <div style={{
+              width: '56px',
+              height: '56px',
+              border: `3px solid rgba(255,255,255,0.08)`,
+              borderTopColor: loadingAccent,
+              borderRadius: '50%',
+              animation: 'spin 0.75s linear infinite',
+              marginBottom: '24px'
+            }} />
+            {subdomainCompanyName ? (
+              <>
+                <h3 style={{ fontSize: '1.35rem', fontWeight: 700, margin: '0 0 6px 0', color: '#F1F5F9' }}>
+                  {subdomainCompanyName}
+                </h3>
+                <p style={{ fontSize: '0.9rem', color: '#94A3B8', margin: '0 0 4px 0' }}>
+                  جاري تحميل مساحة العمل...
+                </p>
+              </>
+            ) : (
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 600, margin: '0 0 8px 0' }}>
+                جاري تحميل مساحة العمل...
+              </h3>
+            )}
+            <p style={{ fontSize: '0.8rem', color: '#475569', margin: 0 }}>
+              التحقق من بيانات نطاق الشركة
+            </p>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        );
+      }
+
+
+      // 2. شاشة الخطأ عند عدم العثور على أي شركة مطابقة لهذا النطاق
+      if (subdomainNotFound) {
+        const triedSub = getSubdomain();
+        return (
+          <div style={{
+            minHeight: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#0F172A',
+            color: '#F8FAFC',
+            fontFamily: 'Cairo, system-ui, -apple-system, sans-serif',
+            direction: 'rtl',
+            padding: '24px',
+            textAlign: 'center',
+            gap: '0',
+          }}>
+            <div style={{
+              width: '80px',
+              height: '80px',
+              borderRadius: '50%',
+              background: 'rgba(239, 68, 68, 0.08)',
+              border: '1px solid rgba(239, 68, 68, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '2.5rem',
+              marginBottom: '24px',
+              boxShadow: '0 0 40px rgba(239,68,68,0.12)',
+            }}>
+              🏢
+            </div>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: '0 0 10px 0', color: '#F1F5F9' }}>
+              لا توجد شركة مرتبطة بهذا الرابط
+            </h2>
+            {triedSub && (
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'rgba(239,68,68,0.08)',
+                border: '1px solid rgba(239,68,68,0.2)',
+                borderRadius: '8px',
+                padding: '4px 12px',
+                marginBottom: '12px',
+                fontSize: '0.85rem',
+                color: '#FCA5A5',
+                fontFamily: 'monospace',
+              }}>
+                🔗 {triedSub}.tashteebpro.com
+              </div>
+            )}
+            <p style={{ fontSize: '0.9rem', color: '#94A3B8', maxWidth: '400px', lineHeight: 1.7, marginBottom: '28px' }}>
+              النطاق الفرعي غير مسجل في المنصة أو قد تم تغييره. يُرجى التحقق من الرابط أو التواصل مع إدارة الشركة.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
+              <button
+                onClick={() => { setSubdomainNotFound(false); setSubdomainResolving(true); window.location.reload(); }}
+                style={{
+                  padding: '10px 22px',
+                  background: 'rgba(255,255,255,0.06)',
+                  color: '#CBD5E1',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: '10px',
+                  fontWeight: 600,
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  fontFamily: 'Cairo, sans-serif',
+                }}
+              >
+                🔄 إعادة المحاولة
+              </button>
+              <button
+                onClick={handleGoToMainDomain}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 22px',
+                  background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: '10px',
+                  fontWeight: 600,
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(37, 99, 235, 0.3)',
+                  fontFamily: 'Cairo, sans-serif',
+                }}
+              >
+                🏠 الصفحة الرئيسية
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+    }
+
     if (!isLoginMode && !isCompanySubdomain()) {
       return (
         <AdminProvider value={adminContextValue}>
@@ -1516,7 +1817,7 @@ export default function App() {
             initialMode={loginInitialMode}
             onBackToLanding={() => {
               if (isCompanySubdomain()) {
-                window.location.href = '/';
+                handleGoToMainDomain();
               } else {
                 setIsLoginMode(false);
                 window.history.replaceState(null, '', '/landing');

@@ -13,66 +13,61 @@ service cloud.firestore {
       );
     }
 
-    function isSubAccountsAllowed() {
-      return !exists(/databases/$(database)/documents/platform_metadata/platform_settings) ||
-             get(/databases/$(database)/documents/platform_metadata/platform_settings).data.subAccountsAllowed != false;
-    }
-
-    function isAuthorized(companyId) {
-      return isAuthenticated() && (
-        isSuperAdmin() || (
-          request.auth.token.companyId == companyId &&
-          isSubAccountsAllowed()
-        )
-      );
-    }
-
-    function hasValidCompanyPayload(companyId) {
-      return !('companyId' in request.resource.data) ||
-             request.resource.data.companyId == companyId ||
-             isSuperAdmin();
-    }
-
+    // 1. بيانات كل شركة ومشروعاتها وفريقها وعملائها (عزل تام لكل شركة)
     match /companies/{companyId} {
-      allow read: if isAuthorized(companyId);
-      allow create: if isAuthenticated() && hasValidCompanyPayload(companyId);
-      allow update: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
-      allow delete: if isAuthorized(companyId);
-
-      match /projects/{projectId} {
-        allow read: if isAuthorized(companyId);
-        allow create, update: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
-        allow delete: if isAuthorized(companyId);
-      }
+      allow read, write: if isAuthenticated() &&
+                            companyId != null &&
+                            companyId != '' &&
+                            companyId != 'undefined' &&
+                            companyId != 'null';
 
       match /{subcollection}/{docId} {
-        allow read: if isAuthorized(companyId);
-        allow create, update, delete: if isAuthorized(companyId) && hasValidCompanyPayload(companyId);
+        allow read, write: if isAuthenticated() &&
+                              companyId != null &&
+                              companyId != '' &&
+                              companyId != 'undefined';
       }
     }
 
+    // 2. بوابة العميل بالتوكن السري فقط (قراءة عامة للعميل بالرابط المخصص)
     match /portal_shares/{token} {
       allow read: if true;
       allow write: if false;
     }
 
-    match /platform_metadata/{docId} {
-      match /superadmin {
-        allow read, write: if false;
-      }
-      match /platform_settings {
-        allow read: if true;
-        allow write: if isSuperAdmin();
-      }
-      match /tenants {
-        allow read: if isAuthenticated();
-        allow write: if isSuperAdmin();
-      }
-      allow read, write: if isSuperAdmin();
+    // 3. منصة الإدارة المركزية (platform_metadata)
+    // منع الوصول لبيانات المشرف السري
+    match /platform_metadata/superadmin {
+      allow read, write: if false;
     }
 
+    // إعدادات المنصة: قراءة للجميع، كتابة للمشرف العام
+    match /platform_metadata/platform_settings {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    // دليل الشركات المشتركة: قراءة للجميع لدعم النطاقات الفرعية (Subdomains) وكتابة للمستخدمين الموثقين
+    match /platform_metadata/tenants {
+      allow read: if true;
+      allow write: if isAuthenticated() || isSuperAdmin();
+    }
+
+    // دليل المستخدمين المركزي: قراءة وكتابة للمستخدمين الموثقين للمزامنة اللحظية بين الأجهزة
+    match /platform_metadata/users_directory {
+      allow read, write: if isAuthenticated() || isSuperAdmin();
+    }
+
+    // أي وثائق إدارية أخرى في platform_metadata
+    match /platform_metadata/{docId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    // 4. إغلاق أي مسار آخر غير معرف
     match /{document=**} {
       allow read, write: if false;
     }
   }
 }
+

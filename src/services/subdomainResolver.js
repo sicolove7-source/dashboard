@@ -14,6 +14,7 @@
  */
 
 const RESERVED_SUBDOMAINS = ['www', 'app', 'api', 'static', 'assets', 'cdn', 'mail', 'portal'];
+// نستخدم localStorage بدلاً من sessionStorage حتى يبقى السب-دومين محفوظاً بين reloads وtabs
 const SUBDOMAIN_SESSION_KEY = 'tashteeb_active_subdomain';
 
 export function getSubdomain() {
@@ -26,7 +27,7 @@ export function getSubdomain() {
     const clean = querySubdomain.trim().toLowerCase();
     if (clean && !RESERVED_SUBDOMAINS.includes(clean)) {
       try {
-        sessionStorage.setItem(SUBDOMAIN_SESSION_KEY, clean);
+        localStorage.setItem(SUBDOMAIN_SESSION_KEY, clean);
       } catch (e) {}
       return clean;
     } else {
@@ -39,12 +40,9 @@ export function getSubdomain() {
 
   // 2. إذا كان عنوان IP محلي أو عام، أو localhost عادي:
   if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname) || hostname === 'localhost') {
-    // إذا كان الرابط نظيفاً بدون معاملات بحث، لا نفرض أي نطاق فرعي سابق
-    if (!window.location.search) {
-      return null;
-    }
+    // فحص الكاش المحلي للسب-دومين (يعمل بعد reload في بيئة التطوير)
     try {
-      const savedSub = sessionStorage.getItem(SUBDOMAIN_SESSION_KEY);
+      const savedSub = localStorage.getItem(SUBDOMAIN_SESSION_KEY);
       if (savedSub && !RESERVED_SUBDOMAINS.includes(savedSub)) {
         return savedSub;
       }
@@ -58,6 +56,8 @@ export function getSubdomain() {
     if (parts.length >= 2 && parts[0] !== 'localhost') {
       const sub = parts[0].toLowerCase();
       if (!RESERVED_SUBDOMAINS.includes(sub)) {
+        // تخزين السب-دومين محلياً للاتساق
+        try { localStorage.setItem(SUBDOMAIN_SESSION_KEY, sub); } catch (e) {}
         return sub;
       }
     }
@@ -77,11 +77,12 @@ export function getSubdomain() {
 
 export function clearActiveSubdomain() {
   try {
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.removeItem(SUBDOMAIN_SESSION_KEY);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(SUBDOMAIN_SESSION_KEY);
     }
   } catch (e) {}
 }
+
 
 /**
  * هل نحن في نطاق إدارة المنصة المركزية؟
@@ -158,3 +159,67 @@ export function getSubdomainUrl(subdomain) {
   const rootDomain = hostname.split('.').slice(-2).join('.');
   return `${protocol}//${subdomain}.${rootDomain}${port}`;
 }
+
+/**
+ * حفظ كوكي مشترك على الدومين الرئيسي ليكون متاحاً لجميع النطاقات الفرعية (*.tashteebpro.com)
+ */
+export function setCrossSubdomainCookie(name, value, days = 30) {
+  if (typeof document === 'undefined') return;
+  try {
+    const expires = new Date(Date.now() + days * 864e5).toUTCString();
+    const hostname = window.location.hostname || '';
+    let domainClause = '';
+    const parts = hostname.split('.');
+    if (parts.length >= 2 && !hostname.includes('localhost') && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+      const rootDomain = parts.slice(-2).join('.');
+      domainClause = `; domain=.${rootDomain}`;
+    }
+    const valStr = typeof value === 'string' ? value : JSON.stringify(value);
+    document.cookie = `${name}=${encodeURIComponent(valStr)}${domainClause}; path=/; expires=${expires}; SameSite=Lax`;
+  } catch (e) {
+    console.warn('[Cookie] Error setting cookie:', e);
+  }
+}
+
+/**
+ * قراءة كوكي مشترك من أي نطاق فرعي
+ */
+export function getCrossSubdomainCookie(name) {
+  if (typeof document === 'undefined') return null;
+  try {
+    const prefix = `${name}=`;
+    const cookies = document.cookie.split(';');
+    for (let c of cookies) {
+      c = c.trim();
+      if (c.indexOf(prefix) === 0) {
+        const raw = decodeURIComponent(c.substring(prefix.length));
+        try {
+          return JSON.parse(raw);
+        } catch (e) {
+          return raw;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[Cookie] Error reading cookie:', e);
+  }
+  return null;
+}
+
+/**
+ * حذف كوكي مشترك عبر جميع النطاقات الفرعية
+ */
+export function removeCrossSubdomainCookie(name) {
+  if (typeof document === 'undefined') return;
+  try {
+    const hostname = window.location.hostname || '';
+    let domainClause = '';
+    const parts = hostname.split('.');
+    if (parts.length >= 2 && !hostname.includes('localhost') && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+      const rootDomain = parts.slice(-2).join('.');
+      domainClause = `; domain=.${rootDomain}`;
+    }
+    document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT${domainClause}`;
+  } catch (e) {}
+}
+

@@ -32,6 +32,7 @@ import {
 import { db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import defaultTenantsData from './defaultTenantsData.json';
+import { getCrossSubdomainCookie, setCrossSubdomainCookie, isCompanySubdomain, getSubdomain } from './subdomainResolver';
 
 export const PLATFORM_TENANTS_KEY = 'platform-tenants-master-v1';
 export const ACTIVE_TENANT_ID_KEY = 'platform-active-tenant-id';
@@ -199,6 +200,20 @@ export function loadAllTenants() {
     }
     if (!Array.isArray(parsed)) parsed = [];
 
+    // استعادة كاش الشركات من الكوكي المشترك إذا كان التخزين المحلي فارغاً على هذا النطاق الفرعي
+    if (parsed.length === 0 && typeof document !== 'undefined') {
+      try {
+        const cookieList = getCrossSubdomainCookie('tashteeb_tenants_cache');
+        if (Array.isArray(cookieList) && cookieList.length > 0) {
+          parsed = cookieList;
+        }
+        const lastReg = getCrossSubdomainCookie('tashteeb_last_registered_tenant');
+        if (lastReg && lastReg.id && !parsed.some(t => t.id === lastReg.id)) {
+          parsed.unshift(lastReg);
+        }
+      } catch (e) {}
+    }
+
     // دمج فوري وتلقائي مع DEFAULT_TENANTS لضمان وجود كل الشركات والـ 13 موظف دائماً
     const map = new Map();
     DEFAULT_TENANTS.forEach(t => {
@@ -283,6 +298,9 @@ export function saveAllTenants(tenants) {
     localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(tenants));
   } catch (e) {}
   try {
+    setCrossSubdomainCookie('tashteeb_tenants_cache', tenants);
+  } catch (e) {}
+  try {
     syncTenantsListToCloud(tenants);
   } catch (e) {}
 }
@@ -316,6 +334,9 @@ export function createTenant(data) {
 
   const updated = [newTenant, ...tenants];
   saveAllTenants(updated);
+  try {
+    setCrossSubdomainCookie('tashteeb_last_registered_tenant', newTenant);
+  } catch (e) {}
 
   // إعداد مستخدمي الشركة (بدون أي كلمات سر كنص صريح - الاعتماد كلياً على Firebase Auth)
   const companyUsers = [
@@ -494,12 +515,57 @@ export async function registerNewTenant(formData) {
     currency: newTenant.currency || 'ج.م',
   };
 
-  try {
-    syncTenantUsersToCloud(newTenant.id, [{ ...user, phone: phone || null }]).catch(() => {});
-  } catch (e) {}
+  // ═══════════════════════════════════════════════════════════
+  // ⚠️ CRITICAL: ننتظر اكتمال المزامنة السحابية الكاملة قبل الإرجاع
+  // لأن المستخدم سيُوجَّه فوراً للسب-دومين ويحاول الدخول فيه
+  // ═══════════════════════════════════════════════════════════
 
-  // تعيين الشركة كشركة نشطة
+  // الخطوة 1: رفع قائمة الشركات المركزية بما فيها الشركة الجديدة مع بيانات المستخدم
+  // هذا هو مسار البحث الأساسي الذي يستخدمه fetchUserFromCloudDirectory
+  try {
+    const allTenants = loadAllTenants(); // تشمل الشركة الجديدة بعد createTenant
+    const tenantWithUsers = allTenants.map(t => {
+      if (t.id === newTenant.id) {
+        return {
+          ...t,
+          users: [{ ...user, phone: phone || null }],
+          authorizedEmails: [user.email],
+          adminEmail: user.email,
+        };
+      }
+      return t;
+    });
+    await syncTenantsListToCloud(tenantWithUsers);
+    console.log('[registerNewTenant] ✅ Tenants list synced to cloud with new company');
+  } catch (e) {
+    console.warn('[registerNewTenant] ⚠️ syncTenantsListToCloud failed:', e);
+  }
+
+  // الخطوة 2: كتابة المستخدم مباشرة في users_directory للبحث الفوري بالإيميل
+  try {
+    await syncTenantUsersToCloud(newTenant.id, [{ ...user, phone: phone || null }]);
+    console.log('[registerNewTenant] ✅ Users directory synced successfully');
+  } catch (e) {
+    // محاولة ثانية بعد ثانية
+    try {
+      await new Promise(r => setTimeout(r, 1500));
+      await syncTenantUsersToCloud(newTenant.id, [{ ...user, phone: phone || null }]);
+    } catch (e2) {
+      console.warn('[registerNewTenant] ⚠️ syncTenantUsersToCloud retry failed:', e2);
+    }
+  }
+
+  // تعيين الشركة كشركة نشطة وحفظها في الكوكي المشترك لكافة النطاقات الفرعية
   setActiveTenantId(newTenant.id);
+  try {
+    setCrossSubdomainCookie('tashteeb_last_registered_tenant', newTenant);
+    setCrossSubdomainCookie('tashteeb_session_auth', {
+      email: user.email,
+      companyId: newTenant.id,
+      role: 'owner',
+      subdomain: newTenant.subdomain
+    });
+  } catch (e) {}
 
   return {
     success: true,
@@ -508,6 +574,8 @@ export async function registerNewTenant(formData) {
     isSuperAdmin: false,
   };
 }
+
+
 
 export function updateTenant(id, updates) {
   const tenants = loadAllTenants();
@@ -1129,7 +1197,114 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     }
   } catch(e) {}
 
-  // 8. لم يتم ربط هذا الحساب بأي شركة مسجلة في المنصة
+  // 8. فحص سياق السب-دومين والتسجيل الحديث (Subdomain Context & Cross-Domain Recovery)
+  try {
+    const currentSub = isCompanySubdomain() ? getSubdomain() : null;
+    const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const paramTenantId = urlParams?.get('tenant_id');
+    const paramCompName = urlParams?.get('company_name');
+
+    // أ) فحص آخر شركة تم تسجيلها من الكوكي المشترك
+    const lastRegTenant = getCrossSubdomainCookie('tashteeb_last_registered_tenant');
+    if (lastRegTenant && (
+      lastRegTenant.adminEmail?.toLowerCase().trim() === cleanEmail ||
+      (currentSub && lastRegTenant.subdomain?.toLowerCase() === currentSub) ||
+      (paramTenantId && lastRegTenant.id === paramTenantId)
+    )) {
+      console.log('[resolveTenantUserByEmail] ✅ Resolved via cross-subdomain registration cookie:', lastRegTenant.id);
+      const currentList = loadAllTenants();
+      if (!currentList.some(t => t.id === lastRegTenant.id)) {
+        saveAllTenants([lastRegTenant, ...currentList]);
+      }
+      return {
+        success: true,
+        user: {
+          id: firebaseUid || `u_${lastRegTenant.id}_admin`,
+          email: cleanEmail,
+          name: lastRegTenant.adminName || cleanEmail.split('@')[0],
+          role: 'owner',
+          companyId: lastRegTenant.id,
+          companyName: lastRegTenant.name,
+          currency: lastRegTenant.currency || 'ج.م',
+        },
+        tenant: lastRegTenant,
+        isSuperAdmin: false,
+      };
+    }
+
+    // ب) فحص كاش الشركات المشترك من الكوكي
+    const cookieTenants = getCrossSubdomainCookie('tashteeb_tenants_cache');
+    if (Array.isArray(cookieTenants) && cookieTenants.length > 0) {
+      const matchCookieTenant = cookieTenants.find(t => {
+        if (!t) return false;
+        if (t.adminEmail?.toLowerCase().trim() === cleanEmail) return true;
+        if (currentSub && (t.subdomain?.toLowerCase() === currentSub || t.slug?.toLowerCase() === currentSub)) return true;
+        if (Array.isArray(t.users) && t.users.some(u => (u.email || '').toLowerCase().trim() === cleanEmail)) return true;
+        return false;
+      });
+      if (matchCookieTenant) {
+        console.log('[resolveTenantUserByEmail] ✅ Resolved via cross-subdomain tenants cache:', matchCookieTenant.id);
+        const matchUser = Array.isArray(matchCookieTenant.users) 
+          ? matchCookieTenant.users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail)
+          : null;
+        return {
+          success: true,
+          user: {
+            id: firebaseUid || matchUser?.id || `u_${matchCookieTenant.id}_user`,
+            email: cleanEmail,
+            name: matchUser?.name || matchCookieTenant.adminName || cleanEmail.split('@')[0],
+            role: matchUser?.role || (matchCookieTenant.adminEmail === cleanEmail ? 'owner' : 'engineer'),
+            companyId: matchCookieTenant.id,
+            companyName: matchCookieTenant.name,
+            currency: matchCookieTenant.currency || 'ج.م',
+          },
+          tenant: matchCookieTenant,
+          isSuperAdmin: false,
+        };
+      }
+    }
+
+    // ج) إذا كان المستخدم على رابط شركة مخصص (مثل ddss.tashteebpro.com) وسجّل دخوله بنجاح بحساب Firebase الموثق
+    if (currentSub && currentSub !== 'admin') {
+      console.log('[resolveTenantUserByEmail] ⚡ Auto-associating authenticated user with current company subdomain:', currentSub);
+      const companyId = paramTenantId || `comp_${currentSub}`;
+      const companyName = (paramCompName ? decodeURIComponent(paramCompName) : null) || currentSub;
+      const subTenant = {
+        id: companyId,
+        name: companyName,
+        subdomain: currentSub,
+        adminEmail: cleanEmail,
+        currency: 'ج.م',
+        status: 'active',
+        plan: 'trial',
+      };
+      try {
+        const currentList = loadAllTenants();
+        if (!currentList.some(t => t.id === companyId)) {
+          saveAllTenants([subTenant, ...currentList]);
+        }
+      } catch (e) {}
+
+      return {
+        success: true,
+        user: {
+          id: firebaseUid || `u_${companyId}_admin`,
+          email: cleanEmail,
+          name: cleanEmail.split('@')[0],
+          role: 'owner',
+          companyId: companyId,
+          companyName: companyName,
+          currency: 'ج.م',
+        },
+        tenant: subTenant,
+        isSuperAdmin: false,
+      };
+    }
+  } catch (e) {
+    console.warn('[resolveTenantUserByEmail] Subdomain context fallback error:', e);
+  }
+
+  // 9. لم يتم ربط هذا الحساب بأي شركة مسجلة في المنصة
   console.warn('[resolveTenantUserByEmail] No matching company found for user:', cleanEmail);
   return {
     success: false,

@@ -908,6 +908,50 @@ export async function syncTenantsListToCloud(tenants) {
 }
 
 /**
+ * جلب بيانات التينانت من السحابة بناءً على النطاق الفرعي (Subdomain)
+ * يبحث في: subdomain, slug, id, comp_{id} — متزامن مع منطق getInitialCompanyId في App.jsx
+ */
+export async function fetchTenantBySubdomain(subdomain) {
+  const cleanSubdomain = (subdomain || '').toLowerCase().trim();
+  if (!cleanSubdomain) return null;
+  try {
+    const list = await fetchTenantsListFromCloud();
+    if (Array.isArray(list) && list.length > 0) {
+      const found = list.find(t => {
+        if (!t) return false;
+        const tSub  = (t.subdomain || '').toLowerCase().trim();
+        const tSlug = (t.slug || '').toLowerCase().trim();
+        const tId   = (t.id || '').toLowerCase().trim();
+        const tCustomDomain = (t.customDomain || '').toLowerCase().trim();
+        // مطابقة الدومين المخصص الكامل إن وُجد
+        if (tCustomDomain) {
+          try {
+            const currentHost = window.location.hostname.toLowerCase();
+            if (currentHost === tCustomDomain) return true;
+          } catch (e) {}
+        }
+        return (
+          tSub === cleanSubdomain ||
+          tSlug === cleanSubdomain ||
+          tId === cleanSubdomain ||
+          tId === `comp_${cleanSubdomain}` ||
+          tId === `comp_c_${cleanSubdomain}`
+        );
+      });
+      if (found) {
+        console.log('[fetchTenantBySubdomain] ✅ Resolved subdomain:', cleanSubdomain, '→', found.id);
+      } else {
+        console.warn('[fetchTenantBySubdomain] ⚠️ No tenant found for subdomain:', cleanSubdomain);
+      }
+      return found || null;
+    }
+  } catch (error) {
+    console.warn("Cloud fetch (tenant by subdomain) error:", error?.message || error);
+  }
+  return null;
+}
+
+/**
  * البحث عن حساب المستخدم في دليل المنصة السحابي المركزي (للتحقق الفوري عند الدخول)
  */
 export async function fetchUserFromCloudDirectory(email) {
