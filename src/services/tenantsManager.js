@@ -489,6 +489,7 @@ export async function registerNewTenant(formData) {
     } catch (e2) {
       console.warn('[registerNewTenant] ⚠️ syncTenantUsersToCloud retry failed:', e2);
     }
+  }
   // الخطوة 3: تسجيل فوري في tenant_directory/{subdomain} لتمكين الزوار من فتح الرابط بدون تسجيل دخول
   try {
     const dirRef = doc(db, 'tenant_directory', rawSubdomain);
