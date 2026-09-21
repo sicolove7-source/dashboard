@@ -6,7 +6,7 @@
  */
 
 import app, { db, storage } from '../firebase';
-import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, getDocs, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, uploadString, getStorage } from 'firebase/storage';
 
 /**
@@ -139,13 +139,21 @@ export async function syncCompanyDataToCloud(companyId, partialData) {
   }
 }
 
+function isPlainObject(val) {
+  if (val === null || typeof val !== 'object') return false;
+  const proto = Object.getPrototypeOf(val);
+  return proto === Object.prototype || proto === null;
+}
+
 /**
  * حذف أي قيم undefined من شجرة الكائن لأن فايربيس ترفضها وتسبب فشل الحفظ
+ * يحافظ على كائنات Date و Firestore Timestamp وغيرها من الكائنات غير الـ Plain
  */
 export function stripUndefined(obj) {
   if (obj === undefined) return null;
   if (obj === null || typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) return obj.map(item => item === undefined ? null : stripUndefined(item));
+  if (!isPlainObject(obj)) return obj;
   const clean = {};
   for (const [key, val] of Object.entries(obj)) {
     if (val !== undefined) {
@@ -214,7 +222,7 @@ export function sanitizeProjectForCloud(project) {
         date: l.date || '',
         author: l.author || '',
         work: l.work || '',
-        workers: Number(l.workers) || 1,
+        workers: Number.isFinite(Number(l.workers)) ? Number(l.workers) : 1,
         issues: l.issues || '',
         time: l.time || '',
         timestamp: l.timestamp || l.createdAt || '',
@@ -440,7 +448,8 @@ export function mergeTeamsPreservingLocal(localTeam, cloudTeam, companyUsers = [
     companyUsers.forEach(u => {
       const g = roleMap[u.role];
       if (g) {
-        const name = (u.role === 'engineer' ? (u.engineerName || u.name) : u.name || '').trim();
+        const rawName = u.role === 'engineer' ? (u.engineerName || u.name || '') : (u.name || '');
+        const name = String(rawName || '').trim();
         if (name && !result[g].includes(name)) {
           result[g].push(name);
         }
@@ -457,15 +466,17 @@ export function mergeTeamsPreservingLocal(localTeam, cloudTeam, companyUsers = [
 export function mergeUsersPreservingLocal(localUsers, cloudUsers) {
   const usersMap = new Map();
   (Array.isArray(cloudUsers) ? cloudUsers : []).forEach(u => {
-    if (u && (u.id || u.email)) {
-      const key = (u.email || u.id).toLowerCase().trim();
-      usersMap.set(key, u);
+    if (u && (u.id != null || u.email)) {
+      const rawKey = u.email || String(u.id);
+      const key = String(rawKey).toLowerCase().trim();
+      if (key) usersMap.set(key, u);
     }
   });
   (Array.isArray(localUsers) ? localUsers : []).forEach(u => {
-    if (u && (u.id || u.email)) {
-      const key = (u.email || u.id).toLowerCase().trim();
-      usersMap.set(key, { ...(usersMap.get(key) || {}), ...u });
+    if (u && (u.id != null || u.email)) {
+      const rawKey = u.email || String(u.id);
+      const key = String(rawKey).toLowerCase().trim();
+      if (key) usersMap.set(key, { ...(usersMap.get(key) || {}), ...u });
     }
   });
   return Array.from(usersMap.values());

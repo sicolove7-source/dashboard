@@ -804,7 +804,6 @@ export async function getTenantDataAsync(companyId) {
         phone: tenant?.phone || cloud.settings?.phone || '',
         primaryColor: tenant?.primaryColor || cloud.settings?.primaryColor || '#1877F2',
         accentColor: tenant?.accentColor || cloud.settings?.accentColor || '#166FE5',
-        companyLogo: null,
         ...(localSettings || {}),
         ...(cloudSettings || {}),
         companyLogo: cloudSettings?.companyLogo || localSettings?.companyLogo || null,

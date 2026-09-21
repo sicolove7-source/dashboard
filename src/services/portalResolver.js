@@ -12,6 +12,15 @@ import { httpsCallable } from 'firebase/functions';
 import { getTenantData, loadAllTenants } from './tenantsManager';
 import { loadCompanySettings } from '../utils/branding';
 
+function safeDecodeURIComponent(val) {
+  if (!val) return '';
+  try {
+    return decodeURIComponent(val);
+  } catch (_e) {
+    return String(val);
+  }
+}
+
 /**
  * فحص وتحليل رابط الـ URL لمعرفة ما إذا كان الزائر يفتح بوابة عميل
  * يدعم جميع صيغ الروابط:
@@ -21,13 +30,30 @@ import { loadCompanySettings } from '../utils/branding';
  * 4. #/portal/:token
  * 5. ?portal=:token
  */
-export function parseClientPortalFromUrl() {
-  if (typeof window === 'undefined') return null;
-
+export function parseClientPortalFromUrl(urlInput) {
   try {
-    const pathname = window.location.pathname;
-    const hash = window.location.hash;
-    const searchParams = new URLSearchParams(window.location.search);
+    let pathname = '';
+    let hash = '';
+    let search = '';
+
+    if (urlInput) {
+      try {
+        const parsed = new URL(urlInput, 'https://tashteebpro.com');
+        pathname = parsed.pathname;
+        hash = parsed.hash;
+        search = parsed.search;
+      } catch (_err) {
+        return null;
+      }
+    } else if (typeof window !== 'undefined') {
+      pathname = window.location.pathname;
+      hash = window.location.hash;
+      search = window.location.search;
+    } else {
+      return null;
+    }
+
+    const searchParams = new URLSearchParams(search);
     const queryToken = searchParams.get('t') || searchParams.get('token') || null;
 
     // 1. فحص المسار العادي: /portal/:token أو /portal/:companyId/:token
@@ -38,14 +64,14 @@ export function parseClientPortalFromUrl() {
       if (pathParts.length >= 3) {
         return {
           companyId: pathParts[1],
-          projectId: decodeURIComponent(pathParts[2]),
-          token: queryToken || decodeURIComponent(pathParts[2])
+          projectId: safeDecodeURIComponent(pathParts[2]),
+          token: queryToken || safeDecodeURIComponent(pathParts[2])
         };
       }
       return {
         companyId: searchParams.get('c') || searchParams.get('company') || null,
-        projectId: decodeURIComponent(pathParts[1]),
-        token: queryToken || decodeURIComponent(pathParts[1])
+        projectId: safeDecodeURIComponent(pathParts[1]),
+        token: queryToken || safeDecodeURIComponent(pathParts[1])
       };
     }
 
@@ -57,21 +83,22 @@ export function parseClientPortalFromUrl() {
         if (hashParts.length >= 3) {
           return {
             companyId: hashParts[1],
-            projectId: decodeURIComponent(hashParts[2]),
-            token: queryToken || decodeURIComponent(hashParts[2])
+            projectId: safeDecodeURIComponent(hashParts[2]),
+            token: queryToken || safeDecodeURIComponent(hashParts[2])
           };
         }
         return {
           companyId: searchParams.get('c') || searchParams.get('company') || null,
-          projectId: decodeURIComponent(hashParts[1]),
-          token: queryToken || decodeURIComponent(hashParts[1])
+          projectId: safeDecodeURIComponent(hashParts[1]),
+          token: queryToken || safeDecodeURIComponent(hashParts[1])
         };
       }
     }
 
     // 3. فحص المعاملات المباشرة: ?portal=:token
+    // URLSearchParams.get يقوم بفك الترميز تلقائياً، فلا حاجة لـ decodeURIComponent مضاعف
     if (searchParams.has('portal')) {
-      const pVal = decodeURIComponent(searchParams.get('portal'));
+      const pVal = searchParams.get('portal') || '';
       return {
         companyId: searchParams.get('c') || searchParams.get('company') || null,
         projectId: pVal,
