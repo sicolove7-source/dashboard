@@ -21,7 +21,7 @@ function generateSecureToken() {
  * مُقيدة بالتحقق: المستخدم المطلوب تعيين Claims له يجب أن يكون نفسه أو Super Admin
  */
 exports.assignUserClaims = onCall(async (request) => {
-  const { targetUid, companyId, role, companyName, currency } = request.data || {};
+  const { targetUid, companyId, role, companyName, currency, subdomain, logo } = request.data || {};
 
   // التحقق من صحة المدخلات
   if (!targetUid || !companyId) {
@@ -159,6 +159,25 @@ exports.assignUserClaims = onCall(async (request) => {
       console.warn('[assignUserClaims] Could not append to platform_metadata/tenants:', e.message);
     }
 
+    // تسجيل الشركة في الدليل العام للسابدومين (tenant_directory/{subdomain}) لربط السابدومين بالشركة للزوار
+    if (subdomain) {
+      const cleanSub = String(subdomain).toLowerCase().trim().replace(/[^a-z0-9-]/g, '');
+      if (cleanSub) {
+        try {
+          await db.doc(`tenant_directory/${cleanSub}`).set({
+            companyId: companyId,
+            name: companyName || companyId,
+            logo: logo || null,
+            subdomain: cleanSub,
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
+          console.log(`[assignUserClaims] tenant_directory updated for subdomain: ${cleanSub} -> ${companyId}`);
+        } catch (e) {
+          console.warn('[assignUserClaims] Could not write to tenant_directory:', e.message);
+        }
+      }
+    }
+
     console.log(`[assignUserClaims] Claims set for UID ${targetUid}: companyId=${companyId}, role=${safeRole}`);
     return { success: true };
   } catch (err) {
@@ -266,6 +285,11 @@ exports.createCompanyUser = onCall(async (request) => {
       : `الحساب موجود مسبقاً. تم تحديث صلاحياته وإنشاء رابط تعيين كلمة المرور.`,
   };
 });
+
+/**
+ * 0c-2. الاسم البديل المعتمد لإنشاء حسابات أعضاء الفريق (createTeamMemberAccount)
+ */
+exports.createTeamMemberAccount = exports.createCompanyUser;
 
 /**
  * 0b. دالة تعيين Claims للسوبر أدمن (setSuperAdminClaims)

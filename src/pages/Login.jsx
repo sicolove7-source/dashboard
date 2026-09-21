@@ -371,6 +371,8 @@ export default function Login({
             role: 'owner',
             companyName: res.tenant.name,
             currency: res.tenant.currency || 'ج.م',
+            subdomain: cleanSubdomain,
+            logo: res.tenant?.logo || null,
           });
           if (firebaseUser.getIdToken) {
             await firebaseUser.getIdToken(true);

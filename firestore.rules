@@ -47,10 +47,16 @@ service cloud.firestore {
       allow write: if isSuperAdmin();
     }
 
-    // دليل الشركات المشتركة: قراءة للجميع لدعم النطاقات الفرعية (Subdomains) وكتابة للمستخدمين الموثقين
+    // دليل الشركات المشتركة الإداري: قراءة للمستخدمين المسجلين فقط لمنع تسريب بيانات إدارية
     match /platform_metadata/tenants {
-      allow read: if true;
+      allow read: if isAuthenticated();
       allow write: if isAuthenticated() || isSuperAdmin();
+    }
+
+    // دليل السابدومين العام المخصص لربط السابدومين بالشركة للزوار بدون تسجيل دخول
+    match /tenant_directory/{subdomain} {
+      allow read: if true;
+      allow write: if false;
     }
 
     // دليل المستخدمين المركزي: قراءة وكتابة للمستخدمين الموثقين للمزامنة اللحظية بين الأجهزة
@@ -60,7 +66,7 @@ service cloud.firestore {
 
     // أي وثائق إدارية أخرى في platform_metadata
     match /platform_metadata/{docId} {
-      allow read: if true;
+      allow read: if isAuthenticated();
       allow write: if isSuperAdmin();
     }
 

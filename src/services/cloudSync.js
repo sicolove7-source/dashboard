@@ -925,6 +925,30 @@ export async function syncTenantsListToCloud(tenants) {
 export async function fetchTenantBySubdomain(subdomain) {
   const cleanSubdomain = (subdomain || '').toLowerCase().trim();
   if (!cleanSubdomain) return null;
+
+  // 1. الدليل العام المخصص للشركات والنطاقات الفرعية (متاح لجميع الزوار بدون تسجيل دخول)
+  try {
+    const dirRef = doc(db, 'tenant_directory', cleanSubdomain);
+    const dirSnap = await getDoc(dirRef);
+    if (dirSnap.exists()) {
+      const { companyId, name, logo } = dirSnap.data() || {};
+      if (companyId) {
+        console.log('[fetchTenantBySubdomain] ✅ Resolved from tenant_directory:', cleanSubdomain, '→', companyId);
+        return {
+          id: companyId,
+          companyId: companyId,
+          name: name || companyId,
+          logo: logo || null,
+          subdomain: cleanSubdomain,
+          slug: cleanSubdomain,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('[fetchTenantBySubdomain] tenant_directory lookup fallback:', e?.message || e);
+  }
+
+  // 2. الطريقة الاحتياطية (fetchTenantsListFromCloud) للمستخدمين المسجلين دخول أصلاً
   try {
     const list = await fetchTenantsListFromCloud();
     if (Array.isArray(list) && list.length > 0) {
