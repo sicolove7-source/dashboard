@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 const SuperAdminDashboard = React.lazy(() => import('./SuperAdminDashboard'));
 import { loginWithEmail, logoutUser, getUserClaims } from '../services/auth';
-import { getSuperAdminAccount, saveSuperAdminAccount, resolveTenantUserByEmail, setActiveTenantId, BUILTIN_SUPERADMIN_EMAILS } from '../services/tenantsManager';
+import { resolveTenantUserByEmail, setActiveTenantId } from '../services/tenantsManager';
 import { clearActiveSubdomain } from '../services/subdomainResolver';
 
 export default function AdminPortal({
@@ -20,14 +20,8 @@ export default function AdminPortal({
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [newAdminEmail, setNewAdminEmail] = useState('');
-  const [saveSuccessMsg, setSaveSuccessMsg] = useState(null);
 
-  const userEmail = (currentUser?.email || '').toLowerCase().trim();
-  const isSuperAdmin = currentUser?.role === 'super_admin' || 
-                       currentUser?.isSuperAdmin === true || 
-                       BUILTIN_SUPERADMIN_EMAILS.includes(userEmail);
+  const isSuperAdmin = Boolean(currentUser?.role === 'super_admin');
 
   // خروج من بوابة الإدارة والعودة للموقع الرئيسي
   const handleExitAdmin = () => {
@@ -92,36 +86,18 @@ export default function AdminPortal({
         const claims = await getUserClaims(res.user);
         const tenantResult = await resolveTenantUserByEmail(res.user.email, res.user.uid, claims);
 
-        const registeredAdmin = getSuperAdminAccount();
-        const isRegisteredSuperAdmin = Boolean(registeredAdmin?.email && registeredAdmin.email.toLowerCase().trim() === cleanEmail);
-
-        // ⚠️ تنبيه أمني: الاعتماد فقط على مصادر تحقق موثوقة من السحابة (Firebase Custom Claims
-        // أو نتيجة resolveTenantUserByEmail)، أو تطابق مع الإيميل المسجل مسبقاً كمالك للمنصة.
-        // تم إزالة أي مسار "دخول تلقائي عند عدم وجود مدير مسجل" أو "رمز سري ثابت" لأنهما
-        // كانا يسمحان لأي مستخدم عادي بالحصول على صلاحيات كاملة على كل شركات المنصة.
         const isSuperAdminAuthorized = Boolean(
-          tenantResult?.isSuperAdmin ||
-          tenantResult?.user?.role === 'super_admin' ||
-          claims?.role === 'super_admin' ||
-          claims?.isSuperAdmin === true ||
-          BUILTIN_SUPERADMIN_EMAILS.includes(cleanEmail) ||
-          isRegisteredSuperAdmin
+          claims?.role === 'super_admin' || claims?.isSuperAdmin === true
         );
 
         if (isSuperAdminAuthorized) {
           const adminUserData = {
             uid: res.user.uid,
             email: res.user.email,
-            name: res.user.displayName || tenantResult?.user?.name || registeredAdmin?.name || 'مدير المنصة الرئيسي',
+            name: res.user.displayName || tenantResult?.user?.name || 'مدير المنصة الرئيسي',
             role: 'super_admin',
             isSuperAdmin: true,
           };
-
-          // توثيق وحفظ بيانات المشرف العام
-          saveSuperAdminAccount({
-            email: res.user.email,
-            name: adminUserData.name,
-          });
 
           if (onAdminLogin) {
             onAdminLogin(adminUserData);
@@ -220,30 +196,6 @@ export default function AdminPortal({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button
-              onClick={() => {
-                const curr = getSuperAdminAccount();
-                setNewAdminEmail(curr?.email || currentUser?.email || '');
-                setSaveSuccessMsg(null);
-                setShowSettingsModal(true);
-              }}
-              style={{
-                background: 'rgba(59, 130, 246, 0.15)',
-                border: '1px solid rgba(59, 130, 246, 0.3)',
-                color: '#93C5FD',
-                padding: '7px 14px',
-                borderRadius: 8,
-                fontSize: 12.5,
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6
-              }}
-            >
-              <KeyRound size={14} />
-              <span>إعدادات المشرف العام 👑</span>
-            </button>
 
             <button
               onClick={handleExitAdmin}
@@ -286,130 +238,6 @@ export default function AdminPortal({
             </button>
           </div>
         </header>
-
-        {/* نافذة منبثقة لإدارة بيانات وحساب المشرف العام */}
-        {showSettingsModal && (
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0,0,0,0.7)',
-              backdropFilter: 'blur(8px)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 9999,
-              padding: 16
-            }}
-          >
-            <div
-              style={{
-                width: '100%',
-                maxWidth: 480,
-                background: '#1E293B',
-                border: '1px solid rgba(255,255,255,0.12)',
-                borderRadius: 16,
-                padding: 24,
-                color: '#fff',
-                boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(24, 119, 242, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#60A5FA' }}>
-                    <Shield size={20} />
-                  </div>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>إعدادات حساب مالك المنصة (SuperAdmin)</h3>
-                </div>
-                <button
-                  onClick={() => setShowSettingsModal(false)}
-                  style={{ background: 'transparent', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: 18 }}
-                >
-                  ✕
-                </button>
-              </div>
-
-              <p style={{ fontSize: 13, color: '#94A3B8', lineHeight: 1.6, marginBottom: 16 }}>
-                يمكنك هنا تعيين أو تغيير البريد الإلكتروني المعتمد لمالك المنصة الذي يمتلك صلاحية الوصول الكاملة لبوابة الإدارة وإدارة كافة الشركات.
-              </p>
-
-              {saveSuccessMsg && (
-                <div style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#34D399', padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
-                  {saveSuccessMsg}
-                </div>
-              )}
-
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6, color: '#CBD5E1' }}>
-                  البريد الإلكتروني لمدير المنصة المعتمد
-                </label>
-                <input
-                  type="email"
-                  value={newAdminEmail}
-                  onChange={(e) => setNewAdminEmail(e.target.value)}
-                  placeholder="admin@platform.com"
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    background: '#0F172A',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    borderRadius: 8,
-                    color: '#fff',
-                    fontSize: 14,
-                    boxSizing: 'border-box',
-                    direction: 'ltr',
-                    textAlign: 'right'
-                  }}
-                />
-              </div>
-
-              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: 12, marginBottom: 20, fontSize: 12, color: '#94A3B8', lineHeight: 1.6 }}>
-                💡 <strong>معلومة أمنية:</strong> يُحفظ هذا البريد كمالك للمنصة محلياً. لحقن الصلاحيات المشفرة (Custom Claims) داخل رمز Google Auth مباشرة، يمكنك تشغيل سكريبت الإدارة:
-                <code style={{ display: 'block', direction: 'ltr', textAlign: 'left', background: '#0F172A', padding: '6px 10px', borderRadius: 6, marginTop: 6, color: '#60A5FA', fontFamily: 'monospace' }}>
-                  node scripts/set-custom-claims.cjs --email {newAdminEmail || 'your-email@gmail.com'} --role super_admin
-                </code>
-              </div>
-
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => setShowSettingsModal(false)}
-                  style={{
-                    background: 'rgba(255,255,255,0.08)',
-                    border: 'none',
-                    color: '#CBD5E1',
-                    padding: '8px 16px',
-                    borderRadius: 8,
-                    fontSize: 13,
-                    cursor: 'pointer'
-                  }}
-                >
-                  إغلاق
-                </button>
-                <button
-                  onClick={() => {
-                    const clean = (newAdminEmail || '').trim().toLowerCase();
-                    if (!clean || !clean.includes('@')) return;
-                    saveSuperAdminAccount({ email: clean, name: 'مدير المنصة الرئيسي' });
-                    setSaveSuccessMsg('✅ تم حفظ وتحديث بريد مدير المنصة المعتمد بنجاح.');
-                    setTimeout(() => setSaveSuccessMsg(null), 3000);
-                  }}
-                  style={{
-                    background: 'linear-gradient(135deg, #1877F2, #166FE5)',
-                    border: 'none',
-                    color: '#fff',
-                    padding: '8px 18px',
-                    borderRadius: 8,
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                >
-                  حفظ التعديلات
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* جسم لوحة الإدارة */}
         <main style={{ flex: 1, padding: '24px', maxWidth: 1400, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>

@@ -8,7 +8,6 @@ import {
 import {
   loadAllTenants, createTenant, updateTenant, deleteTenant,
   generateWhatsAppWelcomeMessage, setActiveTenantId,
-  getSuperAdminAccount, saveSuperAdminAccount,
   isSubAccountsLoginAllowed, setSubAccountsLoginAllowed
 } from '../services/tenantsManager';
 import { updateCurrentUserPassword } from '../services/auth';
@@ -28,7 +27,10 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
 
   // Owner Security Modal State
   const [showOwnerModal, setShowOwnerModal] = useState(false);
-  const [ownerForm, setOwnerForm] = useState(() => getSuperAdminAccount());
+  const [ownerForm, setOwnerForm] = useState(() => ({
+    name: currentUser?.name || currentUser?.displayName || 'مدير المنصة الرئيسي',
+    email: currentUser?.email || ''
+  }));
   const [ownerSuccess, setOwnerSuccess] = useState(false);
   const [ownerLoading, setOwnerLoading] = useState(false);
   const [ownerMsg, setOwnerMsg] = useState(null);
@@ -185,7 +187,10 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
           <button
             className="btn btn-secondary"
             onClick={() => {
-              setOwnerForm(getSuperAdminAccount());
+              setOwnerForm({
+                name: currentUser?.name || currentUser?.displayName || 'مدير المنصة الرئيسي',
+                email: currentUser?.email || ''
+              });
               setOwnerSuccess(false);
               setShowOwnerModal(true);
             }}
@@ -998,13 +1003,8 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                     return;
                   }
 
-                  // حفظ بيانات الملف الشخصي (الاسم والبريد فقط) دون أي كلمات مرور
-                  saveSuperAdminAccount({
-                    name: ownerForm.name,
-                    email: ownerForm.email,
-                  });
                   setOwnerSuccess(true);
-                  setOwnerMsg(note || 'تم حفظ بيانات الملف الشخصي بنجاح!');
+                  setOwnerMsg(note || 'تم تحديث البيانات بنجاح!');
                   setTimeout(() => {
                     setShowOwnerModal(false);
                     setOwnerSuccess(false);

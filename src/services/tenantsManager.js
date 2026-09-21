@@ -36,7 +36,6 @@ import { getCrossSubdomainCookie, setCrossSubdomainCookie, isCompanySubdomain, g
 
 export const PLATFORM_TENANTS_KEY = 'platform-tenants-master-v1';
 export const ACTIVE_TENANT_ID_KEY = 'platform-active-tenant-id';
-export const SUPER_ADMIN_STORAGE_KEY = 'platform-superadmin-credentials-v1';
 export const SUB_ACCOUNTS_ACCESS_KEY = 'platform-subaccounts-access-v2';
 
 /**
@@ -89,33 +88,9 @@ export function setSubAccountsLoginAllowed(allowed) {
   }
 }
 
-// قائمة البريد المعتمد لمالك المنصة الرئيسي (Super Admin)
-export const BUILTIN_SUPERADMIN_EMAILS = [
-  'sicolove7@gmail.com',
-  'admin@platform.com',
-  'admin@tashteebpro.com'
-];
-
-// حساب مالك المنصة الرئيسي الافتراضي (Super Admin)
-export const DEFAULT_SUPER_ADMIN_ACCOUNT = {
-  id: 'super_admin_master',
-  email: 'sicolove7@gmail.com',
-  name: 'مالك المنصة الرئيسي',
-  role: 'super_admin',
-  isSuperAdmin: true,
-};
-
-// تطهير أمني فوري: إزالة أي كلمات مرور قديمة كانت مخزنة في LocalStorage
+// مزامنة وفهرسة كافة مستخدمي وموظفي الشركات في السجل المركزي platform-all-users-registry
 try {
   if (typeof localStorage !== 'undefined') {
-    const raw = localStorage.getItem(SUPER_ADMIN_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object' && 'password' in parsed) {
-        delete parsed.password;
-        localStorage.setItem(SUPER_ADMIN_STORAGE_KEY, JSON.stringify(parsed));
-      }
-    }
 
     // مزامنة وفهرسة كافة مستخدمي وموظفي الشركات في السجل المركزي platform-all-users-registry
     try {
@@ -151,42 +126,7 @@ try {
   }
 } catch (e) {}
 
-export function getSuperAdminAccount() {
-  try {
-    const raw = localStorage.getItem(SUPER_ADMIN_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.email) {
-        return {
-          id: 'super_admin_master',
-          name: parsed.name || 'مالك المنصة الرئيسي',
-          email: parsed.email.toLowerCase().trim(),
-          role: 'super_admin',
-          isSuperAdmin: true,
-        };
-      }
-    }
-  } catch (e) {
-    console.error("Error reading superadmin profile:", e);
-  }
-  return DEFAULT_SUPER_ADMIN_ACCOUNT;
-}
 
-export function saveSuperAdminAccount(creds) {
-  try {
-    const data = {
-      name: creds.name || 'مالك المنصة الرئيسي',
-      email: creds.email ? creds.email.toLowerCase().trim() : '',
-    };
-    localStorage.setItem(SUPER_ADMIN_STORAGE_KEY, JSON.stringify(data));
-    return true;
-  } catch (e) {
-    console.error("Error saving superadmin profile:", e);
-    return false;
-  }
-}
-
-export const SUPER_ADMIN_ACCOUNT = DEFAULT_SUPER_ADMIN_ACCOUNT;
 
 // الشركات الافتراضية المكتملة والمحدثة مركزياً لكافة الشركات والموظفين
 export const DEFAULT_TENANTS = Array.isArray(defaultTenantsData) && defaultTenantsData.length > 0 ? defaultTenantsData : [];
@@ -473,10 +413,6 @@ export async function registerNewTenant(formData) {
 
   // التأكد من عدم تكرار البريد الإلكتروني
   const allTenants = await loadAllTenantsAsync();
-  const superAdmin = getSuperAdminAccount();
-  if (cleanEmail === superAdmin.email.toLowerCase().trim() || BUILTIN_SUPERADMIN_EMAILS.includes(cleanEmail)) {
-    return { success: false, error: 'هذا البريد الإلكتروني محجوز لإدارة المنصة.' };
-  }
   const exists = allTenants.some(t => t.adminEmail?.toLowerCase().trim() === cleanEmail);
   if (exists) {
     return { success: false, error: 'هذا البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول بدلاً من ذلك.' };
@@ -619,15 +555,24 @@ export function deleteTenant(id) {
 }
 
 export function getActiveTenantId() {
-  return localStorage.getItem(ACTIVE_TENANT_ID_KEY) || null;
+  try {
+    if (typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function') {
+      return localStorage.getItem(ACTIVE_TENANT_ID_KEY) || null;
+    }
+  } catch (e) {}
+  return null;
 }
 
 export function setActiveTenantId(companyId) {
-  if (companyId) {
-    localStorage.setItem(ACTIVE_TENANT_ID_KEY, companyId);
-  } else {
-    localStorage.removeItem(ACTIVE_TENANT_ID_KEY);
-  }
+  try {
+    if (typeof localStorage !== 'undefined') {
+      if (companyId) {
+        localStorage.setItem(ACTIVE_TENANT_ID_KEY, companyId);
+      } else {
+        localStorage.removeItem(ACTIVE_TENANT_ID_KEY);
+      }
+    }
+  } catch (e) {}
 }
 
 /**
@@ -873,7 +818,6 @@ export async function getTenantDataAsync(companyId) {
  */
 export async function resolveTenantUserByEmail(email, firebaseUid = '', claims = {}) {
   const cleanEmail = (email || '').toLowerCase().trim();
-  const superAdmin = getSuperAdminAccount();
 
   // فحص هل المعرف هو رقم هاتف أو بريد مشتق من رقم هاتف
   let phoneFromEmail = null;
@@ -917,12 +861,8 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     tenants = [...DEFAULT_TENANTS];
   }
 
-  // 2. فحص هل هو حساب الـ Super Admin (عبر Custom Claims الموثقة أو البريد المعتمد كمدير للمنصة)
-  const isRegisteredSuperAdmin = Boolean(
-    (superAdmin?.email && superAdmin.email.toLowerCase().trim() === cleanEmail) ||
-    BUILTIN_SUPERADMIN_EMAILS.includes(cleanEmail)
-  );
-  const isSuperAdminUser = claims.role === 'super_admin' || claims.isSuperAdmin === true || isRegisteredSuperAdmin;
+  // 2. فحص هل هو حساب الـ Super Admin (الاعتماد حصراً على Firebase Auth Custom Claims)
+  const isSuperAdminUser = Boolean(claims.role === 'super_admin' || claims.isSuperAdmin === true);
 
   if (isSuperAdminUser) {
     const activeTenantId = getActiveTenantId();
@@ -934,7 +874,7 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
       user: {
         id: firebaseUid || 'super_admin_master',
         email: cleanEmail,
-        name: claims.name || superAdmin?.name || cleanEmail.split('@')[0],
+        name: claims.name || cleanEmail.split('@')[0],
         role: 'super_admin',
         isSuperAdmin: true,
         companyId: activeTenant?.id || null,

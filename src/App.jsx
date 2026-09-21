@@ -37,7 +37,7 @@ import { isFirstLogin, markFirstLoginDone, seedDemoData } from './utils/seedDemo
 
 import { loadCompanySettings, applyCompanyBranding, DEFAULT_COMPANY_SETTINGS } from './utils/branding';
 try { if (typeof localStorage !== 'undefined') localStorage.removeItem('company-settings-v1'); } catch (e) {}
-import { getActiveTenantId, setActiveTenantId, ACTIVE_TENANT_ID_KEY, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail, syncAllLocalUsersToCloud, loadAllTenants, loadAllTenantsAsync, saveAllTenants, BUILTIN_SUPERADMIN_EMAILS } from './services/tenantsManager';
+import { getActiveTenantId, setActiveTenantId, ACTIVE_TENANT_ID_KEY, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail, syncAllLocalUsersToCloud, loadAllTenants, loadAllTenantsAsync, saveAllTenants } from './services/tenantsManager';
 import { getSubdomain, isAdminSubdomain, isCompanySubdomain, clearActiveSubdomain, getSubdomainUrl, getCrossSubdomainCookie } from './services/subdomainResolver';
 import { onAuthChange, logoutUser } from './services/auth';
 import { db } from './firebase';
@@ -213,12 +213,7 @@ export default function App() {
     try {
       const cached = localStorage.getItem('active_session_user');
       if (cached) {
-        const parsed = JSON.parse(cached);
-        const cleanE = (parsed?.email || '').toLowerCase().trim();
-        if (cleanE && BUILTIN_SUPERADMIN_EMAILS.includes(cleanE)) {
-          return { ...parsed, role: 'super_admin', isSuperAdmin: true };
-        }
-        return parsed;
+        return JSON.parse(cached);
       }
       return null;
     } catch (e) {
@@ -971,11 +966,11 @@ export default function App() {
           }
 
           const resolvedUser = tenantRes.user;
-          const cleanEmail = (firebaseUser.email || '').toLowerCase().trim();
-          const isSuperAdmin = resolvedUser.role === 'super_admin' || 
-                               isSuperAdminClaim || 
-                               !!resolvedUser.isSuperAdmin || 
-                               BUILTIN_SUPERADMIN_EMAILS.includes(cleanEmail);
+          const isSuperAdmin = Boolean(
+            isSuperAdminClaim || 
+            claims.role === 'super_admin' || 
+            claims.isSuperAdmin === true
+          );
           const role = isSuperAdmin ? 'super_admin' : (claimRole || resolvedUser.role || 'engineer');
           const companyId = claims.companyId || resolvedUser.companyId || (isSuperAdmin ? (getActiveTenantId() || null) : null);
 
