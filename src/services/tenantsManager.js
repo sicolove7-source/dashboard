@@ -489,6 +489,19 @@ export async function registerNewTenant(formData) {
     } catch (e2) {
       console.warn('[registerNewTenant] ⚠️ syncTenantUsersToCloud retry failed:', e2);
     }
+  // الخطوة 3: تسجيل فوري في tenant_directory/{subdomain} لتمكين الزوار من فتح الرابط بدون تسجيل دخول
+  try {
+    const dirRef = doc(db, 'tenant_directory', rawSubdomain);
+    await setDoc(dirRef, {
+      companyId: newTenant.id,
+      name: newTenant.name,
+      logo: newTenant.logo || null,
+      subdomain: rawSubdomain,
+      createdAt: new Date().toISOString(),
+    }, { merge: true });
+    console.log('[registerNewTenant] ✅ tenant_directory synced successfully for:', rawSubdomain);
+  } catch (e) {
+    console.warn('[registerNewTenant] ⚠️ tenant_directory sync non-blocking fallback:', e);
   }
 
   // تعيين الشركة كشركة نشطة وحفظها في الكوكي المشترك لكافة النطاقات الفرعية
