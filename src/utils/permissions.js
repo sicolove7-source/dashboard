@@ -277,12 +277,12 @@ export function isOwner(roleOrUser) {
 
 // ─── حسابات تجريبية (محلي فقط) ───────────────────────
 export const DEMO_ACCOUNTS = [
-  { email: 'admin@company.com',       password: '123456', role: 'owner',            name: 'أ. مدير الشركة', engineerName: null },
-  { email: 'supply@company.com',      password: '123456', role: 'procurement',      name: 'أ. محمود فوزي (مسؤول التوريدات)', engineerName: null },
-  { email: 'accountant@company.com',  password: '123456', role: 'accountant',       name: 'أ. سامح فتحي',   engineerName: null },
-  { email: 'engineer1@company.com',   password: '123456', role: 'engineer',         name: 'م. أحمد كامل',   engineerName: 'م. أحمد كامل' },
-  { email: 'engineer2@company.com',   password: '123456', role: 'engineer',         name: 'م. ياسر فوزي',   engineerName: 'م. ياسر فوزي' },
-  { email: 'engineer3@company.com',   password: '123456', role: 'engineer',         name: 'م. مروة سعيد',   engineerName: 'م. مروة سعيد' },
-  { email: 'tech@company.com',        password: '123456', role: 'tech_office',      name: 'م. علياء رمضان', engineerName: null },
-  { email: 'cs@company.com',          password: '123456', role: 'customer_service', name: 'أ. نورا حسن',    engineerName: null },
+  { email: 'admin@company.com',       role: 'owner',            name: 'أ. مدير الشركة', engineerName: null },
+  { email: 'supply@company.com',      role: 'procurement',      name: 'أ. محمود فوزي (مسؤول التوريدات)', engineerName: null },
+  { email: 'accountant@company.com',  role: 'accountant',       name: 'أ. سامح فتحي',   engineerName: null },
+  { email: 'engineer1@company.com',   role: 'engineer',         name: 'م. أحمد كامل',   engineerName: 'م. أحمد كامل' },
+  { email: 'engineer2@company.com',   role: 'engineer',         name: 'م. ياسر فوزي',   engineerName: 'م. ياسر فوزي' },
+  { email: 'engineer3@company.com',   role: 'engineer',         name: 'م. مروة سعيد',   engineerName: 'م. مروة سعيد' },
+  { email: 'tech@company.com',        role: 'tech_office',      name: 'م. علياء رمضان', engineerName: null },
+  { email: 'cs@company.com',          role: 'customer_service', name: 'أ. نورا حسن',    engineerName: null },
 ];

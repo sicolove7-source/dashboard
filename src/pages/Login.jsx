@@ -18,6 +18,7 @@ import {
   loadAllTenants,
 } from "../services/tenantsManager";
 import { isCompanySubdomain, getSubdomain, getSubdomainUrl, getCrossSubdomainCookie } from "../services/subdomainResolver";
+import { auth } from "../firebase";
 
 export default function Login({
   onLogin,
@@ -336,15 +337,32 @@ export default function Login({
 
       // 2. إنشاء الحساب في Firebase Auth الرسمي
       const authRes = await registerWithEmail(cleanEmail, password);
-      if (!authRes.success && authRes.code !== 'auth/email-already-in-use') {
-        try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
-        setError(authRes.error || 'تعذر إنشاء الحساب في نظام المصادقة.');
-        setLoading(false);
-        return;
+      let firebaseUser = authRes.user;
+
+      if (!authRes.success) {
+        if (authRes.code === 'auth/email-already-in-use') {
+          // البريد مسجل بالفعل في Firebase: محاولة تسجيل الدخول بالبيانات المدخلة
+          const loginAttempt = await loginWithEmail(cleanEmail, password);
+          if (loginAttempt.success && loginAttempt.user) {
+            firebaseUser = loginAttempt.user;
+          } else {
+            try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
+            setError('هذا البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول بحسابك أو استخدام بريد إلكتروني مختلف.');
+            setLoading(false);
+            return;
+          }
+        } else {
+          try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
+          setError(authRes.error || 'تعذر إنشاء الحساب في نظام المصادقة.');
+          setLoading(false);
+          return;
+        }
       }
 
       // 3. تعيين Custom Claims وتحديث توكن الأمان فوراً
-      const firebaseUser = authRes.user || auth.currentUser;
+      if (!firebaseUser) {
+        firebaseUser = auth.currentUser;
+      }
       if (firebaseUser?.uid && res.tenant?.id) {
         try {
           await callAssignUserClaims({

@@ -779,11 +779,11 @@ export default function CompanySettings({
                     type="text"
                     className="filter-input"
                     style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 13, direction: 'ltr', textAlign: 'left' }}
-                    value={settings.subdomain || 'daraldhabi'}
+                    value={settings.subdomain || ''}
                     onChange={(e) => updateSetting('subdomain', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                     placeholder="company-name"
                   />
-                  <span className="cs-domain-suffix" style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, direction: 'ltr', flexShrink: 0 }}>.platform.com</span>
+                  <span className="cs-domain-suffix" style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, direction: 'ltr', flexShrink: 0 }}>.{import.meta.env.VITE_ROOT_DOMAIN || 'tashteebpro.com'}</span>
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>
                   رابط وصول فوري وسريع بدون الحاجة لأي إعدادات DNS.
@@ -811,7 +811,7 @@ export default function CompanySettings({
                   />
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                  مثال: <code>portal.daraldhabi.com</code> أو <code>app.yourfirm.sa</code>
+                  مثال: <code>portal.yourcompany.com</code> أو <code>app.yourfirm.sa</code>
                 </div>
               </div>
             </div>
@@ -844,7 +844,7 @@ export default function CompanySettings({
                     <tr>
                       <td><span style={{ fontWeight: 800, color: '#6366F1', background: 'rgba(99,102,241,0.1)', padding: '2px 8px', borderRadius: 6 }}>CNAME</span></td>
                       <td style={{ direction: 'ltr', textAlign: 'left', fontWeight: 700 }}>portal</td>
-                      <td style={{ direction: 'ltr', textAlign: 'left', fontWeight: 700, color: '#0F766E' }}>cname.yourplatform.com</td>
+                      <td style={{ direction: 'ltr', textAlign: 'left', fontWeight: 700, color: '#0F766E' }}>cname.{import.meta.env.VITE_ROOT_DOMAIN || 'tashteebpro.com'}</td>
                       <td>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#10B981', fontWeight: 700 }}>
                           <CheckCircle size={13} /> متصل بنجاح ✓

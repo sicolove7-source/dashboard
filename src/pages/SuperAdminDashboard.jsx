@@ -11,7 +11,7 @@ import {
   getSuperAdminAccount, saveSuperAdminAccount,
   isSubAccountsLoginAllowed, setSubAccountsLoginAllowed
 } from '../services/tenantsManager';
-import { updateCurrentUserPassword, updateCurrentUserEmail } from '../services/auth';
+import { updateCurrentUserPassword } from '../services/auth';
 
 export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) {
   const [tenants, setTenants] = useState([]);
@@ -438,7 +438,7 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                                 flexShrink: 0,
                               }}
                             >
-                              {t.name.slice(0, 2)}
+                              {(t.name || '').slice(0, 2)}
                             </div>
                             <div>
                               <div style={{ fontWeight: 700, fontSize: 14.5, color: 'var(--ink)' }}>{t.name}</div>
@@ -947,10 +947,21 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
               </button>
             </div>
 
-            {ownerSuccess && (
-              <div style={{ padding: '10px 14px', background: '#F0FDF4', color: '#16A34A', borderRadius: 8, fontSize: 13, marginBottom: 16, border: '1px solid #BBF7D0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            {ownerMsg && (
+              <div style={{
+                padding: '10px 14px',
+                background: ownerSuccess ? '#F0FDF4' : '#FEF2F2',
+                color: ownerSuccess ? '#16A34A' : '#DC2626',
+                borderRadius: 8,
+                fontSize: 13,
+                marginBottom: 16,
+                border: `1px solid ${ownerSuccess ? '#BBF7D0' : '#FECACA'}`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8
+              }}>
                 <CheckCircle2 size={16} />
-                <span>{ownerMsg || 'تم حفظ وتأمين بيانات مالك المنصة وتحديثها بنجاح!'}</span>
+                <span>{ownerMsg}</span>
               </div>
             )}
 
@@ -959,19 +970,32 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                 e.preventDefault();
                 setOwnerLoading(true);
                 setOwnerMsg(null);
+                let note = null;
+                let hasError = false;
+
                 try {
                   // إذا كانت هناك كلمة مرور جديدة مدخلة، نقوم بتحديثها في Firebase Authentication السحابي فقط
                   if (ownerForm.password && ownerForm.password.trim().length >= 6) {
                     const passRes = await updateCurrentUserPassword(ownerForm.password.trim());
                     if (!passRes.success) {
+                      hasError = true;
                       if (passRes.code === 'auth/requires-recent-login') {
                         note = 'لتحديث كلمة المرور في Firebase يرجى إعادة تسجيل الدخول أولاً لدواعي الأمان.';
                       } else {
-                        note = passRes.error;
+                        note = passRes.error || 'فشل تحديث كلمة المرور.';
                       }
                     } else {
                       note = 'تم تحديث كلمة المرور سحابياً في Firebase بنجاح!';
                     }
+                  } else if (ownerForm.password && ownerForm.password.trim().length > 0) {
+                    hasError = true;
+                    note = 'كلمة المرور يجب أن تتكون من 6 أحرف على الأقل.';
+                  }
+
+                  if (hasError) {
+                    setOwnerSuccess(false);
+                    setOwnerMsg(note);
+                    return;
                   }
 
                   // حفظ بيانات الملف الشخصي (الاسم والبريد فقط) دون أي كلمات مرور
@@ -980,13 +1004,16 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                     email: ownerForm.email,
                   });
                   setOwnerSuccess(true);
-                  if (note) setOwnerMsg(note);
+                  setOwnerMsg(note || 'تم حفظ بيانات الملف الشخصي بنجاح!');
                   setTimeout(() => {
                     setShowOwnerModal(false);
                     setOwnerSuccess(false);
+                    setOwnerMsg(null);
                   }, 1600);
                 } catch (err) {
                   console.error(err);
+                  setOwnerSuccess(false);
+                  setOwnerMsg('حدث خطأ غير متوقع أثناء الحفظ.');
                 } finally {
                   setOwnerLoading(false);
                 }
@@ -1007,22 +1034,24 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                 <label>البريد الإلكتروني الحصري (Super Admin Email)</label>
                 <input
                   type="email"
-                  required
-                  style={{ direction: 'ltr', textAlign: 'left' }}
+                  readOnly
+                  disabled
+                  style={{ direction: 'ltr', textAlign: 'left', opacity: 0.75, cursor: 'not-allowed', background: '#F8FAFC' }}
                   value={ownerForm.email || ''}
-                  onChange={(e) => setOwnerForm({ ...ownerForm, email: e.target.value })}
                 />
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                  البريد مرتبط بحساب Firebase الرسمي ولا يُعدل إلا بإعادة المصادقة.
+                </div>
               </div>
 
               <div className="form-field">
-                <label>كلمة المرور الجديدة</label>
+                <label>كلمة المرور الجديدة (اختياري)</label>
                 <input
-                  type="text"
-                  required
+                  type="password"
                   style={{ direction: 'ltr', textAlign: 'left' }}
                   value={ownerForm.password || ''}
                   onChange={(e) => setOwnerForm({ ...ownerForm, password: e.target.value })}
-                  placeholder="6 أحرف أو أرقام على الأقل"
+                  placeholder="اتركها فارغة إذا لم ترغب في التغيير (6 أحرف على الأقل)"
                 />
               </div>
 
