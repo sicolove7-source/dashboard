@@ -6,7 +6,7 @@ import {
   Mail, X, RefreshCw, Layers, Globe, Server, Lock
 } from 'lucide-react';
 import {
-  loadAllTenants, createTenant, updateTenant, deleteTenant,
+  loadAllTenants, loadAllTenantsAsync, createTenant, updateTenant, deleteTenant,
   generateWhatsAppWelcomeMessage, setActiveTenantId,
   isSubAccountsLoginAllowed, setSubAccountsLoginAllowed
 } from '../services/tenantsManager';
@@ -62,6 +62,11 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
 
   function refreshTenants() {
     setTenants(loadAllTenants());
+    loadAllTenantsAsync().then(cloudTenants => {
+      if (Array.isArray(cloudTenants) && cloudTenants.length > 0) {
+        setTenants(cloudTenants);
+      }
+    }).catch(err => console.warn('[SuperAdminDashboard] Cloud refresh warning:', err));
   }
 
   function openAddModal() {
