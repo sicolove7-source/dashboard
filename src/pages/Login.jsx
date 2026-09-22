@@ -20,7 +20,7 @@ import {
 import { isCompanySubdomain, getSubdomain, getSubdomainUrl, getCrossSubdomainCookie, setCrossSubdomainCookie } from "../services/subdomainResolver";
 import { auth, db } from "../firebase";
 import { doc, setDoc } from "firebase/firestore";
-import { syncTenantsListToCloud, syncCompanyDataToCloud } from "../services/cloudSync";
+import { syncTenantsListToCloud, syncCompanyDataToCloud, cleanPhoneNumber } from "../services/cloudSync";
 
 export default function Login({
   onLogin,
@@ -124,17 +124,28 @@ export default function Login({
         localStorage.removeItem('active_session_user');
       } catch (e) {}
 
-      const cleanEmail = (email || '').trim().toLowerCase();
-      if (!cleanEmail) {
-        setError("يرجى إدخال البريد الإلكتروني.");
+      const rawIdentifier = (email || '').trim();
+      if (!rawIdentifier) {
+        setError("يرجى إدخال البريد الإلكتروني أو رقم الهاتف.");
         setLoading(false);
         return;
       }
 
-      if (!cleanEmail.includes('@')) {
-        setError("يرجى إدخال بريد إلكتروني صالح (مثال: name@company.com).");
-        setLoading(false);
-        return;
+      // فحص هل المدخل هو رقم تليفون أم بريد إلكتروني
+      const looksLikePhone = /^[\d\s\+\-\(\)]{7,}$/.test(rawIdentifier) && !rawIdentifier.includes('@');
+      const cleanedPhone = looksLikePhone ? cleanPhoneNumber(rawIdentifier) : null;
+
+      let cleanEmail;
+      if (cleanedPhone && cleanedPhone.length >= 7) {
+        // تحويل رقم التليفون للصيغة الداخلية المستخدمة في Firebase
+        cleanEmail = `phone_${cleanedPhone}@tashteeb.app`;
+      } else {
+        cleanEmail = rawIdentifier.toLowerCase();
+        if (!cleanEmail.includes('@')) {
+          setError("يرجى إدخال بريد إلكتروني صالح (مثال: name@company.com) أو رقم هاتف صحيح.");
+          setLoading(false);
+          return;
+        }
       }
 
       // 1. المصادقة عبر Firebase Authentication الرسمي بالبريد الإلكتروني
@@ -908,19 +919,23 @@ export default function Login({
               {/* البريد الإلكتروني */}
               <div>
                 <label style={{ display: "block", marginBottom: 7, color: "var(--muted)", fontSize: 13, fontWeight: 700 }}>
-                  البريد الإلكتروني
+                  البريد الإلكتروني أو رقم الهاتف
                 </label>
                 <div style={{ position: "relative" }}>
-                  <Mail size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
+                  {/^[\d\s\+\-\(\)]{3,}$/.test(email) && !email.includes('@')
+                    ? <Phone size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: "#1877F2" }} />
+                    : <Mail size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
+                  }
                   <input
-                    type="email"
+                    type="text"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    placeholder="name@company.com"
+                    placeholder="name@company.com أو 01012345678"
                     autoCapitalize="none"
                     autoCorrect="off"
                     spellCheck={false}
+                    inputMode="email"
                     style={{
                       width: "100%", padding: "11px 42px 11px 14px",
                       border: "1.5px solid var(--border)", borderRadius: 10,
@@ -931,6 +946,9 @@ export default function Login({
                       textAlign: "right"
                     }}
                   />
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 5, fontWeight: 600 }}>
+                  يمكنك الدخول بالبريد الإلكتروني أو برقم هاتفك مباشرة
                 </div>
               </div>
 
