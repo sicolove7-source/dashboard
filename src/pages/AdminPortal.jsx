@@ -8,6 +8,12 @@ import { loginWithEmail, logoutUser, getUserClaims } from '../services/auth';
 import { resolveTenantUserByEmail, setActiveTenantId } from '../services/tenantsManager';
 import { clearActiveSubdomain } from '../services/subdomainResolver';
 
+export const PLATFORM_OWNER_EMAILS = [
+  'sicolove7@gmail.com',
+  'admin@platform.com',
+  'admin@tashteebpro.com'
+];
+
 export default function AdminPortal({
   currentUser,
   authLoading,
@@ -21,7 +27,11 @@ export default function AdminPortal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const isSuperAdmin = Boolean(currentUser?.role === 'super_admin');
+  const isSuperAdmin = Boolean(
+    currentUser?.role === 'super_admin' ||
+    currentUser?.isSuperAdmin === true ||
+    (currentUser?.email && PLATFORM_OWNER_EMAILS.includes(currentUser.email.toLowerCase().trim()))
+  );
 
   // خروج من بوابة الإدارة والعودة للموقع الرئيسي
   const handleExitAdmin = () => {
@@ -87,17 +97,23 @@ export default function AdminPortal({
         const tenantResult = await resolveTenantUserByEmail(res.user.email, res.user.uid, claims);
 
         const isSuperAdminAuthorized = Boolean(
-          claims?.role === 'super_admin' || claims?.isSuperAdmin === true
+          claims?.role === 'super_admin' ||
+          claims?.isSuperAdmin === true ||
+          PLATFORM_OWNER_EMAILS.includes(cleanEmail)
         );
 
         if (isSuperAdminAuthorized) {
           const adminUserData = {
             uid: res.user.uid,
             email: res.user.email,
-            name: res.user.displayName || tenantResult?.user?.name || 'مدير المنصة الرئيسي',
+            name: res.user.displayName || tenantResult?.user?.name || 'مالك المنصة الرئيسي',
             role: 'super_admin',
             isSuperAdmin: true,
           };
+
+          try {
+            localStorage.setItem('active_session_user', JSON.stringify(adminUserData));
+          } catch (e) {}
 
           if (onAdminLogin) {
             onAdminLogin(adminUserData);

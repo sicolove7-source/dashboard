@@ -875,8 +875,14 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     tenants = [...DEFAULT_TENANTS];
   }
 
-  // 2. فحص هل هو حساب الـ Super Admin (الاعتماد حصراً على Firebase Auth Custom Claims)
-  const isSuperAdminUser = Boolean(claims.role === 'super_admin' || claims.isSuperAdmin === true);
+  // 2. فحص هل هو حساب الـ Super Admin (عبر Custom Claims أو البريد المعتمد للمالك في حال عدم وجود دور مقيد آخر)
+  const PLATFORM_OWNER_EMAILS = ['sicolove7@gmail.com', 'admin@platform.com', 'admin@tashteebpro.com'];
+  const hasOtherExplicitRole = Boolean(claims.role && claims.role !== 'super_admin');
+  const isSuperAdminUser = Boolean(
+    claims.role === 'super_admin' ||
+    claims.isSuperAdmin === true ||
+    (!hasOtherExplicitRole && PLATFORM_OWNER_EMAILS.includes(cleanEmail))
+  );
 
   if (isSuperAdminUser) {
     const activeTenantId = getActiveTenantId();
