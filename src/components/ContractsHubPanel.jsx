@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { getGlobalCurrency } from '../utils/helpers';
 import { openWhatsApp } from '../utils/whatsappTemplates';
-import { syncSingleProjectToCloud } from '../services/cloudSync';
+import { syncSingleProjectToCloud, publishProjectToPortalShares } from '../services/cloudSync';
 import { getActiveTenantId } from '../services/tenantsManager';
 
 export default function ContractsHubPanel({
@@ -38,7 +38,9 @@ export default function ContractsHubPanel({
       if (onUpdate) {
         onUpdate(patch);
       }
-      syncSingleProjectToCloud(companyId, project.id, { ...project, ...patch, companyId }).catch(() => {});
+      const full = { ...project, ...patch, companyId };
+      syncSingleProjectToCloud(companyId, project.id, full).catch(() => {});
+      publishProjectToPortalShares(companyId, full).catch(() => {});
     } catch (e) {
       console.warn('Toggle portal failed:', e);
     }
@@ -53,7 +55,9 @@ export default function ContractsHubPanel({
       if (onUpdate) {
         onUpdate(patch);
       }
-      syncSingleProjectToCloud(companyId, project.id, { ...project, ...patch, companyId }).catch(() => {});
+      const full = { ...project, ...patch, companyId };
+      syncSingleProjectToCloud(companyId, project.id, full).catch(() => {});
+      publishProjectToPortalShares(companyId, full).catch(() => {});
       navigator.clipboard.writeText(portalUrl);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2500);
@@ -70,7 +74,9 @@ export default function ContractsHubPanel({
     if (onUpdate) {
       onUpdate(patch);
     }
-    syncSingleProjectToCloud(companyId, project.id, { ...project, ...patch, companyId }).catch(() => {});
+    const full = { ...project, ...patch, companyId };
+    syncSingleProjectToCloud(companyId, project.id, full).catch(() => {});
+    publishProjectToPortalShares(companyId, full).catch(() => {});
     const cleanPhone = (project.clientPhone || '').replace(/\D/g, '');
     const clientName = project.client || 'عميلنا العزيز';
     const msg = `السلام عليكم ورحمة الله وبركاته أ. *${clientName}* 🌸\n` +

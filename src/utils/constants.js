@@ -164,13 +164,14 @@ export const QUALITY_GATES = [
 export const NAV = [
   { key: "tenants",        label: "إدارة الشركات (Hub) 👑",  icon: "Crown" },
   { key: "overview",       label: "لوحة المتابعة",          icon: "LayoutDashboard" },
-  { key: "crm",            label: "العملاء والمبيعات (CRM)", icon: "BadgePercent" },
-  { key: "finance",        label: "المالية الشاملة",         icon: "TrendingUp" },
-  { key: "team",           label: "أداء المهندسين",          icon: "Users" },
+  { key: "price_index",    label: "بورصة أسعار الخامات 📈", icon: "TrendingUp" },
   { key: "projects",       label: "مواقع العمل",             icon: "Building2" },
+  { key: "quotations",     label: "حاسبة المقايسات",        icon: "Calculator" },
   { key: "subcontractors", label: "مقاولو الباطن والمستخلصات", icon: "Hammer" },
   { key: "suppliers",      label: "الموردون والصنايعية",     icon: "Truck" },
-  { key: "quotations",     label: "حاسبة المقايسات",        icon: "Calculator" },
+  { key: "finance",        label: "المالية الشاملة",         icon: "TrendingUp" },
+  { key: "crm",            label: "العملاء والمبيعات (CRM)", icon: "BadgePercent" },
+  { key: "team",           label: "أداء المهندسين",          icon: "Users" },
   { key: "settings",       label: "إعدادات الشركة",           icon: "Settings" },
 ];
 

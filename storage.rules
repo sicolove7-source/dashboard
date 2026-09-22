@@ -1,14 +1,45 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // السماح بقراءة وسائط وصور المشاريع عبر روابط التحميل
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'super_admin' ||
+        request.auth.token.isSuperAdmin == true ||
+        request.auth.token.email == 'sicolove7@gmail.com' ||
+        request.auth.token.email.matches('(?i)^sicolove7@gmail\\.com$')
+      );
+    }
+
+    function isValidMedia() {
+      return request.resource.size < 50 * 1024 * 1024 &&
+             request.resource.contentType.matches('image/.*|application/pdf|video/.*');
+    }
+
+    // 1. وسائط وصور ومستندات كل شركة ومشروعاتها (عزل تام على مستوى التخزين)
+    match /companies/{companyId}/{allPaths=**} {
+      // السماح بالقراءة لعرض الصور والمخططات في البوابة والتطبيق
+      allow read: if true;
+      // السماح بالرفع فقط للمستخدمين المنتمين لنفس الشركة أو السوبر أدمن مع التحقق من نوع وحجم الملف
+      allow write: if isAuthenticated() &&
+                      (request.auth.token.companyId == companyId || isSuperAdmin()) &&
+                      isValidMedia();
+    }
+
+    // 2. وسائط الموقع العامة (site_media) للمستخدمين الموثقين
+    match /site_media/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAuthenticated() && isValidMedia();
+    }
+
+    // 3. إغلاق الرفع على أي مسار آخر (منع الرفع المجهول أو غير المصرح به)
     match /{allPaths=**} {
       allow read: if true;
-      // حماية التخزين: السماح فقط برفع الصور والفيديوهات ومستندات PDF بحد أقصى 50MB (منع رفع ملفات تنفيذية أو إغراق التخزين)
-      allow write: if (
-        request.resource.size < 50 * 1024 * 1024 &&
-        request.resource.contentType.matches('image/.*|application/pdf|video/.*')
-      );
+      allow write: if false;
     }
   }
 }

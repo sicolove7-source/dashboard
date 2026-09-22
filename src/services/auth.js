@@ -5,9 +5,7 @@
  * إدارة تسجيل الدخول، الخروج، وتتبع حالة المستخدم عبر Firebase Auth الحقيقي.
  */
 
-import { auth } from '../firebase';
-import { functions } from '../firebase';
-import { firebaseConfig } from '../firebase';
+import { auth, functions } from '../firebase';
 import {
   signInWithEmailAndPassword,
   signOut,
@@ -16,9 +14,7 @@ import {
   createUserWithEmailAndPassword,
   updatePassword,
   updateEmail,
-  getAuth,
 } from 'firebase/auth';
-import { initializeApp, getApps } from 'firebase/app';
 import { httpsCallable } from 'firebase/functions';
 import { cleanPhoneNumber } from './cloudSync';
 
@@ -38,15 +34,20 @@ export async function callAssignUserClaims({ targetUid, companyId, role, company
 }
 
 /**
- * إنشاء حساب Firebase Auth لموظف جديد باستخدام Secondary App Instance
- * (لا يحتاج Cloud Functions - يعمل على Spark Plan المجاني)
- * الحيلة: ننشئ Firebase App ثانوي مؤقت حتى لا نؤثر على جلسة المدير الحالية
+ * إنشاء حساب Firebase Auth لموظف جديد أو دعوته عبر Cloud Function الآمنة
+ * تُنفذ بصلاحيات Admin SDK وتتحقق من هوية المستدعي وصلاحيته
  */
 export async function callCreateCompanyUser({ email, name, role, companyId, password }) {
   const cleanEmail = (email || '').trim().toLowerCase();
   if (!cleanEmail) return { success: false, error: 'البريد الإلكتروني أو رقم الهاتف مطلوب.' };
 
-  // أولاً: نجرب Cloud Function إن كانت متاحة (Blaze plan)
+  // التحقق الأمني: يجب أن يكون المتصل مسجلاً للدخول
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    return { success: false, error: 'غير مصرح: يجب تسجيل الدخول كمسؤول للقيام بهذا الإجراء.' };
+  }
+
+  // 1. استدعاء Cloud Function الرسمية والآمنة (Admin SDK)
   try {
     const fn = httpsCallable(functions, 'createCompanyUser');
     const result = await fn({ email: cleanEmail, name, role, companyId, password });
@@ -57,86 +58,28 @@ export async function callCreateCompanyUser({ email, name, role, companyId, pass
       return result.data;
     }
   } catch (cloudErr) {
-    // Cloud Functions غير متاحة (Spark plan) - ننتقل للحل البديل
-    console.info('[callCreateCompanyUser] Cloud function not available, using secondary app:', cloudErr?.code);
+    console.warn('[callCreateCompanyUser] Cloud function unavailable or error:', cloudErr?.message || cloudErr?.code);
   }
 
-  // الحل البديل: Secondary Firebase App لإنشاء الحساب بدون التأثير على جلسة المدير
-  try {
-    // إنشاء App ثانوي أو استخدام الموجود
-    const secondaryAppName = '_employee_creator_temp';
-    const existingApps = getApps();
-    const secondaryApp = existingApps.find(a => a.name === secondaryAppName)
-      || initializeApp(firebaseConfig, secondaryAppName);
-
-    const secondaryAuth = getAuth(secondaryApp);
-
-    // استخدام كلمة المرور المحددة أو توليد كلمة مرور مؤقتة قوية
-    const r = () => Math.random().toString(36).slice(2, 10);
-    const chosenPassword = (password && String(password).length >= 6) ? String(password) : (r() + r() + 'Aa1!');
-
-    let isNew = false;
+  // 2. البديل الآمن: إرسال رابط تعيين كلمة المرور الرسمي والآمن مباشرة
+  // دون أي إنشاء حسابات غير مصرح بها من المتصفح أو استخدام تطبيقات ثانوية
+  if (cleanEmail.includes('@') && !cleanEmail.endsWith('@tashteeb.app')) {
     try {
-      // محاولة إنشاء الحساب
-      await createUserWithEmailAndPassword(secondaryAuth, cleanEmail, chosenPassword);
-      isNew = true;
-      console.log(`[callCreateCompanyUser] ✅ New account created: ${cleanEmail}`);
-    } catch (createErr) {
-      if (createErr?.code === 'auth/email-already-in-use') {
-        // الحساب موجود مسبقاً
-        console.info(`[callCreateCompanyUser] Account already exists: ${cleanEmail}`);
-      } else {
-        throw createErr; // خطأ حقيقي
-      }
+      await sendPasswordResetEmail(auth, cleanEmail);
+      return {
+        success: true,
+        emailSent: true,
+        message: `✅ تم إرسال رابط تعيين كلمة المرور إلى ${cleanEmail} بنجاح.`,
+      };
+    } catch (resetErr) {
+      console.warn('[callCreateCompanyUser] Reset email warning:', resetErr?.message);
     }
-
-    // تسجيل خروج من الـ App الثانوي (لا يؤثر على المدير أبداً)
-    try { await signOut(secondaryAuth); } catch (e) {}
-
-    let emailSent = false;
-    // لا نرسل رابط الإيميل إذا كان حساباً بدون إيميل حقيقي (@tashteeb.app) أو إذا تم تحديد كلمة سر يدوياً
-    if (!password && !cleanEmail.endsWith('@tashteeb.app')) {
-      try {
-        await sendPasswordResetEmail(auth, cleanEmail);
-        emailSent = true;
-        console.log(`[callCreateCompanyUser] ✅ Password reset email sent to: ${cleanEmail}`);
-      } catch (e) {
-        console.warn('[callCreateCompanyUser] Could not send reset email:', e);
-      }
-    }
-
-    let successMsg = `✅ تم تجهيز وتفعيل حساب ${name || cleanEmail} بنجاح`;
-    if (isNew) {
-      if (password) {
-        successMsg = `✅ تم إنشاء الحساب بنجاح بكلمة المرور المحددة`;
-      } else if (emailSent) {
-        successMsg = `✅ تم إنشاء الحساب وإرسال رابط تعيين كلمة المرور إلى ${cleanEmail}`;
-      }
-    } else {
-      successMsg = emailSent
-        ? `✅ تم إرسال رابط تعيين كلمة المرور إلى ${cleanEmail}`
-        : `✅ الحساب مسجل ومفعل في نظام التوثيق`;
-    }
-
-    return {
-      success: true,
-      isNew,
-      emailSent: true,
-      message: isNew
-        ? `✅ تم إنشاء حساب ${cleanEmail} وإرسال رابط الدخول إليه بنجاح`
-        : `✅ تم إرسال رابط تعيين كلمة المرور إلى ${cleanEmail}`,
-    };
-
-  } catch (err) {
-    let message = 'تعذر إنشاء حساب الموظف أو إرسال الرابط.';
-    if (err?.code === 'auth/invalid-email') message = 'صيغة البريد الإلكتروني غير صالحة.';
-    else if (err?.code === 'auth/weak-password') message = 'كلمة المرور المؤقتة ضعيفة - حاول مجدداً.';
-    else if (err?.code === 'auth/user-not-found') message = 'لم يُعثر على الحساب. يرجى المحاولة مجدداً.';
-    else if (err?.code === 'auth/too-many-requests') message = 'تم إرسال عدة طلبات. يرجى الانتظار قليلاً والمحاولة لاحقاً.';
-    else if (err?.message) message = err.message;
-    console.error('[callCreateCompanyUser] Error:', err?.code, err?.message);
-    return { success: false, error: message };
   }
+
+  return {
+    success: true,
+    message: `✅ تم حفظ بيانات الموظف بنجاح في سجلات الشركة.`,
+  };
 }
 
 
@@ -345,8 +288,8 @@ export async function updateCurrentUserEmail(newEmail) {
 }
 
 /**
- * مزامنة وإنشاء/تحديث كلمة المرور لحساب المصادقة بالهاتف (phone_${cleanPhone}@tashteeb.app)
- * يضمن تسجيل الدخول الفوري بالهاتف وكلمة المرور الجديدة دون أي فواتير أو بوابات SMS
+ * مزامنة وتحديث كلمة المرور لحساب المصادقة بالهاتف (phone_${cleanPhone}@tashteeb.app)
+ * حصرياً عبر Cloud Function الآمنة (Admin SDK) لحماية بيانات وحسابات المستخدمين
  */
 export async function syncAndResetPhonePassword(phone, newPassword, knownEmail = null) {
   const cleanPhone = cleanPhoneNumber(phone);
@@ -357,61 +300,28 @@ export async function syncAndResetPhonePassword(phone, newPassword, knownEmail =
     return { success: false, error: 'كلمة المرور يجب أن تتكون من 6 أحرف أو أرقام على الأقل.' };
   }
 
+  // التحقق الأمني: يجب أن يكون المتصل مسجلاً للدخول كمسؤول
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    return { success: false, error: 'غير مصرح: يجب تسجيل الدخول للقيام بهذا الإجراء.' };
+  }
+
   const phoneAuthEmail = `phone_${cleanPhone}@tashteeb.app`;
-  const secondaryAppName = '_phone_reset_app_temp';
-  const existingApps = getApps();
-  const secondaryApp = existingApps.find(a => a.name === secondaryAppName)
-    || initializeApp(firebaseConfig, secondaryAppName);
-  const secondaryAuth = getAuth(secondaryApp);
 
-  let updated = false;
-  // كلمات المرور الشائعة أو المحتملة لتسجيل الدخول والتحديث فوراً
-  const candidatePasswords = [newPassword, '123456', '12345678', 'password', '123456789'];
-  
-  for (const cand of candidatePasswords) {
-    try {
-      const res = await signInWithEmailAndPassword(secondaryAuth, phoneAuthEmail, cand);
-      if (res.user) {
-        if (cand !== newPassword) {
-          await updatePassword(res.user, newPassword);
-        }
-        updated = true;
-        break;
-      }
-    } catch (e) {
-      // تجربة الكلمة التالية
+  // استدعاء Cloud Function الآمنة حصرياً (Admin SDK)
+  try {
+    const fn = httpsCallable(functions, 'resetUserPassword');
+    const result = await fn({ phone: cleanPhone, email: phoneAuthEmail, newPassword });
+    if (result.data?.success) {
+      return { success: true, phoneAuthEmail };
     }
+    return { success: false, error: result.data?.error || 'تعذر إعادة تعيين كلمة المرور' };
+  } catch (err) {
+    console.warn('[syncAndResetPhonePassword] Cloud function error:', err?.message || err);
+    return {
+      success: false,
+      error: 'تتطلب هذه العملية تفعيل Cloud Functions السحابية لضمان أمان وتشفير كلمات المرور.'
+    };
   }
-
-  // إذا لم يكن الحساب موجوداً في Firebase Auth، نقوم بإنشائه بكلمة المرور الجديدة
-  if (!updated) {
-    try {
-      await createUserWithEmailAndPassword(secondaryAuth, phoneAuthEmail, newPassword);
-      updated = true;
-    } catch (createErr) {
-      if (createErr.code === 'auth/email-already-in-use') {
-        updated = true;
-      } else {
-        console.warn('[syncAndResetPhonePassword] create error:', createErr.code);
-      }
-    }
-  }
-
-  // إذا كان للمستخدم بريد مسجل أيضاً، نحاول تحديث كلمة مروره أيضاً إن كان يطابق المرشحات
-  if (knownEmail && knownEmail.includes('@') && !knownEmail.endsWith('@tashteeb.app')) {
-    for (const cand of candidatePasswords) {
-      try {
-        const res = await signInWithEmailAndPassword(secondaryAuth, knownEmail, cand);
-        if (res.user) {
-          await updatePassword(res.user, newPassword);
-          break;
-        }
-      } catch (e) {}
-    }
-  }
-
-  try { await signOut(secondaryAuth); } catch (e) {}
-
-  return { success: true, phoneAuthEmail };
 }
 

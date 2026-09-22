@@ -5,9 +5,10 @@
  * مزامنة حية ولحظية للمشاريع، الشركات، الإعدادات، والمستخدمين عبر Firestore.
  */
 
-import app, { db, storage } from '../firebase';
+import app, { db, storage, functions, auth } from '../firebase';
 import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, uploadString, getStorage } from 'firebase/storage';
+import { httpsCallable } from 'firebase/functions';
 
 /**
  * رفع الوسائط (صور / فيديوهات) سحابياً إلى Firebase Storage والحصول على رابط HTTPS دائم
@@ -565,9 +566,87 @@ export async function syncSingleProjectToCloud(companyId, projectId, patchOrProj
       updatedAt: new Date().toISOString(),
     }, { merge: true });
 
+    // 3. النشر الفوري لبوابة العميل في portal_shares/{token} لتمكين العميل من فتحها من أي جهاز فوراً
+    if (safeProject.clientPortalToken) {
+      publishProjectToPortalShares(cId, safeProject).catch(() => {});
+    }
+
     return true;
   } catch (error) {
     console.warn("Cloud sync (subcollection single project) offline or error:", error.message);
+    return false;
+  }
+}
+
+/**
+ * نشر وإسقاط نسخة آمنة ومنقاة من المشروع إلى portal_shares/{token}
+ * تمكّن العميل من فتح البوابة برابطه المخصص من أي متصفح أو جهاز بدون تسجيل دخول
+ */
+export async function publishProjectToPortalShares(companyId, project) {
+  const cId = cleanCompanyId(companyId);
+  const token = project?.clientPortalToken;
+  if (!cId || !token) return false;
+
+  try {
+    const shareRef = doc(db, 'portal_shares', token);
+
+    // إذا كانت البوابة معطلة صراحة، احذف وثيقة المشاركة
+    if (project.clientPortalEnabled === false) {
+      await deleteDoc(shareRef).catch(() => {});
+      return true;
+    }
+
+    // استخراج أو جلب إعدادات الشركة الخاصة بالهوية والألوان
+    let companySettings = project.companySettings || null;
+    if (!companySettings) {
+      try {
+        const compDoc = await getDoc(doc(db, 'companies', cId));
+        if (compDoc.exists()) {
+          companySettings = compDoc.data()?.settings || null;
+        }
+      } catch (e) {}
+    }
+
+    const sharePayload = {
+      id: project.id,
+      projectId: project.id,
+      companyId: cId,
+      name: project.name || "مشروع بدون اسم",
+      client: project.client || "عميلنا العزيز",
+      clientPhone: project.clientPhone || "",
+      location: project.location || "",
+      type: project.type || "",
+      floors: project.floors || "",
+      area: Number(project.area || 0),
+      budget: Number(project.budget || project.contractValue || 0),
+      contractValue: Number(project.contractValue || project.budget || 0),
+      progress: Number(project.progress || 0),
+      status: project.status || "active",
+      startDate: project.startDate || "",
+      endDate: project.endDate || "",
+      dueDate: project.dueDate || "",
+      workItems: Array.isArray(project.workItems) ? project.workItems : [],
+      dailyLogs: Array.isArray(project.dailyLogs) ? project.dailyLogs : [],
+      photos: Array.isArray(project.photos) ? project.photos : [],
+      sitePhotos: Array.isArray(project.sitePhotos) ? project.sitePhotos : [],
+      payments: Array.isArray(project.payments) ? project.payments : (project.clientPayments || []),
+      clientPayments: Array.isArray(project.clientPayments) ? project.clientPayments : (project.payments || []),
+      clientSignature: project.clientSignature || null,
+      clientApprovalDate: project.clientApprovalDate || null,
+      clientApprovalNotes: project.clientApprovalNotes || null,
+      clientContract: project.clientContract || null,
+      clientPortalEnabled: true,
+      clientPortalToken: token,
+      token: token,
+      companySettings: companySettings,
+      updatedAt: new Date().toISOString()
+    };
+
+    await setDoc(shareRef, stripUndefined(sharePayload), { merge: true });
+    console.log('[publishProjectToPortalShares] ✅ Live portal published for token:', token);
+    return true;
+  } catch (err) {
+    console.warn('[publishProjectToPortalShares] Non-blocking portal sync notice:', err.message);
     return false;
   }
 }
@@ -702,61 +781,77 @@ export async function syncTenantUsersToCloud(companyId, users) {
     console.warn("[syncTenantUsersToCloud] company doc update warning:", e);
   }
 
-  // 2. تحديث قائمة الشركات المركزية platform_metadata/tenants لتمكين التحقق السحابي الفوري
+  // 2. تحديث قائمة الشركات المركزية platform_metadata/tenants عبر Cloud Function الآمنة (مع بديل مباشر للسوبر أدمن)
   try {
-    const tenantsRef = doc(db, TENANTS_META_DOC, TENANTS_META_KEY);
-    const snap = await getDoc(tenantsRef);
-    if (snap.exists()) {
-      const currentList = snap.data()?.tenants || [];
-      const idx = currentList.findIndex(t => t.id === cId);
-      if (idx !== -1) {
-        currentList[idx] = {
-          ...currentList[idx],
-          users: cleanUsers,
-          authorizedEmails: authorizedEmails,
-        };
-        await setDoc(tenantsRef, {
-          tenants: currentList,
-          updatedAt: new Date().toISOString(),
-        }, { merge: true });
-      }
-    }
-  } catch (e) {
-    console.warn("[syncTenantUsersToCloud] tenants list update warning:", e);
-  }
-
-  // 3. تحديث دليل المستخدمين المركزي السحابي platform_metadata/users_directory
-  try {
-    const dirRef = doc(db, TENANTS_META_DOC, 'users_directory');
-    const dirPatch = {};
-    cleanUsers.forEach(u => {
-      const cleanE = (u.email || '').toLowerCase().trim();
-      const cPhone = cleanPhoneNumber(u.phone);
-      const userPayload = {
-        id: u.id || '',
-        email: cleanE,
-        phone: u.phone || null,
-        cleanPhone: cPhone || null,
-        name: u.name || '',
-        role: u.role || 'engineer',
-        engineerName: u.engineerName || null,
-        companyId: cId,
-        updatedAt: new Date().toISOString(),
-      };
-
-      if (cleanE) {
-        const safeKey = cleanE.replace(/\./g, '_dot_');
-        dirPatch[safeKey] = userPayload;
-      }
-      if (cPhone) {
-        dirPatch['phone_' + cPhone] = userPayload;
+    const fn = httpsCallable(functions, 'updateOwnTenantEntry');
+    await fn({
+      companyId: cId,
+      patch: {
+        users: cleanUsers,
+        authorizedEmails: authorizedEmails,
       }
     });
-    if (Object.keys(dirPatch).length > 0) {
-      await setDoc(dirRef, dirPatch, { merge: true });
+  } catch (fnErr) {
+    try {
+      const tenantsRef = doc(db, TENANTS_META_DOC, TENANTS_META_KEY);
+      const snap = await getDoc(tenantsRef);
+      if (snap.exists()) {
+        const currentList = snap.data()?.tenants || [];
+        const idx = currentList.findIndex(t => t.id === cId);
+        if (idx !== -1) {
+          currentList[idx] = {
+            ...currentList[idx],
+            users: cleanUsers,
+            authorizedEmails: authorizedEmails,
+          };
+          await setDoc(tenantsRef, {
+            tenants: currentList,
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
+        }
+      }
+    } catch (e) {
+      console.warn("[syncTenantUsersToCloud] tenants list update notice:", e.message);
     }
-  } catch (e) {
-    console.warn("[syncTenantUsersToCloud] users directory update warning:", e);
+  }
+
+  // 3. تحديث دليل المستخدمين المركزي السحابي platform_metadata/users_directory عبر Cloud Function الآمنة
+  try {
+    const fn = httpsCallable(functions, 'syncOwnCompanyUsersDirectory');
+    await fn({ companyId: cId, users: cleanUsers });
+  } catch (fnErr) {
+    try {
+      const dirRef = doc(db, TENANTS_META_DOC, 'users_directory');
+      const dirPatch = {};
+      cleanUsers.forEach(u => {
+        const cleanE = (u.email || '').toLowerCase().trim();
+        const cPhone = cleanPhoneNumber(u.phone);
+        const userPayload = {
+          id: u.id || '',
+          email: cleanE,
+          phone: u.phone || null,
+          cleanPhone: cPhone || null,
+          name: u.name || '',
+          role: u.role || 'engineer',
+          engineerName: u.engineerName || null,
+          companyId: cId,
+          updatedAt: new Date().toISOString(),
+        };
+
+        if (cleanE) {
+          const safeKey = cleanE.replace(/\./g, '_dot_');
+          dirPatch[safeKey] = userPayload;
+        }
+        if (cPhone) {
+          dirPatch['phone_' + cPhone] = userPayload;
+        }
+      });
+      if (Object.keys(dirPatch).length > 0) {
+        await setDoc(dirRef, dirPatch, { merge: true });
+      }
+    } catch (e) {
+      console.warn("[syncTenantUsersToCloud] users directory update notice:", e.message);
+    }
   }
 
   return true;
@@ -905,15 +1000,55 @@ export async function fetchTenantsListFromCloud() {
  */
 export async function syncTenantsListToCloud(tenants) {
   if (!Array.isArray(tenants)) return false;
+
+  // تطهير شامل لحذف أي كلمات مرور أو بيانات حساسة قبل الرفع السحابي
+  const sanitizedTenants = tenants.map(t => {
+    if (!t) return t;
+    const clean = { ...t };
+    delete clean.adminPassword;
+    delete clean.password;
+    if (Array.isArray(clean.users)) {
+      clean.users = clean.users.map(u => {
+        if (!u) return u;
+        const cleanU = { ...u };
+        delete cleanU.password;
+        delete cleanU.adminPassword;
+        return cleanU;
+      });
+    }
+    return clean;
+  });
+
   try {
+    // 1. محاولة الكتابة المباشرة (تنجح للسوبر أدمن المعتمد)
     const docRef = doc(db, TENANTS_META_DOC, TENANTS_META_KEY);
     await setDoc(docRef, {
-      tenants: tenants,
+      tenants: sanitizedTenants,
       updatedAt: new Date().toISOString(),
     }, { merge: true });
     return true;
   } catch (error) {
-    console.warn("Cloud sync (tenants list) error:", error.message);
+    // 2. إذا رفضت القواعد الكتابة المباشرة (لأنه مستخدم عادي/مالك شركة وليس Super Admin):
+    // نستدعي Cloud Function الآمنة لتحديث بيانات شركته فقط دون المساس بباقي المنصة
+    try {
+      const currentUser = auth.currentUser;
+      const callerCompanyId = (typeof localStorage !== 'undefined' && localStorage.getItem('tashteeb_active_company_id')) || null;
+      const ownTenant = sanitizedTenants.find(t => 
+        (callerCompanyId && t.id === callerCompanyId) || 
+        (currentUser?.email && t.adminEmail?.toLowerCase() === currentUser.email.toLowerCase())
+      );
+
+      if (ownTenant) {
+        const fn = httpsCallable(functions, 'updateOwnTenantEntry');
+        const res = await fn({
+          companyId: ownTenant.id,
+          patch: ownTenant,
+        });
+        return res.data?.success || true;
+      }
+    } catch (fnErr) {
+      console.warn("Cloud sync via Cloud Function notice:", fnErr.message);
+    }
     return false;
   }
 }
@@ -975,10 +1110,19 @@ export async function fetchTenantBySubdomain(subdomain) {
       });
       if (found) {
         console.log('[fetchTenantBySubdomain] ✅ Resolved subdomain:', cleanSubdomain, '→', found.id);
+        return {
+          id: found.id,
+          companyId: found.id,
+          name: found.name || found.id,
+          logo: found.logo || null,
+          subdomain: found.subdomain || cleanSubdomain,
+          slug: found.slug || cleanSubdomain,
+          primaryColor: found.primaryColor || null,
+        };
       } else {
         console.warn('[fetchTenantBySubdomain] ⚠️ No tenant found for subdomain:', cleanSubdomain);
       }
-      return found || null;
+      return null;
     }
   } catch (error) {
     console.warn("Cloud fetch (tenant by subdomain) error:", error?.message || error);

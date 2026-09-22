@@ -5,17 +5,38 @@ import { getGlobalCurrency } from './helpers';
  * Generates direct WhatsApp URLs (https://wa.me/...) with pre-filled, professional Arabic messages.
  */
 
-// Cleans phone numbers (removes spaces, dashes, leading 0 to international Egypt +20 format)
+// Cleans phone numbers for WhatsApp (supports Egypt +20, Saudi +966, UAE +971, and international)
 export function formatPhoneNumber(phone) {
   if (!phone) return "";
   let cleaned = phone.replace(/[^0-9+]/g, "");
-  if (cleaned.startsWith("0")) {
-    cleaned = "20" + cleaned.slice(1);
-  } else if (cleaned.startsWith("+")) {
-    cleaned = cleaned.slice(1);
-  } else if (!cleaned.startsWith("20") && cleaned.length === 10) {
-    cleaned = "20" + cleaned;
+  if (cleaned.startsWith("+")) cleaned = cleaned.slice(1);
+  if (cleaned.startsWith("00")) cleaned = cleaned.slice(2);
+
+  // أرقام السعودية: تبدأ بـ 05 أو 5 وتتكون من 9-10 أرقام
+  if (cleaned.startsWith("05") && cleaned.length === 10) {
+    return "966" + cleaned.slice(1);
+  } else if (cleaned.startsWith("5") && cleaned.length === 9) {
+    return "966" + cleaned;
+  } else if (cleaned.startsWith("966")) {
+    return cleaned;
   }
+
+  // أرقام الإمارات: تبدأ بـ 971
+  if (cleaned.startsWith("971")) {
+    return cleaned;
+  }
+
+  // أرقام مصر: تبدأ بـ 01
+  if (cleaned.startsWith("01") && cleaned.length === 11) {
+    return "20" + cleaned.slice(1);
+  } else if (cleaned.startsWith("1") && cleaned.length === 10) {
+    return "20" + cleaned;
+  } else if (cleaned.startsWith("20")) {
+    return cleaned;
+  } else if (cleaned.startsWith("0")) {
+    return "20" + cleaned.slice(1);
+  }
+
   return cleaned;
 }
 

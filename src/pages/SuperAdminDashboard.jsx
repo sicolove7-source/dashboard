@@ -97,7 +97,7 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
       expiryDate: '',
       adminName: '',
       adminEmail: '',
-      adminPassword: '123456',
+      adminPassword: '',
       subdomain: '',
       customDomain: '',
       primaryColor: '#1877F2',
@@ -893,7 +893,7 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                 <input
                   type="text"
                   required
-                  placeholder="123456"
+                  placeholder="••••••••"
                   value={form.adminPassword}
                   onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
                 />

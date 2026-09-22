@@ -8,12 +8,6 @@ import { loginWithEmail, logoutUser, getUserClaims } from '../services/auth';
 import { resolveTenantUserByEmail, setActiveTenantId } from '../services/tenantsManager';
 import { clearActiveSubdomain } from '../services/subdomainResolver';
 
-export const PLATFORM_OWNER_EMAILS = [
-  'sicolove7@gmail.com',
-  'admin@platform.com',
-  'admin@tashteebpro.com'
-];
-
 export default function AdminPortal({
   currentUser,
   authLoading,
@@ -28,9 +22,11 @@ export default function AdminPortal({
   const [error, setError] = useState(null);
 
   const isSuperAdmin = Boolean(
+    currentUser?.claims?.role === 'super_admin' ||
+    currentUser?.claims?.isSuperAdmin === true ||
     currentUser?.role === 'super_admin' ||
     currentUser?.isSuperAdmin === true ||
-    (currentUser?.email && PLATFORM_OWNER_EMAILS.includes(currentUser.email.toLowerCase().trim()))
+    (currentUser?.email && currentUser.email.toLowerCase().trim() === 'sicolove7@gmail.com')
   );
 
   // خروج من بوابة الإدارة والعودة للموقع الرئيسي
@@ -99,7 +95,7 @@ export default function AdminPortal({
         const isSuperAdminAuthorized = Boolean(
           claims?.role === 'super_admin' ||
           claims?.isSuperAdmin === true ||
-          PLATFORM_OWNER_EMAILS.includes(cleanEmail)
+          cleanEmail === 'sicolove7@gmail.com'
         );
 
         if (isSuperAdminAuthorized) {
@@ -399,7 +395,7 @@ export default function AdminPortal({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                placeholder="admin@platform.com"
+                placeholder="name@example.com"
                 style={{
                   width: '100%',
                   padding: '12px 42px 12px 14px',

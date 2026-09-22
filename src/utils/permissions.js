@@ -60,13 +60,13 @@ export const ROLES = {
 
 // ─── التبويبات المتاحة لكل دور ───────────────────────
 export const NAV_PERMISSIONS = {
-  super_admin:      ['tenants', 'overview', 'automations', 'crm', 'finance', 'team', 'projects', 'subcontractors', 'suppliers', 'quotations', 'settings'],
-  owner:            ['overview', 'automations', 'crm', 'finance', 'team', 'projects', 'subcontractors', 'suppliers', 'quotations', 'settings'],
-  procurement:      ['projects', 'subcontractors', 'suppliers', 'overview'],
-  accountant:       ['overview', 'automations', 'finance', 'projects', 'subcontractors', 'suppliers', 'quotations'],
-  engineer:         ['projects', 'subcontractors', 'suppliers'],
-  tech_office:      ['overview', 'crm', 'projects', 'subcontractors', 'suppliers', 'quotations'],
-  customer_service: ['overview', 'crm', 'projects'],
+  super_admin:      ['tenants', 'overview', 'price_index', 'automations', 'crm', 'finance', 'team', 'projects', 'subcontractors', 'suppliers', 'quotations', 'settings'],
+  owner:            ['overview', 'price_index', 'automations', 'crm', 'finance', 'team', 'projects', 'subcontractors', 'suppliers', 'quotations', 'settings'],
+  procurement:      ['price_index', 'projects', 'subcontractors', 'suppliers', 'overview'],
+  accountant:       ['overview', 'price_index', 'automations', 'finance', 'projects', 'subcontractors', 'suppliers', 'quotations'],
+  engineer:         ['projects', 'price_index', 'subcontractors', 'suppliers'],
+  tech_office:      ['overview', 'price_index', 'crm', 'projects', 'subcontractors', 'suppliers', 'quotations'],
+  customer_service: ['overview', 'price_index', 'crm', 'projects'],
 };
 
 // ─── التبويب الافتراضي لكل دور عند الدخول ────────────
@@ -150,6 +150,7 @@ export const CUSTOMIZABLE_NAV_TABS = [
   { key: 'suppliers',   label: 'الموردون والتوريدات',  badge: '📦', desc: 'دليل الموردين وطلبيات وتوريدات الخامات' },
   { key: 'finance',     label: 'المالية والمصروفات',   badge: '💼', desc: 'المصروفات والإيرادات ومستخلصات المشاريع' },
   { key: 'quotations',  label: 'المقايسات والتسعير',   badge: '📐', desc: 'إنشاء ومراجعة مقايسات وعروض أسعار التشطيب' },
+  { key: 'price_index', label: 'بورصة أسعار الخامات',  badge: '📈', desc: 'مؤشر وبورصة أسعار مواد البناء والتشطيب اليومية' },
   { key: 'crm',         label: 'متابعة العملاء CRM',   badge: '🎯', desc: 'مراحل الصفقات والعملاء المحتملين وتتبع التواصل' },
   { key: 'team',        label: 'أداء الفريق',          badge: '👥', desc: 'متابعة أداء مهندسي وموظفي الشركة' },
   { key: 'settings',    label: 'إعدادات الشركة',       badge: '⚙️', desc: 'إعدادات الهوية والعقود وحسابات الدخول' },

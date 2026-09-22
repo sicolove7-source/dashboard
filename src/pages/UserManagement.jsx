@@ -10,7 +10,7 @@ import {
 } from '../utils/permissions';
 import { getActiveTenantId, loadAllTenants } from '../services/tenantsManager';
 import { syncCompanyUsersToCloud, syncTenantUsersToCloud, syncTenantsListToCloud, syncTeamToCloud, sanitizeCompanyUsersForCloud, cleanPhoneNumber } from '../services/cloudSync';
-import { sendPasswordReset, callCreateCompanyUser } from '../services/auth';
+import { sendPasswordReset, callCreateCompanyUser, syncAndResetPhonePassword } from '../services/auth';
 
 // أدوار الشركة المشتركة فقط (استبعاد Super Admin الخاص بالمنصة)
 const COMPANY_ROLES = Object.fromEntries(
@@ -768,6 +768,10 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
   const [resetSentEmail, setResetSentEmail] = useState(null);
   const [resetFeedback, setResetFeedback] = useState(null);
   const [inviteLoading, setInviteLoading] = useState(null); // email being invited
+  const [resetPassModal, setResetPassModal] = useState(null); // user object | null
+  const [newPass, setNewPass] = useState('');
+  const [resetPassLoading, setResetPassLoading] = useState(false);
+  const [resetPassMsg, setResetPassMsg] = useState(null);
 
   async function handleSendResetEmail(email) {
     if (!email) return;
@@ -802,17 +806,56 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
     }
   }
 
+  async function handleAdminResetPassword() {
+    if (!resetPassModal || !newPass || newPass.length < 6) return;
+    setResetPassLoading(true);
+    setResetPassMsg(null);
+    try {
+      let res;
+      const isPhoneAccount = resetPassModal.phone || resetPassModal.email?.endsWith('@tashteeb.app');
+      if (isPhoneAccount) {
+        const phoneToReset = resetPassModal.phone || resetPassModal.email;
+        res = await syncAndResetPhonePassword(phoneToReset, newPass, resetPassModal.email);
+      } else {
+        res = await callCreateCompanyUser({
+          email: resetPassModal.email,
+          name: resetPassModal.name,
+          role: resetPassModal.role,
+          companyId: activeCompId,
+          password: newPass,
+        });
+      }
+      if (res?.success) {
+        const updatedUsers = users.map(u => u.id === resetPassModal.id ? { ...u, updatedAt: new Date().toISOString() } : u);
+        persist(updatedUsers);
+        setResetPassMsg({ type: 'success', text: `✅ تم تعيين كلمة مرور جديدة لـ ${resetPassModal.name} بنجاح` });
+        setTimeout(() => { setResetPassModal(null); setNewPass(''); setResetPassMsg(null); }, 2000);
+      } else {
+        setResetPassMsg({ type: 'error', text: res?.error || 'تعذّر تعيين كلمة المرور' });
+      }
+    } catch (e) {
+      setResetPassMsg({ type: 'error', text: e.message || 'حدث خطأ غير متوقع' });
+    } finally {
+      setResetPassLoading(false);
+    }
+  }
+
   // تحديث المستخدمين عند تغيير الشركة
   useEffect(() => {
     setUsers(loadUsers(activeCompId));
   }, [activeCompId]);
 
   function persist(next) {
-    setUsers(next);
-    saveUsers(next, activeCompId);
+    const cleanNext = (next || []).map(u => {
+      if (!u) return u;
+      const { password: _p, adminPassword: _ap, ...safeU } = u;
+      return safeU;
+    });
+    setUsers(cleanNext);
+    saveUsers(cleanNext, activeCompId);
     try {
-      syncCompanyUsersToCloud(activeCompId, next).catch(e => console.warn("Cloud sync users error:", e));
-      syncTenantUsersToCloud(activeCompId, next).catch(e => console.warn("Cloud sync tenant users error:", e));
+      syncCompanyUsersToCloud(activeCompId, cleanNext).catch(e => console.warn("Cloud sync users error:", e));
+      syncTenantUsersToCloud(activeCompId, cleanNext).catch(e => console.warn("Cloud sync tenant users error:", e));
     } catch (e) {}
 
     // حفظ وفهرسة فورية في السجل المركزي platform-all-users-registry بالإيميل ورقم الهاتف
@@ -858,7 +901,8 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
   }
 
   async function handleSaveUser(userData) {
-    const userWithComp = { ...userData, companyId: activeCompId };
+    const { password: rawPassword, ...safeUserData } = userData;
+    const userWithComp = { ...safeUserData, companyId: activeCompId };
     let nextUsers;
     const isNewUser = !(userData.id && users.find(u => u.id === userData.id));
 
@@ -872,8 +916,28 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
     }
     persist(nextUsers);
 
-    // إنشاء حساب Firebase Auth وإرسال رابط دعوة أو تفعيل فوري بكلمة المرور المحددة
-    if (isNewUser && (userData.email || userData.phone)) {
+    // إنشاء أو تحديث حساب Firebase Auth وتفعيل كلمة المرور عبر Cloud Function الآمنة
+    if (rawPassword && rawPassword.length >= 6) {
+      try {
+        const isPhoneAccount = userData.phone || userData.email?.endsWith('@tashteeb.app');
+        if (isPhoneAccount) {
+          const p = userData.phone || userData.email;
+          await syncAndResetPhonePassword(p, rawPassword, userData.email);
+        } else {
+          await callCreateCompanyUser({
+            email: userData.email,
+            name: userData.name,
+            role: userData.role,
+            companyId: activeCompId,
+            password: rawPassword,
+          });
+        }
+        setResetFeedback(`✅ تم تحديث بيانات وكلمة مرور ${userData.name} بنجاح`);
+        setTimeout(() => setResetFeedback(null), 8000);
+      } catch (pwErr) {
+        console.warn('[handleSaveUser] Password sync error:', pwErr);
+      }
+    } else if (isNewUser && (userData.email || userData.phone)) {
       try {
         const cloudRes = await callCreateCompanyUser({
           email: userData.email,
@@ -1202,31 +1266,52 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
                       {/* Actions */}
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                          {/* Send Reset Email / Invite */}
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            style={{
-                              padding: '6px 10px', fontSize: 11,
-                              display: 'flex', alignItems: 'center', gap: 4,
-                              color: resetSentEmail === u.email ? '#10B981' : '#2563EB',
-                              background: resetSentEmail === u.email ? '#10B98118' : '#EFF6FF',
-                              border: `1px solid ${resetSentEmail === u.email ? '#10B98140' : '#BFDBFE'}`,
-                              borderRadius: 8,
-                              opacity: inviteLoading === u.email ? 0.6 : 1,
-                              cursor: inviteLoading === u.email ? 'not-allowed' : 'pointer',
-                            }}
-                            onClick={() => handleSendResetEmail(u.email)}
-                            disabled={inviteLoading === u.email}
-                            title="إنشاء حساب وإرسال رابط تعيين كلمة المرور إلى بريده"
-                          >
-                            {inviteLoading === u.email
-                              ? <span style={{ fontSize: 12 }}>⌛</span>
-                              : resetSentEmail === u.email
-                                ? <Check size={13} color="#10B981" />
-                                : <Mail size={13} />}
-                            <span>{inviteLoading === u.email ? 'جاري...' : resetSentEmail === u.email ? 'أرسل!' : 'دعوة'}</span>
-                          </button>
+                          {/* Send Reset Email / Invite - for email users only */}
+                          {!u.email?.endsWith('@tashteeb.app') && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              style={{
+                                padding: '6px 10px', fontSize: 11,
+                                display: 'flex', alignItems: 'center', gap: 4,
+                                color: resetSentEmail === u.email ? '#10B981' : '#2563EB',
+                                background: resetSentEmail === u.email ? '#10B98118' : '#EFF6FF',
+                                border: `1px solid ${resetSentEmail === u.email ? '#10B98140' : '#BFDBFE'}`,
+                                borderRadius: 8,
+                                opacity: inviteLoading === u.email ? 0.6 : 1,
+                                cursor: inviteLoading === u.email ? 'not-allowed' : 'pointer',
+                              }}
+                              onClick={() => handleSendResetEmail(u.email)}
+                              disabled={inviteLoading === u.email}
+                              title="إنشاء حساب وإرسال رابط تعيين كلمة المرور إلى بريده"
+                            >
+                              {inviteLoading === u.email
+                                ? <span style={{ fontSize: 12 }}>⌛</span>
+                                : resetSentEmail === u.email
+                                  ? <Check size={13} color="#10B981" />
+                                  : <Mail size={13} />}
+                              <span>{inviteLoading === u.email ? 'جاري...' : resetSentEmail === u.email ? 'أرسل!' : 'دعوة'}</span>
+                            </button>
+                          )}
+
+                          {/* Reset Password for phone-only users */}
+                          {u.email?.endsWith('@tashteeb.app') && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              style={{
+                                padding: '6px 10px', fontSize: 11,
+                                display: 'flex', alignItems: 'center', gap: 4,
+                                color: '#D97706', background: '#FFFBEB',
+                                border: '1px solid #FDE68A', borderRadius: 8, cursor: 'pointer',
+                              }}
+                              onClick={() => { setResetPassModal(u); setNewPass(''); setResetPassMsg(null); }}
+                              title="تعيين كلمة مرور جديدة لمستخدم الهاتف"
+                            >
+                              <KeyRound size={13} />
+                              <span>كلمة مرور</span>
+                            </button>
+                          )}
 
                           {/* Copy */}
                           <button
@@ -1308,6 +1393,88 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
           onSave={handleSaveUser}
           onClose={() => setModal(null)}
         />
+      )}
+
+      {/* ─── Reset Password Modal ─── */}
+      {resetPassModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16,
+        }}>
+          <div style={{
+            background: 'var(--card)', border: '1px solid var(--border)',
+            borderRadius: 20, padding: 24, width: '100%', maxWidth: 420,
+            boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
+          }} dir="rtl">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: '#D9770618', color: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <KeyRound size={20} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 15 }}>تعيين كلمة مرور جديدة</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>{resetPassModal.name} {resetPassModal.phone ? `(${resetPassModal.phone})` : ''}</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setResetPassModal(null); setNewPass(''); setResetPassMsg(null); }}
+                style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: 4 }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {resetPassMsg && (
+              <div style={{
+                padding: '10px 14px', borderRadius: 10, marginBottom: 14, fontSize: 13, fontWeight: 700,
+                background: resetPassMsg.type === 'success' ? '#10B98118' : 'rgba(239,68,68,0.1)',
+                color: resetPassMsg.type === 'success' ? '#059669' : '#EF4444',
+                border: `1px solid ${resetPassMsg.type === 'success' ? '#10B98130' : 'rgba(239,68,68,0.25)'}`,
+              }}>
+                {resetPassMsg.text}
+              </div>
+            )}
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6, color: 'var(--ink)' }}>
+                كلمة المرور الجديدة *
+              </label>
+              <input
+                type="text"
+                className="filter-input"
+                style={{ width: '100%', direction: 'ltr', textAlign: 'left', fontSize: 14 }}
+                placeholder="6 أحرف أو أرقام على الأقل"
+                value={newPass}
+                onChange={e => setNewPass(e.target.value)}
+                autoFocus
+              />
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, lineHeight: 1.5 }}>
+                💡 سيتمكن الموظف من تسجيل الدخول فوراً برقم هاتفه ({resetPassModal.phone || resetPassModal.email}) وكلمة المرور هذه دون الحاجة لرسائل SMS.
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => { setResetPassModal(null); setNewPass(''); setResetPassMsg(null); }}
+                disabled={resetPassLoading}
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ background: '#0F172A', color: '#fff' }}
+                onClick={handleAdminResetPassword}
+                disabled={resetPassLoading || !newPass || newPass.length < 6}
+              >
+                {resetPassLoading ? 'جاري الحفظ والتفعيل...' : 'حفظ وتفعيل كلمة المرور'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

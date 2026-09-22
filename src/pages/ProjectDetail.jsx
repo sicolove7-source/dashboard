@@ -244,9 +244,17 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
                   setSelectedWorkerForContract(worker);
                   setActiveContractView('craftsman');
                 }}
-                onOpenClientContract={() => setActiveContractView('client')}
-                onOpenClientPortal={(token) => onOpenClientPortal && onOpenClientPortal(token || project.clientPortalToken || project.id)}
-                onOpenClientReport={() => setShowClientReport(true)}
+                onOpenClientPortal={(token) => {
+                  if (!onOpenClientPortal) return;
+                  let activeToken = token || project.clientPortalToken;
+                  if (!activeToken) {
+                    activeToken = 'cpt_' + (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : (Math.random().toString(36).slice(2, 10) + Date.now().toString(36)));
+                    if (onUpdate) {
+                      onUpdate({ clientPortalToken: activeToken, clientPortalEnabled: true });
+                    }
+                  }
+                  onOpenClientPortal(activeToken);
+                }}
               />
             )
           )}

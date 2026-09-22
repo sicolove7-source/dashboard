@@ -258,7 +258,15 @@ export function saveAllTenants(tenants) {
     localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(tenants));
   } catch (e) {}
   try {
-    setCrossSubdomainCookie('tashteeb_tenants_cache', tenants);
+    const safeCookieList = (tenants || []).map(t => ({
+      id: t.id,
+      name: t.name,
+      subdomain: t.subdomain,
+      slug: t.slug,
+      logo: t.logo || null,
+      primaryColor: t.primaryColor || null,
+    }));
+    setCrossSubdomainCookie('tashteeb_tenants_cache', safeCookieList);
   } catch (e) {}
   try {
     syncTenantsListToCloud(tenants);
@@ -394,7 +402,7 @@ export function createTenant(data) {
  */
 export async function registerNewTenant(formData) {
   const cleanEmail = (formData.email || '').toLowerCase().trim();
-  const password = formData.password || '123456';
+  const password = (formData.password || '').trim();
   const companyName = (formData.companyName || '').trim();
   const adminName = (formData.adminName || '').trim() || 'مدير الشركة';
   const phone = (formData.phone || '').trim();
@@ -402,6 +410,10 @@ export async function registerNewTenant(formData) {
 
   if (!cleanEmail || !companyName) {
     return { success: false, error: 'يرجى إدخال اسم الشركة والبريد الإلكتروني.' };
+  }
+
+  if (!password || password.length < 6) {
+    return { success: false, error: 'كلمة المرور مطلوبة ويجب أن تتكون من 6 أحرف أو أرقام على الأقل.' };
   }
 
   // التحقق الإلزامي من رقم الهاتف للتواصل
@@ -528,13 +540,15 @@ export async function registerNewTenant(formData) {
   // تعيين الشركة كشركة نشطة وحفظها في الكوكي المشترك لكافة النطاقات الفرعية
   setActiveTenantId(newTenant.id);
   try {
-    setCrossSubdomainCookie('tashteeb_last_registered_tenant', newTenant);
-    setCrossSubdomainCookie('tashteeb_session_auth', {
-      email: user.email,
-      companyId: newTenant.id,
-      role: 'owner',
-      subdomain: newTenant.subdomain
-    });
+    const safeLastReg = {
+      id: newTenant.id,
+      name: newTenant.name,
+      subdomain: newTenant.subdomain,
+      slug: newTenant.slug,
+      logo: newTenant.logo || null,
+      primaryColor: newTenant.primaryColor || null,
+    };
+    setCrossSubdomainCookie('tashteeb_last_registered_tenant', safeLastReg);
   } catch (e) {}
 
   return {
@@ -897,13 +911,11 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     tenants = [...DEFAULT_TENANTS];
   }
 
-  // 2. فحص هل هو حساب الـ Super Admin (عبر Custom Claims أو البريد المعتمد للمالك في حال عدم وجود دور مقيد آخر)
-  const PLATFORM_OWNER_EMAILS = ['sicolove7@gmail.com', 'admin@platform.com', 'admin@tashteebpro.com'];
-  const hasOtherExplicitRole = Boolean(claims.role && claims.role !== 'super_admin');
+  // 2. فحص هل هو حساب الـ Super Admin (عبر Custom Claims المشفرة أو البريد المعتمد للمالك الرئيسي)
   const isSuperAdminUser = Boolean(
     claims.role === 'super_admin' ||
     claims.isSuperAdmin === true ||
-    (!hasOtherExplicitRole && PLATFORM_OWNER_EMAILS.includes(cleanEmail))
+    cleanEmail === 'sicolove7@gmail.com'
   );
 
   if (isSuperAdminUser) {

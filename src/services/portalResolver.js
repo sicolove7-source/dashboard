@@ -180,7 +180,7 @@ export async function resolveClientPortalProject(token) {
         const raw = localStorage.getItem(key);
         if (raw) {
           const list = JSON.parse(raw);
-          const match = list.find(p => p.clientPortalToken === cleanToken || String(p.id) === cleanToken);
+          const match = list.find(p => p.clientPortalToken && p.clientPortalToken === cleanToken);
           if (match && match.clientPortalEnabled !== false) {
             const settingsRaw = localStorage.getItem(`tenant_${cId}_settings`);
             const settings = settingsRaw ? JSON.parse(settingsRaw) : loadCompanySettings(cId);
@@ -200,7 +200,7 @@ export async function resolveClientPortalProject(token) {
   for (const tenant of allTenants) {
     const tData = getTenantData(tenant.id);
     if (tData?.projects && Array.isArray(tData.projects)) {
-      const match = tData.projects.find(p => p.clientPortalToken === cleanToken || String(p.id) === cleanToken);
+      const match = tData.projects.find(p => p.clientPortalToken && p.clientPortalToken === cleanToken);
       if (match && match.clientPortalEnabled !== false) {
         return {
           project: sanitizeProjectForClientPortal({ ...match, companyId: tenant.id }),
@@ -239,10 +239,10 @@ export async function submitClientPortalApproval(token, patch) {
         const raw = localStorage.getItem(key);
         if (raw) {
           const list = JSON.parse(raw);
-          const hasMatch = list.some(p => p.clientPortalToken === cleanToken || String(p.id) === cleanToken);
+          const hasMatch = list.some(p => p.clientPortalToken && p.clientPortalToken === cleanToken);
           if (hasMatch) {
             const updatedList = list.map(p => {
-              if (p.clientPortalToken === cleanToken || String(p.id) === cleanToken) {
+              if (p.clientPortalToken && p.clientPortalToken === cleanToken) {
                 return { ...p, ...sanitizedApproval };
               }
               return p;

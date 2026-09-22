@@ -32,8 +32,8 @@ export default function Login({
   const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
   const paramCompName = urlParams?.get('company_name');
 
-  // استخراج اسم الشركة بدقة من الإعدادات أو الكاش أو الكوكيز المشترك أو السب-دومين
   let resolvedCompanyName = companySettings?.companyName;
+  let resolvedCompanyPhone = companySettings?.phone || companySettings?.supportPhone;
   if (!resolvedCompanyName && currentSub) {
     if (paramCompName) resolvedCompanyName = decodeURIComponent(paramCompName);
     if (!resolvedCompanyName) {
@@ -44,6 +44,7 @@ export default function Login({
           t.id?.toLowerCase().trim() === `comp_${currentSub}`
         );
         if (matched?.name) resolvedCompanyName = matched.name;
+        if (matched?.phone && !resolvedCompanyPhone) resolvedCompanyPhone = matched.phone;
       } catch (e) {}
     }
     if (!resolvedCompanyName) {
@@ -51,6 +52,7 @@ export default function Login({
         const lastReg = getCrossSubdomainCookie('tashteeb_last_registered_tenant');
         if (lastReg && (lastReg.subdomain?.toLowerCase() === currentSub || lastReg.id === `comp_${currentSub}`)) {
           resolvedCompanyName = lastReg.name;
+          if (lastReg.phone && !resolvedCompanyPhone) resolvedCompanyPhone = lastReg.phone;
         }
       } catch (e) {}
     }
@@ -247,7 +249,10 @@ export default function Login({
   const handleOpenForgotModal = () => {
     setError(null);
     setResetSuccess(null);
-    setForgotEmail((email || '').trim().toLowerCase());
+    // لو المستخدم كاتب رقم تليفون في خانة الدخول — نضع رقمه كمعرف مسبقاً
+    const rawId = (email || '').trim();
+    const looksPhone = /^[\d\s\+\-\(\)]{7,}$/.test(rawId) && !rawId.includes('@');
+    setForgotEmail(looksPhone ? rawId : rawId.toLowerCase());
     setModalError(null);
     setModalSuccess(null);
     setShowForgotModal(true);
@@ -412,14 +417,15 @@ export default function Login({
       }
 
       try {
-        setCrossSubdomainCookie('tashteeb_last_registered_tenant', res.tenant);
-        setCrossSubdomainCookie('tashteeb_session_auth', {
-          email: cleanEmail,
-          companyId: res.tenant.id,
-          role: 'owner',
-          subdomain: cleanSubdomain,
-          name: adminName?.trim() || 'مدير الشركة',
-        });
+        const safeLastReg = {
+          id: res.tenant?.id,
+          name: res.tenant?.name,
+          subdomain: res.tenant?.subdomain,
+          slug: res.tenant?.slug,
+          logo: res.tenant?.logo || null,
+          primaryColor: res.tenant?.primaryColor || null,
+        };
+        setCrossSubdomainCookie('tashteeb_last_registered_tenant', safeLastReg);
       } catch (e) {}
 
       try {
@@ -1388,7 +1394,9 @@ export default function Login({
                 إعادة تعيين كلمة المرور
               </h3>
               <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--muted)", lineHeight: 1.5 }}>
-                أدخل بريدك الإلكتروني المسجل، وسنرسل لك رابطاً آمناً لإعادة تعيين كلمة المرور فوراً.
+                {/^[\d\s\+\-\(\)]{7,}$/.test(forgotEmail) && !forgotEmail.includes('@')
+                  ? 'حسابك مرتبط برقم هاتف — الرجاء التواصل مع مدير شركتك لتعيين كلمة مرور جديدة.'
+                  : 'أدخل بريدك الإلكتروني المسجل، وسنرسل لك رابطاً آمناً لإعادة تعيين كلمة المرور فوراً.'}
               </p>
             </div>
 
@@ -1434,55 +1442,145 @@ export default function Login({
               </div>
             )}
 
-            {/* نموذج إرسال رابط التعيين */}
-            <form onSubmit={handleSendPasswordReset}>
-              <div style={{ marginBottom: 18 }}>
-                <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 7, color: "var(--muted)" }}>
-                  البريد الإلكتروني المسجل
-                </label>
-                <div style={{ position: "relative" }}>
-                  <Mail size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
-                  <input
-                    type="email"
-                    value={forgotEmail}
-                    onChange={(e) => setForgotEmail(e.target.value)}
-                    required
-                    placeholder="name@company.com"
-                    style={{
-                      width: "100%", padding: "11px 42px 11px 14px",
-                      border: "1.5px solid var(--border)", borderRadius: 12,
-                      background: "transparent", color: "var(--ink)",
-                      fontSize: 14, outline: "none", boxSizing: "border-box",
-                      direction: "ltr", textAlign: "right"
-                    }}
-                  />
+            {/* لو المستخدم دخل برقم تليفون: عرض رسالة توجيهية بدل الفورم */}
+            {/^[\d\s\+\-\(\)]{7,}$/.test(forgotEmail) && !forgotEmail.includes('@') ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{
+                  background: 'rgba(245, 158, 11, 0.08)',
+                  border: '1.5px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: 14,
+                  padding: '16px 14px',
+                  display: 'flex',
+                  gap: 12,
+                  alignItems: 'flex-start',
+                }}>
+                  <Phone size={20} style={{ color: '#D97706', flexShrink: 0, marginTop: 2 }} />
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: '#92400E', marginBottom: 6 }}>
+                      حسابك مرتبط برقم هاتف فقط
+                    </div>
+                    <div style={{ fontSize: 13, color: '#78350F', lineHeight: 1.65 }}>
+                      لا يمكن إرسال رابط إعادة التعيين عبر البريد لأن حسابك مسجل برقم الهاتف فقط.
+                      <br />
+                      <strong>الحل: تواصل مع مدير شركتك</strong> ليقوم بتعيين كلمة مرور جديدة لحسابك من لوحة إدارة الموظفين مباشرة.
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              <button
-                type="submit"
-                disabled={modalLoading}
-                style={{
-                  width: "100%",
-                  padding: "13px",
-                  background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})`,
-                  color: "#fff",
-                  border: "none",
+                <div style={{
+                  background: 'rgba(16, 185, 129, 0.06)',
+                  border: '1px solid rgba(16, 185, 129, 0.2)',
                   borderRadius: 12,
-                  fontSize: 14.5,
-                  fontWeight: 800,
-                  cursor: modalLoading ? "wait" : "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                  boxShadow: `0 4px 18px ${primaryColor}40`,
-                }}
-              >
-                <KeyRound size={16} />
-                <span>{modalLoading ? "جاري إرسال الرابط..." : "إرسال رابط إعادة التعيين ✉️"}</span>
-              </button>
-            </form>
+                  padding: '12px 14px',
+                  fontSize: 12.5,
+                  color: '#064E3B',
+                  lineHeight: 1.6,
+                }}>
+                  💡 <strong>للمدير:</strong> من لوحة إدارة الموظفين ← اضغط على زر "كلمة مرور" بجانب اسم الموظف لتعيين كلمة مرور فورية.
+                </div>
+
+                {resolvedCompanyPhone ? (
+                  <a
+                    href={`https://wa.me/${cleanPhoneNumber(resolvedCompanyPhone).startsWith('01') ? '2' + cleanPhoneNumber(resolvedCompanyPhone) : cleanPhoneNumber(resolvedCompanyPhone)}?text=${encodeURIComponent(`السلام عليكم، نسيت كلمة المرور الخاصة بحسابي على منصة تشطيب برو.\nرقم هاتفي المسجل: ${forgotEmail}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      width: '100%', padding: '12px',
+                      background: '#10B981',
+                      color: '#fff', textDecoration: 'none',
+                      borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      fontSize: 14, fontWeight: 800,
+                      fontFamily: "'Cairo', sans-serif",
+                    }}
+                  >
+                    💬 مراسلة إدارة الشركة عبر واتساب
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(`السلام عليكم، نسيت كلمة المرور الخاصة بحسابي على منصة تشطيب برو.\nرقم هاتفي المسجل: ${forgotEmail}`);
+                      setModalSuccess('✅ تم نسخ نص رسالة الطلب! يمكنك لصقها وإرسالها لمدير شركتك الآن.');
+                    }}
+                    style={{
+                      width: '100%', padding: '12px',
+                      background: '#0F172A',
+                      color: '#fff', border: 'none', borderRadius: 12,
+                      fontSize: 13.5, fontWeight: 800, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      fontFamily: "'Cairo', sans-serif",
+                    }}
+                  >
+                    📋 نسخ طلب استعادة كلمة المرور لإرساله للمدير
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(false)}
+                  style={{
+                    width: '100%', padding: '10px',
+                    background: 'transparent',
+                    color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 12,
+                    fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                    fontFamily: "'Cairo', sans-serif",
+                  }}
+                >
+                  إغلاق
+                </button>
+              </div>
+            ) : (
+              /* المستخدم عنده بريد إلكتروني: عرض فورم إرسال رابط */
+              <form onSubmit={handleSendPasswordReset}>
+                <div style={{ marginBottom: 18 }}>
+                  <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 7, color: "var(--muted)" }}>
+                    البريد الإلكتروني المسجل
+                  </label>
+                  <div style={{ position: "relative" }}>
+                    <Mail size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
+                    <input
+                      type="email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      required
+                      placeholder="name@company.com"
+                      style={{
+                        width: "100%", padding: "11px 42px 11px 14px",
+                        border: "1.5px solid var(--border)", borderRadius: 12,
+                        background: "transparent", color: "var(--ink)",
+                        fontSize: 14, outline: "none", boxSizing: "border-box",
+                        direction: "ltr", textAlign: "right"
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={modalLoading}
+                  style={{
+                    width: "100%",
+                    padding: "13px",
+                    background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})`,
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 12,
+                    fontSize: 14.5,
+                    fontWeight: 800,
+                    cursor: modalLoading ? "wait" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    boxShadow: `0 4px 18px ${primaryColor}40`,
+                    fontFamily: "'Cairo', sans-serif",
+                  }}
+                >
+                  <KeyRound size={16} />
+                  <span>{modalLoading ? "جاري إرسال الرابط..." : "إرسال رابط إعادة التعيين ✉️"}</span>
+                </button>
+              </form>
+            )}
 
           </div>
         </div>

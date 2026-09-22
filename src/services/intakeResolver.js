@@ -7,7 +7,7 @@
  * مع إسناد الطلب سحابياً ومحلياً للشركة المحددة في الرابط.
  */
 
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { getTenantData } from './tenantsManager';
 import { loadCompanySettings } from '../utils/branding';
@@ -114,42 +114,45 @@ export async function resolveCompanyForIntake(companyId) {
 
   // 2. تحديث من السحابة (Firestore) لضمان أحدث هوية
   try {
-    const docRef = doc(db, 'companies', cId);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      const data = snap.data();
-      const cloudSettings = data?.settings;
-      if (cloudSettings) {
-        result = {
-          ...result,
-          companyName: cloudSettings.companyName || result.companyName,
-          companySubtitle: cloudSettings.companySubtitle || result.companySubtitle,
-          companyLogo: cloudSettings.companyLogo || result.companyLogo,
-          primaryColor: cloudSettings.primaryColor || result.primaryColor,
-          accentColor: cloudSettings.accentColor || result.accentColor,
-          phone: cloudSettings.phone || cloudSettings.mobile || result.phone,
-          whatsapp: cloudSettings.whatsapp || cloudSettings.phone || result.whatsapp,
-          city: cloudSettings.city || result.city,
-          currency: cloudSettings.currency || result.currency,
-        };
-      }
-    } else {
-      // فحص قائمة المستأجرين المركزية
-      const tDocRef = doc(db, 'platform_metadata', 'tenants');
-      const tSnap = await getDoc(tDocRef);
-      if (tSnap.exists() && Array.isArray(tSnap.data()?.list)) {
-        const tenant = tSnap.data().list.find(t => t.id === cId);
-        if (tenant) {
+    if (auth?.currentUser) {
+      const docRef = doc(db, 'companies', cId);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        const cloudSettings = data?.settings;
+        if (cloudSettings) {
           result = {
             ...result,
-            companyName: tenant.name || result.companyName,
-            companySubtitle: tenant.subtitle || result.companySubtitle,
-            companyLogo: tenant.logo || result.companyLogo,
-            primaryColor: tenant.primaryColor || result.primaryColor,
-            accentColor: tenant.accentColor || result.accentColor,
-            currency: tenant.currency || result.currency,
+            companyName: cloudSettings.companyName || result.companyName,
+            companySubtitle: cloudSettings.companySubtitle || result.companySubtitle,
+            companyLogo: cloudSettings.companyLogo || result.companyLogo,
+            primaryColor: cloudSettings.primaryColor || result.primaryColor,
+            accentColor: cloudSettings.accentColor || result.accentColor,
+            phone: cloudSettings.phone || cloudSettings.mobile || result.phone,
+            whatsapp: cloudSettings.whatsapp || cloudSettings.phone || result.whatsapp,
+            city: cloudSettings.city || result.city,
+            currency: cloudSettings.currency || result.currency,
           };
+          return result;
         }
+      }
+    }
+
+    // فحص قائمة المستأجرين المركزية العامة (متاحة للزوار)
+    const tDocRef = doc(db, 'platform_metadata', 'tenants');
+    const tSnap = await getDoc(tDocRef);
+    if (tSnap.exists() && Array.isArray(tSnap.data()?.list)) {
+      const tenant = tSnap.data().list.find(t => t.id === cId);
+      if (tenant) {
+        result = {
+          ...result,
+          companyName: tenant.name || result.companyName,
+          companySubtitle: tenant.subtitle || result.companySubtitle,
+          companyLogo: tenant.logo || result.companyLogo,
+          primaryColor: tenant.primaryColor || result.primaryColor,
+          accentColor: tenant.accentColor || result.accentColor,
+          currency: tenant.currency || result.currency,
+        };
       }
     }
   } catch (e) {

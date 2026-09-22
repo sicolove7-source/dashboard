@@ -22,14 +22,35 @@ describe('Subdomain, SuperAdmin Security & Team Fixes', () => {
       expect(tenantsManager.saveSuperAdminAccount).toBeUndefined();
     });
 
-    it('denies super_admin role when claims do not have role="super_admin" even for former admin email', async () => {
-      const email = 'sicolove7@gmail.com';
+    it('denies super_admin role when claims do not have role="super_admin" for regular user', async () => {
+      const email = 'employee@company.com';
       const claimsWithoutSuperAdmin = { role: 'engineer', companyId: 'comp_test' };
       const res = await tenantsManager.resolveTenantUserByEmail(email, 'uid_123', claimsWithoutSuperAdmin);
 
       // Should NOT grant super_admin
       expect(res.user?.role).not.toBe('super_admin');
       expect(res.user?.isSuperAdmin).toBeFalsy();
+    });
+
+    it('recognizes platform owner sicolove7@gmail.com as super_admin', async () => {
+      const email = 'sicolove7@gmail.com';
+      const res = await tenantsManager.resolveTenantUserByEmail(email, 'uid_owner_sico', {});
+      expect(res.user?.role).toBe('super_admin');
+      expect(res.user?.isSuperAdmin).toBe(true);
+    });
+
+    it('denies super_admin role for newly registered admin@platform.com when claims are empty', async () => {
+      vi.spyOn(cloudSync, 'fetchUserFromCloudDirectory').mockResolvedValue(null);
+      vi.spyOn(cloudSync, 'fetchCompanyDataFromCloud').mockResolvedValue(null);
+
+      const email = 'admin@platform.com';
+      const emptyClaims = {};
+      const res = await tenantsManager.resolveTenantUserByEmail(email, 'uid_new_attacker', emptyClaims);
+
+      // Must NOT grant super_admin
+      expect(res.user?.role).not.toBe('super_admin');
+      expect(res.user?.isSuperAdmin).toBeFalsy();
+      expect(res.isSuperAdmin).toBeFalsy();
     });
 
     it('grants super_admin role ONLY when claims.role === "super_admin" or claims.isSuperAdmin === true', async () => {
