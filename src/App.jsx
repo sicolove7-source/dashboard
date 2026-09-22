@@ -1074,7 +1074,9 @@ export default function App() {
           const isSuperAdmin = Boolean(
             isSuperAdminClaim || 
             claims.role === 'super_admin' || 
-            claims.isSuperAdmin === true
+            claims.isSuperAdmin === true ||
+            resolvedUser.role === 'super_admin' ||
+            resolvedUser.isSuperAdmin === true
           );
           const role = isSuperAdmin ? 'super_admin' : (claimRole || resolvedUser.role || 'engineer');
           const companyId = claims.companyId || resolvedUser.companyId || (isSuperAdmin ? (getActiveTenantId() || null) : null);
