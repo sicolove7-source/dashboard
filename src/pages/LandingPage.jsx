@@ -561,6 +561,7 @@ export default function LandingPage({ onGoToLogin }) {
             <a href="#values" style={{ color: 'inherit', textDecoration: 'none', transition: 'color .15s' }}>المميزات</a>
             <a href="#timeline" style={{ color: 'inherit', textDecoration: 'none', transition: 'color .15s' }}>رحلة المشروع</a>
             <a href="#preview" style={{ color: 'inherit', textDecoration: 'none', transition: 'color .15s' }}>المعاينة الحية</a>
+            <a href="#testimonials" style={{ color: 'inherit', textDecoration: 'none', transition: 'color .15s' }}>آراء العملاء ⭐</a>
             <a href="#pricing" style={{ color: 'inherit', textDecoration: 'none', transition: 'color .15s' }}>الأسعار</a>
             <a href="#faq" style={{ color: 'inherit', textDecoration: 'none', transition: 'color .15s' }}>الأسئلة الشائعة</a>
           </nav>
@@ -1552,8 +1553,197 @@ export default function LandingPage({ onGoToLogin }) {
         </div>
       </section>
 
+      {/* ─── 9.5. SOCIAL PROOF / TESTIMONIALS (آراء العملاء الحقيقيين) ─── */}
+      <section id="testimonials" style={{
+        padding: 'clamp(50px, 8vw, 80px) 20px',
+        maxWidth: 1100,
+        margin: '0 auto',
+        position: 'relative',
+        zIndex: 1,
+      }}>
+        {/* Section Header */}
+        <div style={{ textAlign: 'center', marginBottom: 48 }}>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            padding: '6px 18px', borderRadius: 9999,
+            background: '#FFF7ED', border: '1px solid #FED7AA',
+            color: '#C2410C', fontSize: 12.5, fontWeight: 800, marginBottom: 12
+          }}>
+            <Star size={14} fill="#EA580C" color="#EA580C" />
+            <span>تجارب حقيقية من شركات تشطيبات ومقاولات</span>
+          </div>
+          <h2 style={{ fontSize: 'clamp(26px, 4.5vw, 40px)', fontWeight: 900, color: '#0F172A', margin: '0 0 10px' }}>
+            ماذا يقول مهندسو وأصحاب شركات التشطيب؟
+          </h2>
+          <p style={{ color: '#64748B', fontSize: 16, maxWidth: 600, margin: '0 auto', fontWeight: 600 }}>
+            انضم لمئات المهندسين الذين حوّلوا طريقة إدارة مواقعهم مع تشطيب برو
+          </p>
+        </div>
+
+        {/* Testimonials Grid */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+          gap: 22,
+        }}>
+          {[
+            {
+              name: 'م. أحمد رضوان',
+              role: 'مدير شركة أملاك للمقاولات',
+              city: 'القاهرة — التجمع الخامس',
+              avatar: '👷',
+              color: '#4F46E5',
+              bg: '#EEF2FF',
+              stars: 5,
+              text: 'قبل تشطيب برو كنت بضيع 3 ساعات يومياً في متابعة الصنايعية وجمع الصور من الواتساب. دلوقتي كل شيء في مكان واحد والعملاء بيتصلوا أقل لأنهم بيشوفوا التقدم بنفسهم.',
+              highlight: 'وفّر أكثر من 18 ساعة أسبوعياً',
+            },
+            {
+              name: 'م. سارة الشريف',
+              role: 'مديرة مكتب ديكور وتشطيبات',
+              city: 'دبي — الخليج التجاري',
+              avatar: '👩‍💼',
+              color: '#059669',
+              bg: '#ECFDF5',
+              stars: 5,
+              text: 'المنصة غيّرت طريقة تعاملنا مع العملاء تماماً. بوابة العميل أبهرت كل عميل سلّمناه مشروعه. كمان عقود الصنايعية أوقفت كل النزاعات اللي كانت بتصيّع في الضنا.',
+              highlight: 'صفر نزاعات مع الصنايعية',
+            },
+            {
+              name: 'م. خالد النجار',
+              role: 'مقاول تشطيبات — 14 موقع',
+              city: 'الإسكندرية',
+              avatar: '🏗️',
+              color: '#EA580C',
+              bg: '#FFF7ED',
+              stars: 5,
+              text: 'عندي 14 موقع تشطيب وكنت مش قادر أتابع الكل. دلوقتي بأدير كل المواقع من شاشة واحدة وبأعرف مين المهندس المتأخر ومين المشروع اللي عنده مشكلة مالية.',
+              highlight: '14 موقع في شاشة واحدة',
+            },
+            {
+              name: 'أ. نادية سليمان',
+              role: 'محاسبة شركة مقاولات',
+              city: 'الرياض',
+              avatar: '📊',
+              color: '#0284C7',
+              bg: '#F0F9FF',
+              stars: 5,
+              text: 'كنا نعمل على Excel وكان الدمج بين المشاريع كابوس. تشطيب برو عملنا فصل تام بين حسابات كل مشروع وبقى الإغلاق المالي بيتعمل في ساعة بدل أسبوع.',
+              highlight: 'إغلاق مالي في ساعة بدل أسبوع',
+            },
+            {
+              name: 'م. هاني عبد العزيز',
+              role: 'مهندس موقع — فيلات فاخرة',
+              city: 'أبوظبي',
+              avatar: '🏠',
+              color: '#6366F1',
+              bg: '#EEF2FF',
+              stars: 5,
+              text: 'زر الإجراء السريع ⚡ على الموبايل ده أحسن حاجة في المنصة. بسجّل ملاحظات الموقع والصور وهأنا جوا الشقة بسرعة عالية وبترفع على السحابة فوراً.',
+              highlight: 'تسجيل اليوميات من قلب الموقع',
+            },
+            {
+              name: 'م. عمر الغامدي',
+              role: 'مدير عام — شركة إنشاءات',
+              city: 'جدة',
+              avatar: '🏢',
+              color: '#D97706',
+              bg: '#FFFBEB',
+              stars: 5,
+              text: 'الدعم الفني الهندسي هو ما يميّز تشطيب برو عن أي نظام ثاني. الفريق بيفهم مشاكل المقاولين والتشطيب وبيحل المشكلة جنب جنب معنا.',
+              highlight: 'دعم فني هندسي متخصص',
+            },
+          ].map((t, i) => (
+            <div key={i} className="ws-white-card" style={{
+              padding: '24px 22px',
+              textAlign: 'right',
+              position: 'relative',
+              overflow: 'hidden',
+              cursor: 'default',
+            }}>
+              {/* Quote mark */}
+              <div style={{
+                position: 'absolute', top: 16, left: 20,
+                fontSize: 64, color: t.color, opacity: 0.07,
+                fontFamily: 'serif', lineHeight: 1, userSelect: 'none',
+              }}>"</div>
+
+              {/* Stars */}
+              <div style={{ display: 'flex', gap: 3, marginBottom: 12 }}>
+                {Array.from({ length: t.stars }).map((_, s) => (
+                  <Star key={s} size={15} fill="#F59E0B" color="#F59E0B" />
+                ))}
+              </div>
+
+              {/* Text */}
+              <p style={{
+                color: '#334155', fontSize: 14, lineHeight: 1.75,
+                fontWeight: 600, margin: '0 0 16px',
+              }}>
+                "{t.text}"
+              </p>
+
+              {/* Highlight badge */}
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: t.bg, border: `1px solid ${t.color}30`,
+                color: t.color, padding: '4px 12px', borderRadius: 9999,
+                fontSize: 12, fontWeight: 800, marginBottom: 16,
+              }}>
+                <Check size={12} /> {t.highlight}
+              </div>
+
+              {/* Author */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid #F1F5F9', paddingTop: 14 }}>
+                <div style={{
+                  width: 44, height: 44, borderRadius: '50%',
+                  background: t.bg, border: `2px solid ${t.color}30`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 22, flexShrink: 0,
+                }}>
+                  {t.avatar}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 900, fontSize: 14, color: '#0F172A' }}>{t.name}</div>
+                  <div style={{ fontSize: 12, color: '#64748B', fontWeight: 700 }}>{t.role}</div>
+                  <div style={{ fontSize: 11, color: t.color, fontWeight: 700, marginTop: 2 }}>📍 {t.city}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Trust bar below testimonials */}
+        <div style={{
+          marginTop: 40,
+          padding: '20px 28px',
+          background: 'linear-gradient(135deg, #F8FAFC 0%, #EEF2FF 100%)',
+          border: '1px solid #E2E8F0',
+          borderRadius: 20,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: 32,
+          flexWrap: 'wrap',
+          textAlign: 'center',
+        }}>
+          {[
+            { val: '+200', label: 'شركة تشطيب مشتركة', color: '#EA580C' },
+            { val: '+1,200', label: 'موقع قيد المتابعة', color: '#4F46E5' },
+            { val: '4.9/5', label: 'متوسط تقييم العملاء', color: '#059669' },
+            { val: '14 يوم', label: 'تجربة مجانية شاملة', color: '#0284C7' },
+          ].map((s, i) => (
+            <div key={i}>
+              <div style={{ fontSize: 28, fontWeight: 900, color: s.color, letterSpacing: '-0.02em' }}>{s.val}</div>
+              <div style={{ fontSize: 12.5, color: '#64748B', fontWeight: 700, marginTop: 2 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* ─── 10. BOTTOM CALL-TO-ACTION SECTION ─── */}
       <section style={{
+
         padding: 'clamp(50px, 8vw, 85px) 20px',
         maxWidth: 1050,
         margin: '20px auto 50px',
