@@ -10,6 +10,7 @@ import {
   generateWhatsAppWelcomeMessage, setActiveTenantId,
   isSubAccountsLoginAllowed, setSubAccountsLoginAllowed
 } from '../services/tenantsManager';
+import { syncTenantsListToCloud } from '../services/cloudSync';
 import { updateCurrentUserPassword } from '../services/auth';
 
 export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) {
@@ -61,10 +62,23 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
   }, []);
 
   function refreshTenants() {
-    setTenants(loadAllTenants());
+    const localList = loadAllTenants();
+    setTenants(localList);
+    // جلب السحابة فقط عند الفتح الأول (لمزامنة بيانات الموظفين وغيرها)
+    // لكن لا نسمح للسحابة بالكتابة فوق البيانات المحلية إذا كانت المحلية أحدث أو أكثر
     loadAllTenantsAsync().then(cloudTenants => {
       if (Array.isArray(cloudTenants) && cloudTenants.length > 0) {
-        setTenants(cloudTenants);
+        // نستخدم السحابة فقط لو كانت تحتوي نفس عدد الشركات أو أكثر من المحلية
+        // (منع حالة: السحابة لسه ما وصلتهاش الشركة الجديدة)
+        setTenants(prev => {
+          if (cloudTenants.length >= prev.length) {
+            return cloudTenants;
+          }
+          // لو المحلية أكثر: دمج (أضف أي شركة محلية مش موجودة في السحابة)
+          const cloudIds = new Set(cloudTenants.map(t => t.id));
+          const localOnly = prev.filter(t => !cloudIds.has(t.id));
+          return localOnly.length > 0 ? [...localOnly, ...cloudTenants] : cloudTenants;
+        });
       }
     }).catch(err => console.warn('[SuperAdminDashboard] Cloud refresh warning:', err));
   }
@@ -117,7 +131,7 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
     setShowModal(true);
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     if (!form.name.trim() || !form.adminEmail.trim()) return;
 
@@ -127,20 +141,35 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
       createTenant(form);
     }
 
-    refreshTenants();
+    // ✅ تحديث فوري للواجهة بالقائمة المحلية المحدّثة (تشمل الشركة الجديدة)
+    const updatedList = loadAllTenants();
+    setTenants(updatedList);
     setShowModal(false);
+
+    // ✅ مزامنة مع السحابة في الخلفية بعد تحديث الواجهة مباشرةً
+    try {
+      await syncTenantsListToCloud(updatedList);
+      console.log('[SuperAdminDashboard] ✅ Cloud synced after add/edit. Total:', updatedList.length);
+    } catch (err) {
+      console.warn('[SuperAdminDashboard] Cloud sync warning (non-critical):', err);
+    }
   }
 
   function handleDelete(id) {
     deleteTenant(id);
-    refreshTenants();
+    const updatedList = loadAllTenants();
+    setTenants(updatedList);
     setDeleteConfirmId(null);
+    // مزامنة فورية مع السحابة بعد الحذف
+    syncTenantsListToCloud(updatedList).catch(e => console.warn('[SuperAdminDashboard] Delete sync:', e));
   }
 
   function toggleStatus(tenant) {
     const nextStatus = tenant.status === 'suspended' ? 'active' : 'suspended';
     updateTenant(tenant.id, { status: nextStatus });
-    refreshTenants();
+    const updatedList = loadAllTenants();
+    setTenants(updatedList);
+    syncTenantsListToCloud(updatedList).catch(e => console.warn('[SuperAdminDashboard] Status sync:', e));
   }
 
   function copyWhatsApp(tenant) {
