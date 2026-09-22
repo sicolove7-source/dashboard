@@ -37,6 +37,24 @@ import { getCrossSubdomainCookie, setCrossSubdomainCookie, isCompanySubdomain, g
 export const PLATFORM_TENANTS_KEY = 'platform-tenants-master-v1';
 export const ACTIVE_TENANT_ID_KEY = 'platform-active-tenant-id';
 export const SUB_ACCOUNTS_ACCESS_KEY = 'platform-subaccounts-access-v2';
+// قائمة IDs الشركات المحذوفة نهائياً حتى لا يُعيدها loadAllTenants من DEFAULT_TENANTS
+export const DELETED_TENANTS_KEY = 'platform-deleted-tenants-v1';
+
+function getDeletedTenantIds() {
+  try {
+    const raw = localStorage.getItem(DELETED_TENANTS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? new Set(parsed) : new Set();
+  } catch (e) { return new Set(); }
+}
+
+function addDeletedTenantId(id) {
+  try {
+    const existing = getDeletedTenantIds();
+    existing.add(id);
+    localStorage.setItem(DELETED_TENANTS_KEY, JSON.stringify(Array.from(existing)));
+  } catch (e) {}
+}
 
 /**
  * فحص هل دخول الحسابات الفرعية مسموح أم مقفل بقرار مالك المنصة
@@ -155,12 +173,14 @@ export function loadAllTenants() {
     }
 
     // دمج فوري وتلقائي مع DEFAULT_TENANTS لضمان وجود كل الشركات والـ 13 موظف دائماً
+    // لكن نتجاهل أي شركة تم حذفها نهائياً من قِبل مدير المنصة
+    const deletedIds = getDeletedTenantIds();
     const map = new Map();
     DEFAULT_TENANTS.forEach(t => {
-      if (t?.id) map.set(t.id, { ...t });
+      if (t?.id && !deletedIds.has(t.id)) map.set(t.id, { ...t });
     });
     parsed.forEach(t => {
-      if (t?.id) {
+      if (t?.id && !deletedIds.has(t.id)) {
         if (!map.has(t.id)) {
           map.set(t.id, t);
         } else {
@@ -553,6 +573,8 @@ export function updateTenant(id, updates) {
 }
 
 export function deleteTenant(id) {
+  // تسجيل الشركة في قائمة المحذوفات أولاً لمنع إعادتها من DEFAULT_TENANTS
+  addDeletedTenantId(id);
   const tenants = loadAllTenants().filter(t => t.id !== id);
   saveAllTenants(tenants);
   try {
