@@ -171,7 +171,28 @@ export async function resolveClientPortalProject(token) {
     console.warn('[PortalResolver] Direct portal_shares read warning:', err.message);
   }
 
-  // 2. فحص الكاش المحلي في المتصفح الحالي (دعم العمل أوفلاين وأثناء التطوير)
+  // 2. الاستعلام السحابي المركزي عبر واجهة المنصة (Serverless Cloud Resolver)
+  // يضمن فتح الرابط للعميل من أي جهاز ومتصفح حتى قبل نشر قواعد Firestore
+  try {
+    const apiUrl = `/api/portal?token=${encodeURIComponent(cleanToken)}`;
+    const res = await fetch(apiUrl, {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.success && data?.project) {
+        return {
+          project: sanitizeProjectForClientPortal(data.project),
+          companyId: data.companyId || null,
+          companySettings: data.companySettings || null
+        };
+      }
+    }
+  } catch (apiErr) {
+    // Non-blocking fallback to local storage
+  }
+
+  // 3. فحص الكاش المحلي في المتصفح الحالي (دعم العمل أوفلاين وأثناء التطوير)
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -256,7 +277,19 @@ export async function submitClientPortalApproval(token, patch) {
     console.warn('[PortalResolver] Local cache approval save warning:', e);
   }
 
-  // 2. استدعاء الدالة السحابية الآمنة (submitPortalApproval)
+  // 2. تحديث عبر واجهة المنصة السحابية المباشرة (Serverless Portal Approval)
+  try {
+    const res = await fetch('/api/portal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: cleanToken, ...sanitizedApproval })
+    });
+    if (res.ok) {
+      return { success: true, savedCloud: true, data: sanitizedApproval };
+    }
+  } catch (apiErr) {}
+
+  // 3. استدعاء الدالة السحابية الآمنة (submitPortalApproval) كخيار إضافي
   try {
     const submitApprovalFn = httpsCallable(functions, 'submitPortalApproval');
     const result = await submitApprovalFn({

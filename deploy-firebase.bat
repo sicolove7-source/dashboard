@@ -11,15 +11,17 @@ echo اختر نوع النشر المطلوب:
 echo.
 echo   [1] نشر شامل للكل (الواجهة + الدوال السحابية Functions + قواعد الأمان) [موصى به]
 echo   [2] نشر الواجهة والتصميم فقط (Hosting Only) [سريع لتعديلات التصميم]
-echo   [3] نشر قواعد الأمان والدوال السحابية فقط (Functions + Firestore Rules)
-echo   [4] خروج
+echo   [3] نشر قواعد الأمان والدوال السحابية (Functions + Firestore Rules)
+echo   [4] ⚡ نشر قواعد الأمان فقط (Firestore Rules - فوري وسريع 5 ثواني) [حل مشكلة بوابات العملاء]
+echo   [5] خروج
 echo.
-set /p choice="أدخل رقم الخيار (الافتراضي 1 واضغط Enter): "
+set /p choice="أدخل رقم الخيار (الافتراضي 4 واضغط Enter): "
 
-if "%choice%"=="" set choice=1
-if "%choice%"=="4" exit /b
+if "%choice%"=="" set choice=4
+if "%choice%"=="5" exit /b
 if "%choice%"=="2" goto deploy_hosting
 if "%choice%"=="3" goto deploy_backend
+if "%choice%"=="4" goto deploy_rules_only
 if "%choice%"=="1" goto deploy_all
 
 :deploy_all
@@ -79,6 +81,19 @@ echo ================================================================
 echo   [2/2] جاري نشر قواعد الأمان والدوال السحابية (Functions + Rules)...
 echo ================================================================
 call npx -y firebase-tools deploy --only functions,firestore:rules,storage --project tashteeb-67d13
+goto finish
+
+:deploy_rules_only
+echo.
+echo ================================================================
+echo   [1/2] فحص تسجيل الدخول إلى Firebase...
+echo ================================================================
+call npx -y firebase-tools login
+echo.
+echo ================================================================
+echo   [2/2] جاري نشر قواعد الأمان فقط (Firestore Rules)...
+echo ================================================================
+call npx -y firebase-tools deploy --only firestore:rules --project tashteeb-67d13
 goto finish
 
 :finish
