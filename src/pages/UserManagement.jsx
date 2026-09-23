@@ -244,8 +244,18 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
   function handleSave() {
     if (!validate()) return;
     
-    const cleanP = cleanPhoneNumber(form.phone);
+    let cleanP = cleanPhoneNumber(form.phone);
     let cleanEmail = form.email.trim().toLowerCase();
+
+    // فحص ذكي: هل قام المشرف بكتابة رقم الهاتف في خانة البريد الإلكتروني بدلاً من الهاتف؟
+    if (!cleanP && cleanEmail) {
+      const emailPhone = cleanPhoneNumber(cleanEmail.replace(/@.*$/, ''));
+      if (emailPhone && emailPhone.length >= 7) {
+        cleanP = emailPhone;
+        form.phone = emailPhone;
+        cleanEmail = `phone_${cleanP}@tashteeb.app`;
+      }
+    }
     
     if (!cleanEmail) {
       if (cleanP) {
@@ -265,7 +275,7 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
       id: user?.id || 'u_' + Date.now(),
       name: form.name.trim(),
       email: cleanEmail,
-      phone: form.phone ? form.phone.trim() : (user?.phone || null),
+      phone: form.phone ? form.phone.trim() : (cleanP || user?.phone || null),
       cleanPhone: cleanP || (user?.cleanPhone || null),
       password: form.password ? form.password.trim() : null,
       role: form.role,

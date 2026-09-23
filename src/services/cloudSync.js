@@ -1261,10 +1261,15 @@ export async function fetchUserByPhoneFromCloudDirectory(phone) {
     if (Array.isArray(tenantsList)) {
       for (const t of tenantsList) {
         if (Array.isArray(t.users)) {
-          const match = t.users.find(u => (
-            cleanPhoneNumber(u.phone) === cPhone ||
-            cleanPhoneNumber(u.cleanPhone) === cPhone
-          ));
+          const match = t.users.find(u => {
+            if (!u) return false;
+            if (cleanPhoneNumber(u.phone) === cPhone || cleanPhoneNumber(u.cleanPhone) === cPhone) return true;
+            if (u.email) {
+              const prefix = u.email.split('@')[0].replace('phone_', '');
+              if (cleanPhoneNumber(prefix) === cPhone) return true;
+            }
+            return false;
+          });
           if (match) {
             return {
               ...match,

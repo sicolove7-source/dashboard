@@ -884,6 +884,10 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     if (uEmail && uEmail === cleanEmail) return true;
     if (phoneFromEmail) {
       if (uEmail && uEmail === `phone_${phoneFromEmail}@tashteeb.app`) return true;
+      if (uEmail) {
+        const prefix = uEmail.split('@')[0].replace('phone_', '');
+        if (cleanPhoneNumber(prefix) === phoneFromEmail) return true;
+      }
       const uPhone = cleanPhoneNumber(u.phone || u.cleanPhone);
       if (uPhone && uPhone === phoneFromEmail) return true;
     }

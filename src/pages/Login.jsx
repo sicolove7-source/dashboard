@@ -154,6 +154,16 @@ export default function Login({
       // 1. المصادقة عبر Firebase Authentication الرسمي بالبريد الإلكتروني
       let authResult = await loginWithEmail(cleanEmail, password);
 
+      // فحص ذكي إضافي: إذا كان رقم هاتف وفشل بصيغة phone_... نجرب صيغة company.com المعتمدة للحسابات المنشأة سابقاً
+      if (!authResult.success && cleanedPhone) {
+        const legacyEmail = `${cleanedPhone}@company.com`;
+        const legacyAuth = await loginWithEmail(legacyEmail, password);
+        if (legacyAuth.success) {
+          authResult = legacyAuth;
+          cleanEmail = legacyEmail;
+        }
+      }
+
       // في حال فشل تسجيل الدخول برقم الهاتف لأن الحساب لم يُنشأ في Firebase Auth بعد:
       if (!authResult.success && (authResult.code === 'auth/invalid-credential' || authResult.code === 'auth/user-not-found' || authResult.code === 'auth/wrong-password')) {
         try {
@@ -170,7 +180,10 @@ export default function Login({
               const localData = getTenantData(`comp_${currentSub}`) || getTenantData(currentSub);
               if (localData?.users && Array.isArray(localData.users)) {
                 registeredUser = localData.users.find(u => {
-                  if (cleanedPhone && (cleanPhoneNumber(u.phone) === cleanedPhone || cleanPhoneNumber(u.cleanPhone) === cleanedPhone)) return true;
+                  if (cleanedPhone) {
+                    if (cleanPhoneNumber(u.phone) === cleanedPhone || cleanPhoneNumber(u.cleanPhone) === cleanedPhone) return true;
+                    if (u.email && cleanPhoneNumber(u.email.split('@')[0]) === cleanedPhone) return true;
+                  }
                   if (u.email && u.email.toLowerCase() === cleanEmail) return true;
                   return false;
                 });
@@ -179,11 +192,26 @@ export default function Login({
           }
 
           if (registeredUser) {
-            // المستخدم موظف مسجل ومعتمد في الشركة! نقوم بتأسيس حسابه في Firebase Auth فوراً ونسجل دخوله
-            console.log('[Login] Auto-provisioning registered employee account:', cleanEmail);
-            const autoReg = await registerWithEmail(cleanEmail, password);
-            if (autoReg.success) {
-              authResult = autoReg;
+            // إذا كان للمستخدم بريد مسجل في الشركة مختلف عن cleanEmail نجرب تسجيل الدخول به أولاً
+            if (registeredUser.email && registeredUser.email !== cleanEmail) {
+              const userEmailAuth = await loginWithEmail(registeredUser.email, password);
+              if (userEmailAuth.success) {
+                authResult = userEmailAuth;
+                cleanEmail = registeredUser.email;
+              }
+            }
+
+            // في حال لم ينجح، نقوم بإنشاء وتأسيس حسابه في Firebase Auth فوراً ونسجل دخوله
+            if (!authResult.success) {
+              console.log('[Login] Auto-provisioning registered employee account:', cleanEmail);
+              let autoReg = await registerWithEmail(cleanEmail, password);
+              if (!autoReg.success && registeredUser.email && registeredUser.email !== cleanEmail) {
+                autoReg = await registerWithEmail(registeredUser.email, password);
+                if (autoReg.success) cleanEmail = registeredUser.email;
+              }
+              if (autoReg.success) {
+                authResult = autoReg;
+              }
             }
           }
         } catch (autoErr) {
