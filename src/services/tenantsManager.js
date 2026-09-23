@@ -28,6 +28,7 @@ import {
   mergeUsersPreservingLocal,
   sanitizeProjectForCloud,
   sanitizeCompanyUsersForCloud,
+  isDemoProject,
 } from './cloudSync';
 import { db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -371,7 +372,7 @@ export function createTenant(data) {
 
   // المشاريع
   let initialProjects = [];
-  if (data.seedDemoProject) {
+  if (data.seedDemoProject && id === 'comp_demo') {
     const seedList = generateCompanySeedProjects(id, newTenant);
     initialProjects = seedList && seedList.length > 0 ? [seedList[0]] : [];
     localStorage.setItem(`tenant_${id}_projects`, JSON.stringify(initialProjects));
@@ -747,14 +748,19 @@ export function getTenantData(companyId) {
     const raw = localStorage.getItem(`tenant_${companyId}_projects`);
     if (raw) projects = JSON.parse(raw);
   } catch (e) {}
+
+  // تصفية أي مشاريع تجريبية قديمة تسربت للشركات الحقيقية
+  if (Array.isArray(projects) && companyId !== 'comp_demo') {
+    projects = projects.filter(p => !isDemoProject(p));
+  }
+
   if (!projects || projects.length === 0) {
-    // فقط نُنشئ مشاريع تجريبية إذا كانت الشركة في القائمة المحلية (للشركات الافتراضية فقط)
-    // الشركات الجديدة تبدأ بدون مشاريع وتُجلب بياناتها من السحابة
-    if (tenant) {
+    // فقط نُنشئ مشاريع تجريبية إذا كانت الشركة هي الشركة التجريبية النموذجية
+    if (tenant && (tenant.id === 'comp_demo' || tenant.slug === 'demo')) {
       projects = generateCompanySeedProjects(companyId, tenant);
       try { localStorage.setItem(`tenant_${companyId}_projects`, JSON.stringify(projects)); } catch (e) {}
     } else {
-      projects = []; // شركة جديدة: لا مشاريع افتراضية
+      projects = []; // شركة حقيقية: تبدأ دائماً فارغة بدون أي مشاريع افتراضية
     }
   }
 

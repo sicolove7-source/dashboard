@@ -283,15 +283,47 @@ export function sanitizeProjectForCloud(project) {
 }
 
 /**
+ * فحص هل المشروع مشروع تجريبي/وهمي مزروع تلقائياً
+ */
+export function isDemoProject(p) {
+  if (!p) return false;
+  const id = String(p.id || '');
+  if (id === 'demo-proj-001' || id === 'demo-proj-002') return true;
+  if (id.startsWith('demo-proj-') || id.startsWith('p_seed_')) return true;
+  const name = String(p.name || '');
+  if (
+    name.includes('مشروع تشطيب فيلا رئيسية') ||
+    name.includes('فيلا سوبر لوكس — التجمع الخامس') ||
+    name.includes('شقة أوبر لوكس — مدينة نصر')
+  ) {
+    const client = String(p.client || '');
+    if (
+      client.includes('عميل المشروع') ||
+      client.includes('أحمد سعد الدين') ||
+      client.includes('سلمى رضا') ||
+      id.startsWith('p_')
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * دمج المشاريع السحابية والمحلية بذكاء مع الحفاظ الكامل على اليوميات والاستلامات الأحدث
  * لمنع أي ضياع للبيانات عند بطء الاتصال أو إعادة التحميل (Zero-Data-Loss Merge)
  */
 export function mergeProjectsPreservingLocal(localProjects, incomingProjects, targetCompanyId) {
   const cleanTarget = targetCompanyId ? cleanCompanyId(targetCompanyId) : null;
+  const isRealTenant = cleanTarget && cleanTarget !== 'comp_demo';
   const filterByTarget = (list) => {
     if (!Array.isArray(list)) return [];
-    if (!cleanTarget) return list;
-    return list.filter(p => !p.companyId || cleanCompanyId(p.companyId) === cleanTarget);
+    return list.filter(p => {
+      if (!p) return false;
+      if (cleanTarget && p.companyId && cleanCompanyId(p.companyId) !== cleanTarget) return false;
+      if (isRealTenant && isDemoProject(p)) return false;
+      return true;
+    });
   };
 
   const safeLocal = filterByTarget(localProjects);

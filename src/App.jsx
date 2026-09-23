@@ -61,6 +61,7 @@ import {
   subscribeToCloudCompanyField,
   fetchCompanyDataFromCloud,
   fetchTenantBySubdomain,
+  isDemoProject,
 } from './services/cloudSync';
 import { parseClientPortalFromUrl, resolveClientPortalProject, submitClientPortalApproval } from './services/portalResolver';
 import { parseIntakeRouteFromUrl } from './services/intakeResolver';
@@ -504,21 +505,23 @@ export default function App() {
   // Onboarding Tour state
   const [showTour, setShowTour] = useState(false);
 
-  // أول دخول: بذار بيانات تجريبية وفتح الجولة الاستكشافية بالتينانت الفعلي فقط بعد نجاح تسجيل الدخول
+  // أول دخول: بذار بيانات تجريبية فقط للشركة النموذجية comp_demo
   useEffect(() => {
     if (!isAuthenticated || !activeCompanyId) return;
     if (isFirstLogin(activeCompanyId)) {
-      const seeded = seedDemoData(`tenant_${activeCompanyId}_projects`, `tenant_${activeCompanyId}_team`, activeCompanyId);
-      markFirstLoginDone(activeCompanyId);
-      if (seeded) {
-        const localData = getTenantData(activeCompanyId);
-        if (localData?.projects?.length) {
-          setProjects(localData.projects);
-        }
-        if (localData?.team) {
-          setTeam(localData.team);
+      if (activeCompanyId === 'comp_demo') {
+        const seeded = seedDemoData(`tenant_${activeCompanyId}_projects`, `tenant_${activeCompanyId}_team`, activeCompanyId);
+        if (seeded) {
+          const localData = getTenantData(activeCompanyId);
+          if (localData?.projects?.length) {
+            setProjects(localData.projects);
+          }
+          if (localData?.team) {
+            setTeam(localData.team);
+          }
         }
       }
+      markFirstLoginDone(activeCompanyId);
       const timer = setTimeout(() => setShowTour(true), 1200);
       return () => clearTimeout(timer);
     }
@@ -674,10 +677,13 @@ export default function App() {
   const loadTenantWorkspace = async (companyId) => {
     // 1. عرض فوري للكاش المحلي (0ms latency)
     const localData = getTenantData(companyId);
-    const scopedLocalProjects = (localData.projects || []).map(p => ({
+    let scopedLocalProjects = (localData.projects || []).map(p => ({
       ...p,
       companyId: companyId
     }));
+    if (companyId !== 'comp_demo') {
+      scopedLocalProjects = scopedLocalProjects.filter(p => !isDemoProject(p));
+    }
     setProjects(scopedLocalProjects);
     setTeam(localData.team || { engineers: [], accountants: [], techOffice: [] });
     setLeads(localData.leads || []);
@@ -1921,7 +1927,7 @@ export default function App() {
               {saveState === "offline" && <span className="save-pill save-err tab-fade">حفظ محلي فقط</span>}
               <div className="meta" style={{ display: "flex", alignItems: "center", gap: 6, background: "#F1F5F9", padding: "4px 10px", borderRadius: 6, color: "#64748B", fontSize: 11.5 }}>
                 <Clock size={12} />
-                <span>المواقع: {projects.length} • {todayISO()}</span>
+                <span>المواقع: {displayedProjects.length} • {todayISO()}</span>
               </div>
             </div>
           </div>
