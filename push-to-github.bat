@@ -1,10 +1,11 @@
 @echo off
 @chcp 65001 >nul
-title رفع وتحديث لوحة التحكم سحابياً على GitHub و Vercel
+title النشر السحابي لمنصة تشطيب برو - Vercel / GitHub Deployer
 cd /d "%~dp0"
 
 echo ================================================================
-echo   🚀 جاري رفع وتحديث المنصة السحابية على GitHub و Vercel...
+echo   🚀 معالج النشر السحابي التلقائي لمنصة تشطيب برو (Tashteeb Pro)
+echo   🌐 الموقع المباشر: https://tashteebpro.com
 echo ================================================================
 echo.
 
@@ -16,13 +17,25 @@ if %errorlevel% neq 0 (
     )
 )
 
-echo [1/3] تجهيز الملفات والتعديلات...
+echo [1/3] فحص وبناء المشروع للتأكد من خلوه من الأخطاء (Vite Build)...
+call npm run build
+if %errorlevel% neq 0 (
+    echo.
+    echo ❌ [خطأ] فشل بناء المشروع! يرجى مراجعة الأخطاء أعلاه قبل النشر.
+    pause
+    exit /b
+)
+
+echo.
+echo [2/3] تجهيز وحفظ التعديلات في مستودع GitHub...
+set /p commit_msg="أدخل وصف التعديل (أو اضغط Enter للافتراضي): "
+if "%commit_msg%"=="" set commit_msg=تحديثات الأمان وتطوير النظام
+
 "%GIT_EXE%" add .
+"%GIT_EXE%" commit -m "%commit_msg%"
 
-echo [2/3] حفظ التعديلات...
-"%GIT_EXE%" commit -m "تحديث الهوية إلى Tashteeb Pro وتفعيل الواتساب والأسعار بالجنيه المصري وتأمين الحسابات" >nul 2>nul
-
-echo [3/3] جاري الرفع السحابي إلى GitHub (origin main)...
+echo.
+echo [3/3] جاري الرفع السحابي إلى GitHub Main (Vercel Auto-Deploy)...
 echo.
 "%GIT_EXE%" push origin main
 
@@ -30,20 +43,14 @@ if %errorlevel% equ 0 (
     echo.
     echo ================================================================
     echo   ✅ تم رفع التحديثات السحابية بنجاح تام!
-    echo   🌐 موقعك على Vercel يتم تحديثه الآن تلقائياً بالنسخة المؤمنة.
+    echo   ⚡ Vercel يقوم الآن بتحديث كافة النطاقات خلال 30 ثانية:
+    echo   🌐 https://tashteebpro.com
+    echo   🌐 https://aa1.tashteebpro.com
     echo ================================================================
 ) else (
     echo.
     echo ================================================================
-    echo   ⚠️ حدث تنبيه أثناء الرفع إلى GitHub:
-    echo ================================================================
-    echo   1. إذا فتح لك المتصفح أو نافذة تسجيل الدخول إلى GitHub:
-    echo      اضغط على "Sign in with your browser" للموافقة.
-    echo.
-    echo   2. إذا كان حساب GitHub يطلب Personal Access Token:
-    echo      أنشئ رمزاً من: GitHub -> Settings -> Developer settings -> Tokens
-    echo.
-    echo   3. أعد تشغيل هذا الملف بعد إتمام تسجيل الدخول.
+    echo   ⚠️ حدث تنبيه أثناء الرفع إلى GitHub، يرجى مراجعة الرسائل أعلاه.
     echo ================================================================
 )
 

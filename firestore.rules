@@ -22,13 +22,15 @@ service cloud.firestore {
                             companyId != null &&
                             companyId != '' &&
                             companyId != 'undefined' &&
-                            companyId != 'null';
+                            companyId != 'null' &&
+                            (request.auth.token.companyId == null || request.auth.token.companyId == companyId || isSuperAdmin());
 
       match /{subcollection}/{docId} {
         allow read, write: if isAuthenticated() &&
                               companyId != null &&
                               companyId != '' &&
-                              companyId != 'undefined';
+                              companyId != 'undefined' &&
+                              (request.auth.token.companyId == null || request.auth.token.companyId == companyId || isSuperAdmin());
       }
     }
 
@@ -68,9 +70,10 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // دليل المستخدمين المركزي: قراءة وكتابة للمستخدمين الموثقين للمزامنة اللحظية بين الأجهزة
+    // دليل المستخدمين المركزي: قراءة للجميع لدعم تسجيل دخول الموظفين بالهاتف، وكتابة للموثقين والسوبر أدمن
     match /platform_metadata/users_directory {
-      allow read, write: if isAuthenticated() || isSuperAdmin();
+      allow read: if true;
+      allow write: if isAuthenticated() || isSuperAdmin();
     }
 
     // أي وثائق إدارية أخرى في platform_metadata
