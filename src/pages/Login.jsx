@@ -16,11 +16,12 @@ import {
   resolveTenantUserByEmail,
   registerNewTenant,
   loadAllTenants,
+  getTenantData,
 } from "../services/tenantsManager";
 import { isCompanySubdomain, getSubdomain, getSubdomainUrl, getCrossSubdomainCookie, setCrossSubdomainCookie } from "../services/subdomainResolver";
 import { auth, db } from "../firebase";
 import { doc, setDoc } from "firebase/firestore";
-import { syncTenantsListToCloud, syncCompanyDataToCloud, cleanPhoneNumber } from "../services/cloudSync";
+import { syncTenantsListToCloud, syncCompanyDataToCloud, cleanPhoneNumber, fetchUserByPhoneFromCloudDirectory, fetchUserFromCloudDirectory } from "../services/cloudSync";
 
 export default function Login({
   onLogin,
@@ -151,7 +152,45 @@ export default function Login({
       }
 
       // 1. المصادقة عبر Firebase Authentication الرسمي بالبريد الإلكتروني
-      const authResult = await loginWithEmail(cleanEmail, password);
+      let authResult = await loginWithEmail(cleanEmail, password);
+
+      // في حال فشل تسجيل الدخول برقم الهاتف لأن الحساب لم يُنشأ في Firebase Auth بعد:
+      if (!authResult.success && (authResult.code === 'auth/invalid-credential' || authResult.code === 'auth/user-not-found' || authResult.code === 'auth/wrong-password')) {
+        try {
+          let registeredUser = null;
+          if (cleanedPhone) {
+            registeredUser = await fetchUserByPhoneFromCloudDirectory(cleanedPhone);
+          } else {
+            registeredUser = await fetchUserFromCloudDirectory(cleanEmail);
+          }
+
+          // إذا لم نجده في الدليل السحابي العام، نفحص مستخدمي الشركة الحالية
+          if (!registeredUser && currentSub) {
+            try {
+              const localData = getTenantData(`comp_${currentSub}`) || getTenantData(currentSub);
+              if (localData?.users && Array.isArray(localData.users)) {
+                registeredUser = localData.users.find(u => {
+                  if (cleanedPhone && (cleanPhoneNumber(u.phone) === cleanedPhone || cleanPhoneNumber(u.cleanPhone) === cleanedPhone)) return true;
+                  if (u.email && u.email.toLowerCase() === cleanEmail) return true;
+                  return false;
+                });
+              }
+            } catch (e) {}
+          }
+
+          if (registeredUser) {
+            // المستخدم موظف مسجل ومعتمد في الشركة! نقوم بتأسيس حسابه في Firebase Auth فوراً ونسجل دخوله
+            console.log('[Login] Auto-provisioning registered employee account:', cleanEmail);
+            const autoReg = await registerWithEmail(cleanEmail, password);
+            if (autoReg.success) {
+              authResult = autoReg;
+            }
+          }
+        } catch (autoErr) {
+          console.warn('[Login] Auto-provision notice:', autoErr);
+        }
+      }
+
       if (authResult.success) {
         // قراءة الـ Custom Claims المشفرة من Google
         const claims = await getUserClaims(authResult.user);

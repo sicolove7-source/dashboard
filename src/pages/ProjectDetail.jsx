@@ -249,9 +249,9 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
                   let activeToken = token || project.clientPortalToken;
                   if (!activeToken) {
                     activeToken = 'cpt_' + (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : (Math.random().toString(36).slice(2, 10) + Date.now().toString(36)));
-                    if (onUpdate) {
-                      onUpdate({ clientPortalToken: activeToken, clientPortalEnabled: true });
-                    }
+                  }
+                  if (onUpdate && (project.clientPortalToken !== activeToken || project.clientPortalEnabled !== true)) {
+                    onUpdate({ clientPortalToken: activeToken, clientPortalEnabled: true });
                   }
                   onOpenClientPortal(activeToken);
                 }}

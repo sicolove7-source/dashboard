@@ -642,9 +642,24 @@ export async function publishProjectToPortalShares(companyId, project) {
       updatedAt: new Date().toISOString()
     };
 
-    await setDoc(shareRef, stripUndefined(sharePayload), { merge: true });
-    console.log('[publishProjectToPortalShares] ✅ Live portal published for token:', token);
-    return true;
+    try {
+      await setDoc(shareRef, stripUndefined(sharePayload), { merge: true });
+      console.log('[publishProjectToPortalShares] ✅ Live portal published for token:', token);
+      return true;
+    } catch (writeErr) {
+      console.warn('[publishProjectToPortalShares] Direct write failed, trying Cloud Function fallback:', writeErr.message);
+      if (functions) {
+        try {
+          const createFn = httpsCallable(functions, 'createPortalShare');
+          await createFn({ companyId: cId, projectId: project.id });
+          console.log('[publishProjectToPortalShares] ✅ Published via Cloud Function fallback for token:', token);
+          return true;
+        } catch (fnErr) {
+          console.warn('[publishProjectToPortalShares] Cloud Function fallback notice:', fnErr.message);
+        }
+      }
+      return false;
+    }
   } catch (err) {
     console.warn('[publishProjectToPortalShares] Non-blocking portal sync notice:', err.message);
     return false;

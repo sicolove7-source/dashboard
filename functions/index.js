@@ -753,3 +753,81 @@ exports.submitPortalApproval = onCall(async (request) => {
     throw new HttpsError("internal", "حدث خطأ أثناء حفظ الاعتماد والتوقيع سحابياً.");
   }
 });
+
+/**
+ * 3. دالة إنشاء ونشر رابط بوابة العميل السحابية (createPortalShare):
+ * دالة OnCall آمنة تنشئ توكناً قوياً وتسقط البيانات المنقاة في portal_shares/{token}.
+ */
+exports.createPortalShare = onCall(async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "يجب تسجيل الدخول لإنشاء رابط البوابة.");
+  }
+
+  const { companyId, projectId } = request.data || {};
+  if (!companyId || !projectId) {
+    throw new HttpsError("invalid-argument", "معرف الشركة ومعرف المشروع مطلوبان.");
+  }
+
+  // 1. جلب المشروع من السحابة
+  const projectRef = db.doc(`companies/${companyId}/projects/${projectId}`);
+  const projectSnap = await projectRef.get();
+  if (!projectSnap.exists) {
+    throw new HttpsError("not-found", "المشروع المطلوب غير موجود.");
+  }
+
+  const project = projectSnap.data();
+  let token = project.clientPortalToken;
+  if (!token || typeof token !== "string" || token.length < 20) {
+    token = "cpt_" + crypto.randomBytes(18).toString("hex");
+  }
+
+  // 2. جلب هوية الشركة لدعم اللوجو والألوان في البوابة
+  let companySettings = null;
+  try {
+    const compSnap = await db.doc(`companies/${companyId}`).get();
+    if (compSnap.exists) {
+      companySettings = compSnap.data()?.settings || null;
+    }
+  } catch (e) {}
+
+  // 3. فلترة البيانات وإسقاط المصروفات والتكاليف الداخلية للمقاول
+  const sharePayload = {
+    id: projectId,
+    projectId: projectId,
+    companyId: companyId,
+    name: project.name || "مشروع بدون اسم",
+    client: project.client || "عميلنا العزيز",
+    clientPhone: project.clientPhone || "",
+    location: project.location || "",
+    progress: Number(project.progress || 0),
+    status: project.status || "active",
+    budget: Number(project.budget || project.contractValue || 0),
+    contractValue: Number(project.contractValue || project.budget || 0),
+    startDate: project.startDate || "",
+    endDate: project.endDate || "",
+    dueDate: project.dueDate || "",
+    dailyLogs: Array.isArray(project.dailyLogs) ? project.dailyLogs : [],
+    workItems: Array.isArray(project.workItems) ? project.workItems : [],
+    photos: Array.isArray(project.photos) ? project.photos : [],
+    sitePhotos: Array.isArray(project.sitePhotos) ? project.sitePhotos : [],
+    payments: Array.isArray(project.payments) ? project.payments : (project.clientPayments || []),
+    clientPayments: Array.isArray(project.clientPayments) ? project.clientPayments : (project.payments || []),
+    clientSignature: project.clientSignature || null,
+    clientApprovalDate: project.clientApprovalDate || null,
+    clientApprovalNotes: project.clientApprovalNotes || null,
+    clientContract: project.clientContract || null,
+    clientPortalEnabled: true,
+    clientPortalToken: token,
+    token: token,
+    companySettings: companySettings,
+    updatedAt: new Date().toISOString()
+  };
+
+  // 4. الحفظ في portal_shares وتحديث المشروع بالتوكن
+  await db.doc(`portal_shares/${token}`).set(sharePayload, { merge: true });
+  await projectRef.set({ clientPortalToken: token, clientPortalEnabled: true, updatedAt: new Date().toISOString() }, { merge: true });
+
+  console.log(`[createPortalShare] Successfully published share for project ${projectId} with token ${token}`);
+  return { success: true, token };
+});

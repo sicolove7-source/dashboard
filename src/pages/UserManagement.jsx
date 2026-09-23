@@ -923,16 +923,15 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
         if (isPhoneAccount) {
           const p = userData.phone || userData.email;
           await syncAndResetPhonePassword(p, rawPassword, userData.email);
-        } else {
-          await callCreateCompanyUser({
-            email: userData.email,
-            name: userData.name,
-            role: userData.role,
-            companyId: activeCompId,
-            password: rawPassword,
-          });
         }
-        setResetFeedback(`✅ تم تحديث بيانات وكلمة مرور ${userData.name} بنجاح`);
+        await callCreateCompanyUser({
+          email: userData.email,
+          name: userData.name,
+          role: userData.role,
+          companyId: activeCompId,
+          password: rawPassword,
+        });
+        setResetFeedback(`✅ تم تحديث بيانات وكلمة مرور ${userData.name} بنجاح وتفعيلها للمصادقة`);
         setTimeout(() => setResetFeedback(null), 8000);
       } catch (pwErr) {
         console.warn('[handleSaveUser] Password sync error:', pwErr);

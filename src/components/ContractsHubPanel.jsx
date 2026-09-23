@@ -22,70 +22,98 @@ export default function ContractsHubPanel({
 }) {
   const currency = getGlobalCurrency();
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isPublishingPortal, setIsPublishingPortal] = useState(false);
 
   // Generate public client portal URL with token as document identifier
   const companyId = activeCompanyId || project.companyId || currentUser?.companyId || getActiveTenantId() || null;
-  const activeToken = project.clientPortalToken || ('cpt_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36));
   const isPortalActive = project.clientPortalEnabled === true;
-  const portalUrl = `${window.location.origin}/portal/${activeToken}`;
+  const activeToken = project.clientPortalToken || ('cpt_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36));
+  const portalUrl = `${window.location.origin}/portal/${project.clientPortalToken || activeToken}`;
 
-  const handleTogglePortal = (newState) => {
-    try {
-      const patch = {
-        clientPortalEnabled: newState,
-        clientPortalToken: activeToken,
-      };
-      if (onUpdate) {
-        onUpdate(patch);
-      }
-      const full = { ...project, ...patch, companyId };
-      syncSingleProjectToCloud(companyId, project.id, full).catch(() => {});
-      publishProjectToPortalShares(companyId, full).catch(() => {});
-    } catch (e) {
-      console.warn('Toggle portal failed:', e);
+  // دالة مركزية لضمان توليد التوكن وحفظه ونشره سحابياً في portal_shares فوراً
+  const ensurePortalPublished = async (desiredState = true) => {
+    let tok = project.clientPortalToken;
+    if (!tok || typeof tok !== 'string' || tok.trim().length === 0) {
+      tok = 'cpt_' + (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : Math.random().toString(36).substring(2, 10) + Date.now().toString(36));
     }
-  };
-
-  const handleCopyLink = () => {
-    try {
-      const patch = {
-        clientPortalEnabled: true,
-        clientPortalToken: activeToken,
-      };
-      if (onUpdate) {
-        onUpdate(patch);
-      }
-      const full = { ...project, ...patch, companyId };
-      syncSingleProjectToCloud(companyId, project.id, full).catch(() => {});
-      publishProjectToPortalShares(companyId, full).catch(() => {});
-      navigator.clipboard.writeText(portalUrl);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2500);
-    } catch (e) {
-      console.warn('Clipboard write failed:', e);
-    }
-  };
-
-  const handleSharePortalWhatsApp = () => {
     const patch = {
-      clientPortalEnabled: true,
-      clientPortalToken: activeToken,
+      clientPortalEnabled: desiredState,
+      clientPortalToken: tok,
     };
     if (onUpdate) {
       onUpdate(patch);
     }
     const full = { ...project, ...patch, companyId };
-    syncSingleProjectToCloud(companyId, project.id, full).catch(() => {});
-    publishProjectToPortalShares(companyId, full).catch(() => {});
-    const cleanPhone = (project.clientPhone || '').replace(/\D/g, '');
-    const clientName = project.client || 'عميلنا العزيز';
-    const msg = `السلام عليكم ورحمة الله وبركاته أ. *${clientName}* 🌸\n` +
-      `يسرنا مشاركة رابط بوابة المتابعة الحية لموقعكم: *${project.name}* 🏛️\n\n` +
-      `عبر هذا الرابط يمكنكم متابعة آخر المستجدات ونسب التنفيذ، الصور اليومية، وكشوف الحسابات والاعتمادات:\n` +
-      `${portalUrl}\n\n` +
-      `خالص تحياتنا، فريق إدارة المشروع 👷‍♂️`;
+    try {
+      await syncSingleProjectToCloud(companyId, project.id, full);
+    } catch (e) {}
+    try {
+      await publishProjectToPortalShares(companyId, full);
+    } catch (e) {}
+    return { token: tok, full };
+  };
 
-    openWhatsApp(cleanPhone, msg);
+  const handleTogglePortal = async (newState) => {
+    setIsPublishingPortal(true);
+    try {
+      await ensurePortalPublished(newState);
+    } catch (e) {
+      console.warn('Toggle portal failed:', e);
+    } finally {
+      setIsPublishingPortal(false);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    setIsPublishingPortal(true);
+    try {
+      const { token } = await ensurePortalPublished(true);
+      const targetUrl = `${window.location.origin}/portal/${token}`;
+      await navigator.clipboard.writeText(targetUrl);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
+    } catch (e) {
+      console.warn('Clipboard write failed:', e);
+    } finally {
+      setIsPublishingPortal(false);
+    }
+  };
+
+  const handleSharePortalWhatsApp = async () => {
+    setIsPublishingPortal(true);
+    try {
+      const { token } = await ensurePortalPublished(true);
+      const targetUrl = `${window.location.origin}/portal/${token}`;
+      const cleanPhone = (project.clientPhone || '').replace(/\D/g, '');
+      const clientName = project.client || 'عميلنا العزيز';
+      const msg = `السلام عليكم ورحمة الله وبركاته أ. *${clientName}* 🌸\n` +
+        `يسرنا مشاركة رابط بوابة المتابعة الحية لموقعكم: *${project.name}* 🏛️\n\n` +
+        `عبر هذا الرابط يمكنكم متابعة آخر المستجدات ونسب التنفيذ، الصور اليومية، وكشوف الحسابات والاعتمادات:\n` +
+        `${targetUrl}\n\n` +
+        `خالص تحياتنا، فريق إدارة المشروع 👷‍♂️`;
+
+      openWhatsApp(cleanPhone, msg);
+    } catch (e) {
+      console.warn('WhatsApp share failed:', e);
+    } finally {
+      setIsPublishingPortal(false);
+    }
+  };
+
+  const handlePreviewPortal = async () => {
+    setIsPublishingPortal(true);
+    try {
+      const { token } = await ensurePortalPublished(true);
+      if (onOpenClientPortal) {
+        onOpenClientPortal(token);
+      } else {
+        window.open(`${window.location.origin}/portal/${token}`, '_blank');
+      }
+    } catch (e) {
+      console.warn('Preview portal failed:', e);
+    } finally {
+      setIsPublishingPortal(false);
+    }
   };
 
   // Craftsman contracts count
@@ -349,13 +377,8 @@ export default function ContractsHubPanel({
             </div>
 
             <button
-              onClick={() => {
-                if (onOpenClientPortal) {
-                  onOpenClientPortal(activeToken);
-                } else {
-                  window.open(portalUrl, '_blank');
-                }
-              }}
+              disabled={isPublishingPortal}
+              onClick={handlePreviewPortal}
               style={{
                 width: '100%',
                 display: 'inline-flex',
@@ -364,17 +387,17 @@ export default function ContractsHubPanel({
                 gap: 8,
                 padding: '11px 16px',
                 borderRadius: 10,
-                background: '#1877F2',
+                background: isPublishingPortal ? '#94A3B8' : '#1877F2',
                 color: '#FFFFFF',
                 border: 'none',
                 fontWeight: 800,
                 fontSize: 13.5,
-                cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(24, 119, 242, 0.3)',
+                cursor: isPublishingPortal ? 'wait' : 'pointer',
+                boxShadow: isPublishingPortal ? 'none' : '0 2px 8px rgba(24, 119, 242, 0.3)',
                 transition: 'background 0.15s ease'
               }}
             >
-              <ExternalLink size={16} /> <span>معاينة بوابة العميل الآن 🌐</span>
+              <ExternalLink size={16} /> <span>{isPublishingPortal ? 'جاري تأكيد ونشر البوابة سحابياً...' : 'معاينة بوابة العميل الآن 🌐'}</span>
             </button>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>

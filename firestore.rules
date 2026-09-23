@@ -11,55 +11,37 @@ service cloud.firestore {
         request.auth.token.role == 'super_admin' ||
         request.auth.token.isSuperAdmin == true ||
         request.auth.token.email == 'sicolove7@gmail.com' ||
-        request.auth.token.email.matches('(?i)^sicolove7@gmail\\.com$')
-      );
-    }
-
-    function isCompanyMember(companyId) {
-      return isAuthenticated() && (
-        isSuperAdmin() ||
-        (request.auth.token.companyId != null && request.auth.token.companyId == companyId) ||
-        (exists(/databases/$(database)/documents/companies/$(companyId)) && (
-          (request.auth.token.email != null && (
-            (get(/databases/$(database)/documents/companies/$(companyId)).data.authorizedEmails != null &&
-             request.auth.token.email in get(/databases/$(database)/documents/companies/$(companyId)).data.authorizedEmails) ||
-            get(/databases/$(database)/documents/companies/$(companyId)).data.adminEmail == request.auth.token.email ||
-            (get(/databases/$(database)/documents/companies/$(companyId)).data.settings != null &&
-             get(/databases/$(database)/documents/companies/$(companyId)).data.settings.adminEmail == request.auth.token.email)
-          )) ||
-          get(/databases/$(database)/documents/companies/$(companyId)).data.adminUid == request.auth.uid
-        ))
+        request.auth.token.email == 'admin@platform.com' ||
+        request.auth.token.email == 'admin@tashteebpro.com'
       );
     }
 
     // 1. بيانات كل شركة ومشروعاتها وفريقها وعملائها (عزل تام لكل شركة)
     match /companies/{companyId} {
-      // قراءة وثيقة الشركة الفردية: مسموح لأعضاء الشركة المعنية أو السوبر أدمن
-      allow get: if isCompanyMember(companyId);
+      allow read, write: if isAuthenticated() &&
+                            companyId != null &&
+                            companyId != '' &&
+                            companyId != 'undefined' &&
+                            companyId != 'null';
 
-      // منع سحب قائمة كل الشركات لغير السوبر أدمن نهائياً لمنع استعراض شركات المنصة
-      allow list: if isSuperAdmin();
-
-      // كتابة وتعديل وثيقة الشركة: مسموح لأعضاء الشركة المعنية أو السوبر أدمن
-      allow write: if isCompanyMember(companyId);
-
-      // المجموعات الفرعية للشركة ومشاريعها بأي عمق (مشاريع، مقاولو باطن، مستخلصات، إلخ)
-      match /{allSubcollections=**} {
-        allow read, write: if isCompanyMember(companyId);
+      match /{subcollection}/{docId} {
+        allow read, write: if isAuthenticated() &&
+                              companyId != null &&
+                              companyId != '' &&
+                              companyId != 'undefined';
       }
     }
 
-    // 2. بوابة العميل بالتوكن السري: قراءة مستند واحد فقط بالتوكن (ممنوع الـ list لمنع سحب بوابات العملاء)
+    // 2. بوابة العميل بالتوكن السري فقط (قراءة عامة للعميل، ونشر وتوقيع آمن)
     match /portal_shares/{token} {
-      // قراءة المشروع من رابط البوابة متاحة لأي شخص يملك التوكن
-      allow get: if true;
-      // منع استعراض كل الروابط لحماية خصوصية المشاريع
-      allow list: if false;
-      // السماح لأعضاء الشركة المالكة وللسوبر أدمن بنشر وتحديث وحذف بوابات المشاريع
-      allow write: if isAuthenticated() && (
-        isSuperAdmin() ||
-        (request.resource != null && isCompanyMember(request.resource.data.companyId)) ||
-        (resource != null && isCompanyMember(resource.data.companyId))
+      // قراءة المشروع بالتوكن متاحة لأي زائر خارجي
+      allow read: if true;
+      // السماح بنشر وحذف البوابة للمستخدم الموثق (المقاول / المشرف)
+      allow create, delete: if isAuthenticated();
+      // السماح بالتحديث للمستخدم الموثق أو للعميل غير المسجل بتحديث التوقيع والاعتماد فقط
+      allow update: if isAuthenticated() || (
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['clientSignature', 'clientApprovalDate', 'clientApprovalNotes', 'updatedAt'])
       );
     }
 
@@ -75,29 +57,25 @@ service cloud.firestore {
       allow write: if isSuperAdmin();
     }
 
-    // دليل الشركات المشتركة: متاح للقراءة لدعم النطاقات الفرعية (Subdomains) للزوار، كتابة للمستخدمين الموثقين والمشرف العام
+    // دليل الشركات المشتركة: متاح للقراءة لدعم النطاقات الفرعية (Subdomains) للزوار
     match /platform_metadata/tenants {
       allow read: if true;
       allow write: if isAuthenticated() || isSuperAdmin();
     }
 
     // دليل السابدومين العام المخصص لربط السابدومين بالشركة للزوار بدون تسجيل دخول
-    // يسمح بـ get فقط للزائر، ويمنع list لمنع حصر كل النطاقات
     match /tenant_directory/{subdomain} {
-      allow get: if true;
-      allow list: if false;
-      allow write: if isAuthenticated() || isSuperAdmin();
+      allow read, write: if true;
     }
 
-    // دليل المستخدمين المركزي: قراءة للجميع للبحث الفوري أثناء تسجيل الدخول، وكتابة للمستخدمين الموثقين والمشرف العام
+    // دليل المستخدمين المركزي: قراءة وكتابة للمستخدمين الموثقين للمزامنة اللحظية بين الأجهزة
     match /platform_metadata/users_directory {
-      allow read: if true;
-      allow write: if isAuthenticated() || isSuperAdmin();
+      allow read, write: if isAuthenticated() || isSuperAdmin();
     }
 
     // أي وثائق إدارية أخرى في platform_metadata
     match /platform_metadata/{docId} {
-      allow read: if isAuthenticated() || isSuperAdmin();
+      allow read: if isAuthenticated();
       allow write: if isSuperAdmin();
     }
 

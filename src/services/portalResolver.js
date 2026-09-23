@@ -7,7 +7,7 @@
  */
 
 import { db, functions } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { getTenantData, loadAllTenants } from './tenantsManager';
 import { loadCompanySettings } from '../utils/branding';
@@ -277,7 +277,30 @@ export async function submitClientPortalApproval(token, patch) {
     console.warn('[PortalResolver] Local cache approval save warning:', e);
   }
 
-  // 2. تحديث عبر واجهة المنصة السحابية المباشرة (Serverless Portal Approval)
+  // 2. تحديث وثيقة المشاركة مباشرة في Firestore (مسموح للعميل الزائر بقواعد الأمان المحمية)
+  let directSaved = false;
+  try {
+    const shareRef = doc(db, 'portal_shares', cleanToken);
+    await updateDoc(shareRef, sanitizedApproval);
+    directSaved = true;
+    console.log('[PortalResolver] ✅ Direct Firestore approval saved for token:', cleanToken);
+  } catch (directErr) {
+    console.warn('[PortalResolver] Direct approval update notice:', directErr.message);
+  }
+
+  // 3. استدعاء الدالة السحابية الآمنة (submitPortalApproval) لتحديث مستند المشروع الأصلي بالشركة
+  try {
+    const submitApprovalFn = httpsCallable(functions, 'submitPortalApproval');
+    const result = await submitApprovalFn({
+      token: cleanToken,
+      ...sanitizedApproval
+    });
+    return { success: true, savedCloud: true, data: result?.data || sanitizedApproval };
+  } catch (err) {
+    console.warn('[PortalResolver] Cloud Function approval notice:', err.message);
+  }
+
+  // 4. تحديث احتياطي عبر واجهة المنصة السحابية المباشرة (Serverless Portal Approval) إن وُجدت
   try {
     const res = await fetch('/api/portal', {
       method: 'POST',
@@ -289,17 +312,5 @@ export async function submitClientPortalApproval(token, patch) {
     }
   } catch (apiErr) {}
 
-  // 3. استدعاء الدالة السحابية الآمنة (submitPortalApproval) كخيار إضافي
-  try {
-    const submitApprovalFn = httpsCallable(functions, 'submitPortalApproval');
-    const result = await submitApprovalFn({
-      token: cleanToken,
-      ...sanitizedApproval
-    });
-    return { success: true, savedCloud: true, data: result?.data || sanitizedApproval };
-  } catch (err) {
-    console.warn('[PortalResolver] Cloud Function approval notice:', err.message);
-    // إرجاع نجاح محلي أوفلاين في حال انقطاع الاتصال بالسحابة أو غياب الـ emulator
-    return { success: true, savedCloud: false, offline: true, data: sanitizedApproval };
-  }
+  return { success: true, savedCloud: directSaved, data: sanitizedApproval };
 }
