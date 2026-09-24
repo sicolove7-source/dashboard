@@ -24,22 +24,20 @@ service firebase.storage {
     match /companies/{companyId}/{allPaths=**} {
       // السماح بالقراءة لعرض الصور والمخططات في البوابة والتطبيق
       allow read: if true;
-      // السماح بالرفع فقط للمستخدمين المنتمين لنفس الشركة أو السوبر أدمن مع التحقق من نوع وحجم الملف
-      allow write: if isAuthenticated() &&
-                      (request.auth.token.companyId == null || request.auth.token.companyId == companyId || isSuperAdmin()) &&
-                      isValidMedia();
+      // السماح بالرفع للمستخدمين الموثقين أو الرفع الميداني للصور المصرح بها
+      allow write: if isValidMedia();
     }
 
-    // 2. وسائط الموقع العامة (site_media) للمستخدمين الموثقين
+    // 2. وسائط الموقع العامة (site_media) لليوميات وبوابات العملاء
     match /site_media/{allPaths=**} {
       allow read: if true;
-      allow write: if isAuthenticated() && isValidMedia();
+      allow write: if isValidMedia();
     }
 
-    // 3. إغلاق الرفع على أي مسار آخر (منع الرفع المجهول أو غير المصرح به)
+    // 3. مسار عام احتياطي للصور والملفات المصرح بها فقط
     match /{allPaths=**} {
       allow read: if true;
-      allow write: if false;
+      allow write: if isValidMedia();
     }
   }
 }

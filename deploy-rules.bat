@@ -14,7 +14,7 @@ echo.
 echo ================================================================
 echo   [2/2] جاري نشر القواعد السحابية وتفعيل بوابات العملاء...
 echo ================================================================
-call npx -y firebase-tools deploy --only firestore:rules --project tashteeb-67d13
+call npx -y firebase-tools deploy --only firestore:rules,storage --project tashteeb-67d13
 echo.
 if %errorlevel% equ 0 (
     echo ================================================================

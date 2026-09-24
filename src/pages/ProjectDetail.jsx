@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Building2, CalendarDays, Pencil, Trash2, ArrowRight, Plus, X, AlertTriangle, Paperclip, CheckSquare, MessageCircle, FileText, Map as MapIcon, MapPin, Clock, Wallet, Package, Home, Wrench, Sparkles, Target, MessageSquare, Share2, Printer, Camera, Video, Play, HardHat, Search, Filter, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Building2, CalendarDays, Pencil, Trash2, ArrowRight, Plus, X, AlertTriangle, Paperclip, CheckSquare, MessageCircle, FileText, Map as MapIcon, MapPin, Clock, Wallet, Package, Home, Wrench, Sparkles, Target, MessageSquare, Share2, Printer, Camera, Video, Play, HardHat, Search, Filter, ChevronDown, Loader2, CheckCircle2, CloudUpload } from 'lucide-react';
 import StatusBadge from '../components/StatusBadge';
 
 import StampRing from '../components/StampRing';
 import { STAGES, ENGINEERS, TECH_OFFICE } from '../utils/constants';
 import { fmtDate, todayISO, nowTimeISO, fmtTime, fmtDateTime, compressImageFile } from '../utils/helpers';
 import { uploadMediaToFirebaseStorage } from '../services/cloudSync';
-import { saveMediaBlob, createMicroThumbnail } from '../utils/mediaStorage';
+import { saveMediaBlob, getMediaBlob, createMicroThumbnail } from '../utils/mediaStorage';
 import MediaThumbnail from '../components/MediaThumbnail';
 import MediaLightbox from '../components/MediaLightbox';
 import { openWhatsApp, WHATSAPP_TEMPLATES } from '../utils/whatsappTemplates';
@@ -292,23 +292,26 @@ function SnagsPanel({ project, onUpdate }) {
       await saveMediaBlob(mediaId, selected, { type: selected.type, name: selected.name });
       const compressed = await compressImageFile(selected, 1200, 0.75);
       
+      // رفع سحابي لـ Firebase Storage
+      let cloudUrl = null;
+      try {
+        cloudUrl = await uploadMediaToFirebaseStorage(
+          selected,
+          `companies/${project.companyId || 'company'}/projects/${project.id}`,
+          selected.name
+        );
+      } catch (uploadErr) {
+        console.warn("[Snags] Cloud upload notice:", uploadErr);
+      }
+
+      const persistentPhoto = cloudUrl || thumb || `idb://${mediaId}`;
+
       setForm(prev => ({
         ...prev,
-        photo: `idb://${mediaId}`,
+        photo: persistentPhoto,
         thumbnail: thumb,
         mediaId
       }));
-
-      // رفع سحابي في الخلفية بدون حجب الواجهة
-      uploadMediaToFirebaseStorage(
-        selected,
-        `companies/${project.companyId || 'company'}/projects/${project.id}`,
-        selected.name
-      ).then(cloudUrl => {
-        if (cloudUrl) {
-          setForm(prev => prev.mediaId === mediaId ? { ...prev, photo: cloudUrl } : prev);
-        }
-      }).catch(() => {});
 
       setAnnotatingImage(compressed);
     } catch (err) {
@@ -352,29 +355,30 @@ function SnagsPanel({ project, onUpdate }) {
       await saveMediaBlob(mediaId, selected, { type: selected.type, name: selected.name });
       const now = new Date().toISOString();
 
+      // رفع سحابي لـ Firebase Storage
+      let cloudUrl = null;
+      try {
+        cloudUrl = await uploadMediaToFirebaseStorage(
+          selected,
+          `companies/${project.companyId || 'company'}/projects/${project.id}`,
+          selected.name
+        );
+      } catch (uploadErr) {
+        console.warn("[Snags] After photo cloud upload notice:", uploadErr);
+      }
+
+      const finalSrc = cloudUrl || thumb || `idb://${mediaId}`;
+
       onUpdate({
         snags: snags.map(s => s.id === id ? {
           ...s,
-          afterPhoto: `idb://${mediaId}`,
+          afterPhoto: finalSrc,
           afterThumbnail: thumb,
           afterMediaId: mediaId,
           updatedAt: now
         } : s),
         updatedAt: now
       });
-
-      // رفع سحابي في الخلفية
-      uploadMediaToFirebaseStorage(
-        selected,
-        `companies/${project.companyId || 'company'}/projects/${project.id}`,
-        selected.name
-      ).then(cloudUrl => {
-        if (cloudUrl) {
-          onUpdate({
-            snags: snags.map(s => s.id === id ? { ...s, afterPhoto: cloudUrl } : s)
-          });
-        }
-      }).catch(() => {});
     } catch (err) {
       console.warn("handleAfterPhotoUpload error:", err);
     } finally {
@@ -384,6 +388,10 @@ function SnagsPanel({ project, onUpdate }) {
 
   function addSnag(e) {
     e.preventDefault();
+    if (isUploading) {
+      alert("جاري رفع صورة الملاحظة، يرجى الانتظار ثوانٍ معدودة حتى اكتمال الرفع قبل الحفظ.");
+      return;
+    }
     if (!form.desc.trim()) return;
     const now = new Date().toISOString();
     const newSnag = { 
@@ -594,7 +602,31 @@ function SnagsPanel({ project, onUpdate }) {
             </div>
 
             <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
-              <button className="btn btn-primary" type="submit" style={{ padding: "12px 24px" }}><Plus size={16} /> حفظ الملاحظة</button>
+              <button 
+                className="btn btn-primary" 
+                type="submit" 
+                disabled={isUploading}
+                style={{ 
+                  padding: "12px 24px", 
+                  opacity: isUploading ? 0.75 : 1, 
+                  cursor: isUploading ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: isUploading ? '#475569' : undefined
+                }}
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
+                    <span>جاري رفع الصورة... استنّي ⏳</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus size={16} /> حفظ الملاحظة
+                  </>
+                )}
+              </button>
             </div>
           </form>
         </div>
@@ -793,6 +825,191 @@ function DiaryPanel({ project, team, onUpdate }) {
     }));
   }, [project?.id, projEng, team]);
 
+  // ─── Phase 2: Retroactive Media Repair Engine (فحص وإصلاح الصور القديمة المحفوظة كـ idb:// في السحابة) ───
+  const [repairState, setRepairState] = useState({
+    running: false,
+    repairedCount: 0,
+    unrecoverableCount: 0,
+    totalCount: 0,
+    showBanner: false
+  });
+  const repairRanRef = useRef({});
+
+  useEffect(() => {
+    let active = true;
+    const projId = project?.id;
+    if (!projId || repairRanRef.current[projId]) return;
+
+    const dailyLogs = Array.isArray(project.dailyLogs)
+      ? project.dailyLogs
+      : (project.dailyLogs && typeof project.dailyLogs === 'object' ? Object.values(project.dailyLogs) : []);
+
+    if (dailyLogs.length === 0) return;
+
+    // فحص ما إذا كان هناك صور محفوظة بـ idb:// ولم ترفع سحابياً
+    const itemsToRepair = [];
+    dailyLogs.forEach((log) => {
+      if (Array.isArray(log.photos)) {
+        log.photos.forEach((ph) => {
+          const src = typeof ph === 'string' ? ph : ph?.src;
+          const rawSrc = typeof ph === 'object' ? ph?.rawSrc : null;
+          const id = typeof ph === 'object' ? ph?.id : (src?.startsWith('idb://') ? src.replace('idb://', '') : null);
+          const isIdb = (src && src.startsWith('idb://')) || (rawSrc && rawSrc.startsWith('idb://'));
+          const isNotCloud = !src || (!src.startsWith('http://') && !src.startsWith('https://'));
+          if (id && isIdb && isNotCloud && !itemsToRepair.some(i => i.mediaId === id)) {
+            itemsToRepair.push({ mediaId: id, logId: log.id });
+          }
+        });
+      }
+      if (Array.isArray(log.media)) {
+        log.media.forEach((md) => {
+          const src = md?.src;
+          const rawSrc = md?.rawSrc;
+          const id = md?.id || (src?.startsWith('idb://') ? src.replace('idb://', '') : (rawSrc?.startsWith('idb://') ? rawSrc.replace('idb://', '') : null));
+          const isIdb = (src && src.startsWith('idb://')) || (rawSrc && rawSrc.startsWith('idb://'));
+          const isNotCloud = !src || (!src.startsWith('http://') && !src.startsWith('https://'));
+          if (id && isIdb && isNotCloud && !itemsToRepair.some(i => i.mediaId === id)) {
+            itemsToRepair.push({ mediaId: id, logId: log.id });
+          }
+        });
+      }
+    });
+
+    if (itemsToRepair.length === 0) return;
+    repairRanRef.current[projId] = true;
+
+    (async () => {
+      setRepairState({
+        running: true,
+        repairedCount: 0,
+        unrecoverableCount: 0,
+        totalCount: itemsToRepair.length,
+        showBanner: true
+      });
+
+      console.log(`[Phase 2 Repair] 🔍 Found ${itemsToRepair.length} legacy images with idb:// in project ${projId}`);
+
+      let repairedCount = 0;
+      let unrecoverableCount = 0;
+      const repairedMediaMap = {}; // mediaId -> { cloudUrl, thumb }
+
+      // معالجة بالدفعات (Batching بمعدل صورتين في المرة الواحدة لحماية أداء المتصفح والشبكة)
+      const batchSize = 2;
+      for (let i = 0; i < itemsToRepair.length; i += batchSize) {
+        if (!active) break;
+        const batch = itemsToRepair.slice(i, i + batchSize);
+
+        await Promise.all(batch.map(async (item) => {
+          try {
+            const blob = await getMediaBlob(item.mediaId);
+            if (blob) {
+              const fileName = `legacy_repair_${item.mediaId}.jpg`;
+              let cloudUrl = null;
+              try {
+                cloudUrl = await uploadMediaToFirebaseStorage(
+                  blob,
+                  `companies/${project.companyId || 'company'}/projects/${projId}`,
+                  fileName
+                );
+              } catch (storageErr) {
+                console.warn('[Phase 2 Repair] Storage upload notice:', storageErr);
+              }
+
+              // توليد المصغرة الخفيفة الدائمة فوراً من الـ blob
+              const thumb = await createMicroThumbnail(blob, false);
+
+              // إذا توفر رابط سحابي HTTPS نعتمد عليه، وإلا نعتمد المصغرة كبديل دائم لضمان ظهور الصورة عبر جميع الأجهزة وبوابة العميل بنسبة 100%
+              const targetUrl = cloudUrl || thumb;
+
+              if (targetUrl) {
+                repairedMediaMap[item.mediaId] = {
+                  cloudUrl: targetUrl,
+                  thumb: thumb || targetUrl
+                };
+                repairedCount++;
+                console.log(`[Phase 2 Repair] ✅ Successfully rescued photo: ${item.mediaId} via ${cloudUrl ? 'Cloud HTTPS' : 'Base64 Micro-Thumbnail'}!`);
+              } else {
+                unrecoverableCount++;
+              }
+            } else {
+              unrecoverableCount++;
+              console.warn(`[Phase 2 Repair] ⚠️ Media blob not found in IndexedDB on this machine for mediaId: ${item.mediaId}. Photo needs manual re-upload or opening from the originating machine.`);
+            }
+          } catch (err) {
+            unrecoverableCount++;
+            console.error(`[Phase 2 Repair] Error repairing ${item.mediaId}:`, err);
+          }
+        }));
+
+        if (active) {
+          setRepairState(prev => ({ ...prev, repairedCount, unrecoverableCount }));
+        }
+      }
+
+      if (!active) return;
+
+      const hasRepairs = Object.keys(repairedMediaMap).length > 0;
+
+      if (hasRepairs) {
+        // تحديث سجلات اليوميات بروابط السحابة الدائمة
+        const updatedLogs = dailyLogs.map(l => {
+          let logModified = false;
+          const newPhotos = (l.photos || []).map(p => {
+            const mId = typeof p === 'object' ? (p.id || (p.rawSrc ? p.rawSrc.replace('idb://', '') : p.src?.replace('idb://', ''))) : p?.replace('idb://', '');
+            if (mId && repairedMediaMap[mId]) {
+              logModified = true;
+              const rep = repairedMediaMap[mId];
+              return typeof p === 'object'
+                ? { ...p, src: rep.cloudUrl, rawSrc: rep.cloudUrl, thumbnail: rep.thumb || p.thumbnail }
+                : { id: mId, src: rep.cloudUrl, rawSrc: rep.cloudUrl, thumbnail: rep.thumb, type: 'image' };
+            }
+            return p;
+          });
+
+          const newMedia = (l.media || []).map(m => {
+            const mId = m.id || (m.rawSrc ? m.rawSrc.replace('idb://', '') : m.src?.replace('idb://', ''));
+            if (mId && repairedMediaMap[mId]) {
+              logModified = true;
+              const rep = repairedMediaMap[mId];
+              return { ...m, src: rep.cloudUrl, rawSrc: rep.cloudUrl, thumbnail: rep.thumb || m.thumbnail };
+            }
+            return m;
+          });
+
+          return logModified ? { ...l, photos: newPhotos, media: newMedia } : l;
+        });
+
+        // تحديث project.files أيضاً إن كانت الصور مضافة إليها
+        let updatedFiles = project.files;
+        if (Array.isArray(project.files) && project.files.length > 0) {
+          updatedFiles = project.files.map(f => {
+            const mId = f.id || (f.rawSrc ? f.rawSrc.replace('idb://', '') : f.src?.replace('idb://', ''));
+            if (mId && repairedMediaMap[mId]) {
+              const rep = repairedMediaMap[mId];
+              return { ...f, src: rep.cloudUrl, rawSrc: rep.cloudUrl, thumbnail: rep.thumb || f.thumbnail };
+            }
+            return f;
+          });
+        }
+
+        const patch = { dailyLogs: updatedLogs, updatedAt: new Date().toISOString() };
+        if (updatedFiles) patch.files = updatedFiles;
+
+        onUpdate(patch);
+      }
+
+      setRepairState({
+        running: false,
+        repairedCount,
+        unrecoverableCount,
+        totalCount: itemsToRepair.length,
+        showBanner: true
+      });
+    })();
+
+    return () => { active = false; };
+  }, [project?.id]);
+
   async function handleMediaUpload(e) {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
@@ -807,17 +1024,17 @@ function DiaryPanel({ project, team, onUpdate }) {
         // 1. رابط معاينة فوري وعرضه على الشاشة
         const instantUrl = URL.createObjectURL(file);
         
-        // 2. توليد مصغرة صغيرة جداً (~15KB) آمنة لسحابة فايربيس والذاكرة
+        // 2. توليد مصغرة خفيفة وعالية الجودة آمنة لسحابة فايربيس والذاكرة
         const thumb = await createMicroThumbnail(file, false);
         
-        // 3. حفظ الملف الثنائي الكامل فوراً في IndexedDB المحلي
+        // 3. حفظ الملف الثنائي الكامل فوراً في IndexedDB المحلي للجهاز الحالي
         await saveMediaBlob(mediaId, file, { type: file.type, name: file.name });
 
         const mediaItem = {
           id: mediaId,
-          src: instantUrl,
-          rawSrc: `idb://${mediaId}`,
-          thumbnail: thumb,
+          src: thumb || instantUrl,
+          rawSrc: thumb || `idb://${mediaId}`,
+          thumbnail: thumb || '',
           type: 'image',
           name: file.name,
           isUploading: true
@@ -825,7 +1042,7 @@ function DiaryPanel({ project, team, onUpdate }) {
 
         setMediaList(prev => [...prev, mediaItem]);
 
-        // 4. رفع في الخلفية لسحابة Firebase Storage
+        // 4. رفع في الخلفية لسحابة Firebase Storage للحصول على رابط سحابي HTTPS دائم
         uploadMediaToFirebaseStorage(
           file,
           `companies/${project.companyId || 'company'}/projects/${project.id}`,
@@ -833,11 +1050,40 @@ function DiaryPanel({ project, team, onUpdate }) {
         ).then(cloudUrl => {
           if (cloudUrl) {
             setMediaList(prev => prev.map(m => m.id === mediaId ? { ...m, src: cloudUrl, rawSrc: cloudUrl, isUploading: false } : m));
+            // إذا كان المستخدم قد حفظ اليومية بالفعل أثناء الرفع، نحدث اليومية في المشروع مباشرة برابط HTTPS
+            const currentLogs = project?.dailyLogs || [];
+            const hasLogWithThisMedia = currentLogs.some(l => 
+              (Array.isArray(l.photos) && l.photos.some(p => p.id === mediaId)) ||
+              (Array.isArray(l.media) && l.media.some(m => m.id === mediaId))
+            );
+            if (hasLogWithThisMedia) {
+              const updated = currentLogs.map(l => ({
+                ...l,
+                photos: (l.photos || []).map(p => p.id === mediaId ? { ...p, src: cloudUrl, rawSrc: cloudUrl } : p),
+                media: (l.media || []).map(m => m.id === mediaId ? { ...m, src: cloudUrl, rawSrc: cloudUrl } : m),
+              }));
+              onUpdate({ dailyLogs: updated });
+            }
           } else {
-            setMediaList(prev => prev.map(m => m.id === mediaId ? { ...m, isUploading: false } : m));
+            // فشل الرفع السحابي (مثل Storage 404 أو عدم توفر إنترنت) - نعتمد المصغرة Base64 كـ src دائم عبر جميع الأجهزة
+            const fallbackSrc = thumb || mediaItem.thumbnail || instantUrl;
+            setMediaList(prev => prev.map(m => m.id === mediaId ? {
+              ...m,
+              src: fallbackSrc,
+              rawSrc: thumb || mediaItem.thumbnail || m.rawSrc,
+              thumbnail: thumb || mediaItem.thumbnail || '',
+              isUploading: false
+            } : m));
           }
         }).catch(() => {
-          setMediaList(prev => prev.map(m => m.id === mediaId ? { ...m, isUploading: false } : m));
+          const fallbackSrc = thumb || mediaItem.thumbnail || instantUrl;
+          setMediaList(prev => prev.map(m => m.id === mediaId ? {
+            ...m,
+            src: fallbackSrc,
+            rawSrc: thumb || mediaItem.thumbnail || m.rawSrc,
+            thumbnail: thumb || mediaItem.thumbnail || '',
+            isUploading: false
+          } : m));
         });
       } catch (err) {
         console.error("Error reading file:", err);
@@ -848,25 +1094,41 @@ function DiaryPanel({ project, team, onUpdate }) {
 
   function addLog(e) {
     e.preventDefault();
+    if (mediaList.some(m => m.isUploading)) {
+      alert("جاري رفع الصور إلى السحابة حالياً، يرجى الانتظار ثوانٍ معدودة حتى اكتمال الرفع قبل حفظ اليومية.");
+      return;
+    }
     if (!form.work.trim()) return;
     const now = new Date().toISOString();
 
-    const safeMediaToSave = mediaList.map(m => ({
-      id: m.id,
-      src: m.rawSrc || (m.src?.startsWith('blob:') ? `idb://${m.id}` : m.src),
-      thumbnail: m.thumbnail || '',
-      type: m.type,
-      name: m.name || '',
-      caption: `يومية ${form.date}: ${form.work.slice(0, 35)}`
-    }));
+    const safeMediaToSave = mediaList.map(m => {
+      // نختار المصدر الدائم: رابط سحابي HTTPS، أو المصغرة Base64، ولا نعتمد على idb:// كـ src وحيد إلا كملاذ أخير
+      const safeThumb = (m.thumbnail && m.thumbnail.startsWith('data:'))
+        ? m.thumbnail
+        : (m.src && m.src.startsWith('data:') ? m.src : '');
+
+      const persistentSrc = (m.src && (m.src.startsWith('http://') || m.src.startsWith('https://')))
+        ? m.src
+        : (safeThumb || (m.rawSrc && !m.rawSrc.startsWith('blob:') && !m.rawSrc.startsWith('idb://') ? m.rawSrc : `idb://${m.id}`));
+
+      return {
+        id: m.id,
+        src: persistentSrc,
+        rawSrc: m.rawSrc || persistentSrc,
+        thumbnail: safeThumb,
+        type: m.type,
+        name: m.name || '',
+        caption: `يومية ${form.date}: ${form.work.slice(0, 35)}`
+      };
+    });
 
     const safePhotos = safeMediaToSave
       .filter(m => m.type === 'image')
       .map(m => ({
         id: m.id,
-        // استخدام rawSrc (idb://) دائماً لضمان استرداد الصورة من IndexedDB بعد إعادة التحميل
-        src: m.rawSrc || (m.src?.startsWith('blob:') ? `idb://${m.id}` : m.src),
-        thumbnail: m.thumbnail || '',
+        src: m.src,
+        rawSrc: m.rawSrc,
+        thumbnail: m.thumbnail || (m.src.startsWith('data:') ? m.src : ''),
         caption: m.caption || '',
         type: 'image'
       }));
@@ -893,7 +1155,8 @@ function DiaryPanel({ project, team, onUpdate }) {
       const existingFiles = project.files || [];
       const newFiles = safeMediaToSave.map((m, idx) => ({
         id: m.id || ((m.type === 'video' ? 'vid_' : 'ph_') + Date.now() + '_' + idx),
-        src: m.rawSrc || (m.src?.startsWith('blob:') ? `idb://${m.id}` : m.src),
+        src: m.src,
+        rawSrc: m.rawSrc,
         thumbnail: m.thumbnail || '',
         type: m.type,
         caption: m.caption || '',
@@ -928,8 +1191,17 @@ function DiaryPanel({ project, team, onUpdate }) {
           const isVid = m.startsWith('data:video') || m.includes('.mp4') || m.includes('.webm');
           items.push({ src: m, type: isVid ? 'video' : 'image', caption: defaultCaption, date: fmtDate(l.date) });
         } else if (m && (m.src || m.thumbnail || m.id)) {
+          const rawSrc = m.src;
+          const bestSrc = (rawSrc && !rawSrc.startsWith('idb://'))
+            ? rawSrc
+            : (m.thumbnail && (m.thumbnail.startsWith('data:') || m.thumbnail.startsWith('http')))
+              ? m.thumbnail
+              : rawSrc;
           items.push({
             ...m,
+            src: bestSrc,
+            rawSrc: m.rawSrc || (rawSrc?.startsWith('idb://') ? rawSrc : null),
+            thumbnail: m.thumbnail || '',
             caption: m.caption || defaultCaption,
             date: m.date || fmtDate(l.date)
           });
@@ -938,13 +1210,20 @@ function DiaryPanel({ project, team, onUpdate }) {
     }
     if (Array.isArray(l.photos)) {
       l.photos.forEach(p => {
-        const src = typeof p === 'string' ? p : (p?.src || p?.thumbnail);
+        const rawSrc = typeof p === 'string' ? p : (p?.src || p?.thumbnail);
         const id = typeof p === 'object' ? p?.id : null;
-        if ((src || id) && !items.some(it => (id && it.id === id) || (src && it.src === src))) {
-          const isVid = (typeof src === 'string' && (src.startsWith('data:video') || src.includes('.mp4') || src.includes('.webm'))) || p?.type === 'video';
+        if ((rawSrc || id) && !items.some(it => (id && it.id === id) || (rawSrc && it.src === rawSrc))) {
+          const isVid = (typeof rawSrc === 'string' && (rawSrc.startsWith('data:video') || rawSrc.includes('.mp4') || rawSrc.includes('.webm'))) || p?.type === 'video';
+          const thumbnail = typeof p === 'object' ? p?.thumbnail : null;
+          const bestSrc = (rawSrc && !rawSrc.startsWith('idb://'))
+            ? rawSrc
+            : (thumbnail && (thumbnail.startsWith('data:') || thumbnail.startsWith('http')))
+              ? thumbnail
+              : rawSrc;
+
           items.push(typeof p === 'object' 
-            ? { ...p, caption: p.caption || defaultCaption, date: p.date || fmtDate(l.date) }
-            : { src, type: isVid ? 'video' : 'image', caption: defaultCaption, date: fmtDate(l.date) }
+            ? { ...p, src: bestSrc, rawSrc: p.rawSrc || (rawSrc?.startsWith('idb://') ? rawSrc : null), thumbnail: thumbnail || '', caption: p.caption || defaultCaption, date: p.date || fmtDate(l.date) }
+            : { src: bestSrc, thumbnail: thumbnail || '', type: isVid ? 'video' : 'image', caption: defaultCaption, date: fmtDate(l.date) }
           );
         }
       });
@@ -1052,6 +1331,66 @@ function DiaryPanel({ project, team, onUpdate }) {
         />
       )}
 
+      {/* ─── Phase 2: شريط حالة فحص وإصلاح الصور القديمة ومزامنتها سحابياً ─── */}
+      {repairState.showBanner && (
+        <div
+          className="tab-fade"
+          style={{
+            background: repairState.running 
+              ? 'rgba(56, 189, 248, 0.12)' 
+              : repairState.repairedCount > 0 
+                ? 'rgba(16, 185, 129, 0.12)' 
+                : 'rgba(245, 158, 11, 0.12)',
+            border: `1.5px solid ${repairState.running ? 'rgba(56, 189, 248, 0.35)' : repairState.repairedCount > 0 ? 'rgba(16, 185, 129, 0.35)' : 'rgba(245, 158, 11, 0.35)'}`,
+            borderRadius: 12,
+            padding: '10px 16px',
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexWrap: 'wrap'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {repairState.running ? (
+              <Loader2 size={18} className="spin" style={{ animation: 'spin 1s linear infinite', color: '#0284C7' }} />
+            ) : repairState.repairedCount > 0 ? (
+              <CheckCircle2 size={18} color="#10B981" />
+            ) : (
+              <AlertTriangle size={18} color="#F59E0B" />
+            )}
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>
+              {repairState.running ? (
+                `جاري فحص وإصلاح الصور القديمة ومزامنتها سحابياً لتعمل عبر جميع الأجهزة وبوابة العميل... (${repairState.repairedCount}/${repairState.totalCount}) ⏳`
+              ) : repairState.repairedCount > 0 ? (
+                `تم إنقاذ ومزامنة ${repairState.repairedCount} صورة قديمة تلقائياً إلى السحابة بنجاح! أصبحت متاحة الآن على جميع المتصفحات وبوابة العميل ☁️`
+              ) : (
+                `تنبيه: توجد ${repairState.unrecoverableCount} صورة قديمة محفوظة على جهاز آخر. لرؤيتها أو مزامنتها سحابياً، يرجى فتح الموقع من نفس الجهاز الذي رُفعت منه أول مرة.`
+              )}
+            </div>
+          </div>
+
+          {!repairState.running && (
+            <button
+              type="button"
+              onClick={() => setRepairState(prev => ({ ...prev, showBanner: false }))}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--muted)',
+                cursor: 'pointer',
+                padding: '4px 8px',
+                fontSize: 12,
+                fontWeight: 700
+              }}
+            >
+              ✕ إخفاء
+            </button>
+          )}
+        </div>
+      )}
+
       {!hasTodayLog && (
         <div
           className="tab-fade"
@@ -1152,13 +1491,35 @@ function DiaryPanel({ project, team, onUpdate }) {
                 {mediaList.map((m, idx) => (
                   <div key={idx} style={{ position: 'relative', width: 85, height: 85, borderRadius: 10, overflow: 'hidden', border: '1.5px solid var(--border)', background: '#0F172A', cursor: 'pointer' }}>
                     <img src={m.src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onClick={() => setPreviewModal(m)} />
+                    {/* Overlay طبقة شبه شفافة أثناء الرفع */}
+                    {m.isUploading && (
+                      <div style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'rgba(15, 23, 42, 0.75)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 4,
+                        color: '#fff',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        zIndex: 2,
+                        pointerEvents: 'none',
+                        backdropFilter: 'blur(2px)'
+                      }}>
+                        <Loader2 size={18} className="spin" style={{ animation: 'spin 1s linear infinite', color: '#38BDF8' }} />
+                        <span>جاري الرفع...</span>
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setMediaList(prev => prev.filter((_, i) => i !== idx)); }}
                       style={{
                         position: 'absolute', top: 3, right: 3, width: 22, height: 22, borderRadius: '50%',
                         background: 'rgba(239,68,68,0.9)', color: '#fff', border: 'none', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3
                       }}
                     >
                       <X size={12} />
@@ -1170,9 +1531,28 @@ function DiaryPanel({ project, team, onUpdate }) {
           </div>
 
           <div className="diary-submit-row">
-            <button className="btn btn-primary diary-submit-btn" type="submit">
-              <Plus size={16} /> تسجيل اليومية
-            </button>
+            {(() => {
+              const isAnyMediaUploading = mediaList.some(m => m.isUploading);
+              return (
+                <button 
+                  className="btn btn-primary diary-submit-btn" 
+                  type="submit"
+                  disabled={isAnyMediaUploading}
+                  style={isAnyMediaUploading ? { opacity: 0.75, cursor: 'not-allowed', background: '#475569' } : {}}
+                >
+                  {isAnyMediaUploading ? (
+                    <>
+                      <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
+                      <span>جاري رفع الصور... استنّي ⏳</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={16} /> تسجيل اليومية
+                    </>
+                  )}
+                </button>
+              );
+            })()}
           </div>
         </form>
       </div>

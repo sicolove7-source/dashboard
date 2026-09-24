@@ -59,23 +59,33 @@ export default function MediaLightbox({ item, items = [], onClose }) {
   const isVideo = activeItem?.type === 'video' ||
     (typeof activeItem?.src === 'string' && (activeItem.src.includes('.mp4') || activeItem.src.includes('.webm') || activeItem.src.startsWith('data:video')));
 
-  // Resolve Image URL with Priority for Full High-Res Original from IndexedDB
+  // Resolve Image URL with Priority for High-Res IndexedDB locally and Guaranteed Thumbnail fallback for cross-browser
   useEffect(() => {
     let active = true;
     if (!activeItem) return;
 
     setLoading(true);
-    const rawSrc = activeItem.rawSrc || activeItem.src || '';
-    const id = activeItem.id || (typeof rawSrc === 'string' && rawSrc.startsWith('idb://') ? rawSrc.replace('idb://', '') : null);
 
-    // 1. If it's a real remote HTTPS url or blob url, use it directly
-    if (typeof rawSrc === 'string' && (rawSrc.startsWith('http://') || rawSrc.startsWith('https://') || rawSrc.startsWith('blob:'))) {
-      setResolvedUrl(rawSrc);
-      setLoading(false);
-      return;
-    }
+    const directSrc = (typeof activeItem?.src === 'string' && !activeItem.src.startsWith('idb://')) ? activeItem.src : '';
+    const directThumb = (typeof activeItem?.thumbnail === 'string' && !activeItem.thumbnail.startsWith('idb://')) ? activeItem.thumbnail : '';
+    const rawSrc = (typeof activeItem?.rawSrc === 'string' && !activeItem.rawSrc.startsWith('idb://')) ? activeItem.rawSrc : '';
+    
+    // أي رابط صورة فوري سحابي أو DataURL
+    const immediateSafeUrl = (directSrc && (directSrc.startsWith('http') || directSrc.startsWith('data:image/')))
+      ? directSrc
+      : (directThumb && (directThumb.startsWith('http') || directThumb.startsWith('data:image/')))
+        ? directThumb
+        : (rawSrc && (rawSrc.startsWith('http') || rawSrc.startsWith('data:image/')))
+          ? rawSrc
+          : (directSrc && directSrc.startsWith('blob:'))
+            ? directSrc
+            : '';
 
-    // 2. Priority: If it has an IndexedDB ID, fetch the full original high-res binary blob!
+    const id = activeItem.id || 
+      (typeof activeItem.rawSrc === 'string' && activeItem.rawSrc.startsWith('idb://') ? activeItem.rawSrc.replace('idb://', '') : null) ||
+      (typeof activeItem.src === 'string' && activeItem.src.startsWith('idb://') ? activeItem.src.replace('idb://', '') : null);
+
+    // إذا كان هناك معرف IndexedDB، نفحص إن كان هذا المتصفح يملك النسخة الأصلية الكاملة عالية الدقة
     if (id) {
       getMediaBlob(id).then((blob) => {
         if (!active) return;
@@ -85,35 +95,42 @@ export default function MediaLightbox({ item, items = [], onClose }) {
           setLoading(false);
           return;
         }
-        // Fallback to resolveMediaDisplayUrl
+        // إذا لم توجد في IndexedDB (متصفح آخر أو عميل)، نستخدم الرابط السحابي أو المصغرة فوراً
+        if (immediateSafeUrl) {
+          setResolvedUrl(immediateSafeUrl);
+          setLoading(false);
+          return;
+        }
         resolveMediaDisplayUrl(activeItem).then((url) => {
           if (active) {
-            setResolvedUrl(url || activeItem.thumbnail || '');
+            setResolvedUrl(url || immediateSafeUrl || '');
             setLoading(false);
           }
         });
       }).catch(() => {
         if (active) {
-          resolveMediaDisplayUrl(activeItem).then((url) => {
-            if (active) {
-              setResolvedUrl(url || activeItem.thumbnail || '');
-              setLoading(false);
-            }
-          });
+          setResolvedUrl(immediateSafeUrl || '');
+          setLoading(false);
         }
       });
       return;
     }
 
-    // 3. If no ID, use resolveMediaDisplayUrl
+    // إذا لم يكن هناك ID في IndexedDB، نعتمد على الرابط الصالح فوراً
+    if (immediateSafeUrl) {
+      setResolvedUrl(immediateSafeUrl);
+      setLoading(false);
+      return;
+    }
+
     resolveMediaDisplayUrl(activeItem).then((url) => {
       if (active) {
-        setResolvedUrl(url || activeItem.thumbnail || (typeof rawSrc === 'string' ? rawSrc : ''));
+        setResolvedUrl(url || '');
         setLoading(false);
       }
     }).catch(() => {
       if (active) {
-        setResolvedUrl(activeItem.thumbnail || '');
+        setResolvedUrl('');
         setLoading(false);
       }
     });
@@ -332,7 +349,7 @@ export default function MediaLightbox({ item, items = [], onClose }) {
               </button>
             )}
 
-            {resolvedUrl && (
+            {resolvedUrl && !resolvedUrl.startsWith('idb://') && (
               <a
                 href={resolvedUrl}
                 download={activeItem.name || (isVideo ? 'site_video.mp4' : 'site_photo.jpg')}
@@ -435,7 +452,7 @@ export default function MediaLightbox({ item, items = [], onClose }) {
                 boxShadow: '0 15px 40px rgba(0,0,0,0.6)',
               }}
             />
-          ) : (
+          ) : (resolvedUrl && !resolvedUrl.startsWith('idb://')) ? (
             /* Perfectly Centered, Non-Stretched High-Res Photo */
             <div
               style={{
@@ -467,8 +484,19 @@ export default function MediaLightbox({ item, items = [], onClose }) {
                   transformOrigin: 'center center',
                   display: 'block',
                 }}
+                onError={() => setResolvedUrl('')}
                 draggable={false}
               />
+            </div>
+          ) : (
+            <div style={{ color: '#94A3B8', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, zIndex: 2, textAlign: 'center', padding: 20 }}>
+              <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <ImageIcon size={32} color="#38BDF8" style={{ opacity: 0.8 }} />
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: '#F8FAFC' }}>الصورة الأصلية محفوظة محلياً في جهاز المهندس</div>
+              <div style={{ fontSize: 12.5, color: '#94A3B8', maxWidth: 360, lineHeight: 1.7 }}>
+                تم تسجيل وتوثيق هذه اليومية في الموقع. سيتم إتاحة المعاينة السحابية للعميل بمجرد فتح المهندس للوحة التحكم للرفع السحابي.
+              </div>
             </div>
           )}
 
@@ -555,7 +583,7 @@ export default function MediaLightbox({ item, items = [], onClose }) {
 
           {/* WhatsApp & Close */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {resolvedUrl && (
+            {resolvedUrl && !resolvedUrl.startsWith('idb://') && (
               <button
                 onClick={() => {
                   const text = encodeURIComponent(`صورة توثيق موقع المشروع:\n${resolvedUrl}`);

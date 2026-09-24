@@ -4,10 +4,12 @@ import { Video, Camera } from 'lucide-react';
 
 export default function MediaThumbnail({ item, onClick, style = {}, className = '' }) {
   const [resolvedSrc, setResolvedSrc] = useState(() => syncResolveMediaUrl(item));
+  const [imgError, setImgError] = useState(false);
   const isVideo = item?.type === 'video' || (typeof item?.src === 'string' && (item.src.includes('.mp4') || item.src.includes('.webm') || item.src.startsWith('data:video')));
 
   useEffect(() => {
     let active = true;
+    setImgError(false);
     if (!item) return;
 
     // فحص تزامني فوري
@@ -33,11 +35,13 @@ export default function MediaThumbnail({ item, onClick, style = {}, className = 
   const rawThumb = typeof item === 'object' ? item?.thumbnail : '';
   const displaySrc = (resolvedSrc && !resolvedSrc.startsWith('idb://')) 
     ? resolvedSrc 
-    : (rawThumb && rawThumb.startsWith('data:')) 
+    : (rawThumb && (rawThumb.startsWith('data:') || rawThumb.startsWith('http'))) 
       ? rawThumb 
       : (typeof rawSrc === 'string' && (rawSrc.startsWith('http') || rawSrc.startsWith('data:') || rawSrc.startsWith('blob:'))) 
         ? rawSrc 
         : '';
+
+  const hasValidDisplay = !!displaySrc && !imgError;
 
   return (
     <div
@@ -46,7 +50,12 @@ export default function MediaThumbnail({ item, onClick, style = {}, className = 
         ...item,
         id: item?.id,
         rawSrc: item?.rawSrc || (typeof rawSrc === 'string' && rawSrc.startsWith('idb://') ? rawSrc : null),
-        src: (item?.rawSrc && !item.rawSrc.startsWith('data:')) ? item.rawSrc : (displaySrc || rawSrc)
+        thumbnail: item?.thumbnail || rawThumb || (displaySrc.startsWith('data:') ? displaySrc : null),
+        src: (displaySrc && !displaySrc.startsWith('idb://'))
+          ? displaySrc
+          : (typeof rawSrc === 'string' && !rawSrc.startsWith('idb://'))
+            ? rawSrc
+            : (rawThumb || '')
       })}
       style={{
         position: 'relative',
@@ -61,7 +70,7 @@ export default function MediaThumbnail({ item, onClick, style = {}, className = 
       }}
     >
       {isVideo ? (
-        displaySrc ? (
+        hasValidDisplay ? (
           <video
             src={displaySrc}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
@@ -74,7 +83,7 @@ export default function MediaThumbnail({ item, onClick, style = {}, className = 
             <span style={{ fontSize: 10, fontWeight: 700 }}>فيديو 🎥</span>
           </div>
         )
-      ) : displaySrc ? (
+      ) : hasValidDisplay ? (
         <>
           {/* Ambient blurred backdrop so portrait photos fill gracefully */}
           <div
@@ -104,14 +113,31 @@ export default function MediaThumbnail({ item, onClick, style = {}, className = 
             onError={(e) => {
               if (rawThumb && rawThumb.startsWith('data:') && e.target.src !== rawThumb) {
                 e.target.src = rawThumb;
+              } else {
+                setImgError(true);
               }
             }}
           />
         </>
       ) : (
-        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#94A3B8', background: 'rgba(30, 41, 59, 0.5)' }}>
-          <Camera size={22} color="#94A3B8" />
-          <span style={{ fontSize: 9.5, fontWeight: 700, color: '#94A3B8' }}>صورة موثقة</span>
+        <div style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 4,
+          color: '#94A3B8',
+          background: 'rgba(30, 41, 59, 0.65)',
+          padding: 6,
+          textAlign: 'center',
+          userSelect: 'none'
+        }}>
+          <Camera size={20} color="#94A3B8" style={{ opacity: 0.75 }} />
+          <span style={{ fontSize: 9.5, fontWeight: 700, color: '#94A3B8', lineHeight: 1.2 }}>
+            الصورة غير متاحة حالياً
+          </span>
         </div>
       )}
 

@@ -58,16 +58,37 @@ export default function ClientPortal({
   const companyLogo = companySettings?.companyLogo || null;
   const primaryColor = companySettings?.primaryColor || "#1B3A4B";
 
+  // دالة ذكية لاختيار أفضل رابط صالح للعرض عبر أي متصفح ومنع الروابط المكسورة أو idb://
+  function getBestPortalImageSrc(rawSrc, thumbnail) {
+    if (typeof rawSrc === 'string' && (rawSrc.startsWith('https://') || rawSrc.startsWith('http://'))) {
+      return rawSrc;
+    }
+    if (typeof rawSrc === 'string' && rawSrc.startsWith('data:image/')) {
+      return rawSrc;
+    }
+    if (typeof thumbnail === 'string' && (thumbnail.startsWith('data:image/') || thumbnail.startsWith('http'))) {
+      return thumbnail;
+    }
+    if (typeof rawSrc === 'string' && rawSrc.startsWith('blob:')) {
+      return rawSrc;
+    }
+    if (thumbnail && !thumbnail.startsWith('idb://')) {
+      return thumbnail;
+    }
+    return '';
+  }
+
   // تجميع صور الموقع من اليوميات وألبوم الموقع
   const allSitePhotos = useMemo(() => {
     const photos = [];
     // 1. صور ألبوم الموقع المباشرة
     if (project?.sitePhotos && Array.isArray(project.sitePhotos)) {
       project.sitePhotos.forEach(p => {
+        const bestSrc = getBestPortalImageSrc(p.src, p.thumbnail);
         photos.push({
           id: p.id || Math.random(),
-          src: p.src,
-          rawSrc: p.rawSrc,
+          src: bestSrc,
+          rawSrc: p.rawSrc || p.src,
           thumbnail: p.thumbnail,
           caption: p.caption || "صورة من موقع العمل",
           date: p.date || project.startDate || "",
@@ -78,19 +99,33 @@ export default function ClientPortal({
     // 2. صور مرفقات اليوميات الميدانية
     if (project?.dailyLogs && Array.isArray(project.dailyLogs)) {
       project.dailyLogs.forEach(log => {
+        const logPhotosList = [];
         if (log.photos && Array.isArray(log.photos)) {
-          log.photos.forEach((lp, idx) => {
-            photos.push({
-              id: (typeof lp === 'object' && lp.id) ? lp.id : `${log.id}_photo_${idx}`,
-              src: typeof lp === 'string' ? lp : lp.src,
-              rawSrc: typeof lp === 'object' ? lp.rawSrc : null,
-              thumbnail: typeof lp === 'object' ? lp.thumbnail : null,
-              caption: (typeof lp === 'object' && lp.caption) ? lp.caption : `يومية: ${log.date}`,
-              date: log.date,
-              source: `يومية ${log.author || 'المهندس'}`
-            });
+          logPhotosList.push(...log.photos);
+        }
+        if (log.media && Array.isArray(log.media)) {
+          log.media.forEach(m => {
+            if (m && m.type !== 'video' && !logPhotosList.some(p => typeof p === 'object' && p.id && p.id === m.id)) {
+              logPhotosList.push(m);
+            }
           });
         }
+
+        logPhotosList.forEach((lp, idx) => {
+          const rawSrc = typeof lp === 'string' ? lp : lp?.src;
+          const thumbnail = typeof lp === 'object' ? lp?.thumbnail : null;
+          const bestSrc = getBestPortalImageSrc(rawSrc, thumbnail);
+
+          photos.push({
+            id: (typeof lp === 'object' && lp?.id) ? lp.id : `${log.id}_photo_${idx}`,
+            src: bestSrc,
+            rawSrc: typeof lp === 'object' ? lp?.rawSrc : (rawSrc?.startsWith('idb://') ? rawSrc : null),
+            thumbnail: thumbnail,
+            caption: (typeof lp === 'object' && lp?.caption) ? lp.caption : `يومية: ${log.date}`,
+            date: log.date,
+            source: `يومية ${log.author || 'المهندس'}`
+          });
+        });
       });
     }
     return photos;
@@ -606,30 +641,49 @@ export default function ClientPortal({
                         )}
 
                         {/* Attached Photos */}
-                        {log.photos && Array.isArray(log.photos) && log.photos.length > 0 && (
-                          <div style={{ marginTop: 14 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>الصور المرفقة بالتقرير:</div>
-                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                              {log.photos.map((lp, pIdx) => {
-                                const itemObj = typeof lp === 'string' 
-                                  ? { src: lp, caption: `يومية ${log.date}`, date: log.date } 
-                                  : { ...lp, caption: lp.caption || `يومية ${log.date}`, date: log.date };
-                                return (
-                                  <div
-                                    key={pIdx}
-                                    style={{ width: 75, height: 75, borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}
-                                  >
-                                    <MediaThumbnail
-                                      item={itemObj}
-                                      onClick={setSelectedPhoto}
-                                      style={{ width: "100%", height: "100%" }}
-                                    />
-                                  </div>
-                                );
-                              })}
+                        {(() => {
+                          const logPhotosList = [];
+                          if (log.photos && Array.isArray(log.photos)) {
+                            logPhotosList.push(...log.photos);
+                          }
+                          if (log.media && Array.isArray(log.media)) {
+                            log.media.forEach(m => {
+                              if (m && m.type !== 'video' && !logPhotosList.some(p => typeof p === 'object' && p.id && p.id === m.id)) {
+                                logPhotosList.push(m);
+                              }
+                            });
+                          }
+                          if (logPhotosList.length === 0) return null;
+
+                          return (
+                            <div style={{ marginTop: 14 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 8 }}>الصور المرفقة بالتقرير:</div>
+                              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                                {logPhotosList.map((lp, pIdx) => {
+                                  const rawSrc = typeof lp === 'string' ? lp : lp?.src;
+                                  const thumbnail = typeof lp === 'object' ? lp?.thumbnail : null;
+                                  const bestSrc = getBestPortalImageSrc(rawSrc, thumbnail);
+
+                                  const itemObj = typeof lp === 'string' 
+                                    ? { src: bestSrc, thumbnail, caption: `يومية ${log.date}`, date: log.date } 
+                                    : { ...lp, src: bestSrc, thumbnail, caption: lp.caption || `يومية ${log.date}`, date: log.date };
+                                  return (
+                                    <div
+                                      key={pIdx}
+                                      style={{ width: 75, height: 75, borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}
+                                    >
+                                      <MediaThumbnail
+                                        item={itemObj}
+                                        onClick={setSelectedPhoto}
+                                        style={{ width: "100%", height: "100%" }}
+                                      />
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
                       </div>
                     ))}
                   </div>

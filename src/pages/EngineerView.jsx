@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   CalendarDays, Plus, Trash2, AlertTriangle, Camera, Image, Clock,
-  FileText, ArrowRight, BarChart3, X, Save, Target, ClipboardList, Package, HardHat
+  FileText, ArrowRight, BarChart3, X, Save, Target, ClipboardList, Package, HardHat, Loader2
 } from 'lucide-react';
 import { STAGES } from '../utils/constants';
 import { fmtDate, todayISO, nowTimeISO, fmtTime, fmtDateTime, compressImageFile } from '../utils/helpers';
@@ -189,11 +189,12 @@ function TodayPanel({ project, currentUser, onUpdate }) {
 
       const photoObj = {
         id: mediaId,
-        src: instantUrl,
-        rawSrc: `idb://${mediaId}`,
-        thumbnail: thumb,
+        src: thumb || instantUrl,
+        rawSrc: thumb || `idb://${mediaId}`,
+        thumbnail: thumb || '',
         caption: '',
-        date: today
+        date: today,
+        isUploading: true
       };
 
       setForm(f => ({ ...f, photos: [...f.photos, photoObj] }));
@@ -203,10 +204,34 @@ function TodayPanel({ project, currentUser, onUpdate }) {
           if (cloudUrl) {
             setForm(f => ({
               ...f,
-              photos: f.photos.map(p => p.id === mediaId ? { ...p, src: cloudUrl, rawSrc: cloudUrl } : p)
+              photos: f.photos.map(p => p.id === mediaId ? { ...p, src: cloudUrl, rawSrc: cloudUrl, isUploading: false } : p)
+            }));
+          } else {
+            const fallback = thumb || photoObj.thumbnail || '';
+            setForm(f => ({
+              ...f,
+              photos: f.photos.map(p => p.id === mediaId ? {
+                ...p,
+                src: fallback || p.src,
+                rawSrc: fallback || p.rawSrc,
+                thumbnail: fallback || p.thumbnail,
+                isUploading: false
+              } : p)
             }));
           }
-        }).catch(() => {});
+        }).catch(() => {
+          const fallback = thumb || photoObj.thumbnail || '';
+          setForm(f => ({
+            ...f,
+            photos: f.photos.map(p => p.id === mediaId ? {
+              ...p,
+              src: fallback || p.src,
+              rawSrc: fallback || p.rawSrc,
+              thumbnail: fallback || p.thumbnail,
+              isUploading: false
+            } : p)
+          }));
+        });
     } catch (err) {
       console.error("handlePhoto error:", err);
     }
@@ -219,15 +244,30 @@ function TodayPanel({ project, currentUser, onUpdate }) {
 
   function handleSave(e) {
     e.preventDefault();
+    if (form.photos && form.photos.some(p => p.isUploading)) {
+      alert("جاري رفع الصور حالياً، يرجى الانتظار ثوانٍ معدودة حتى اكتمال الرفع قبل حفظ اليومية.");
+      return;
+    }
     if (!form.work.trim()) return;
     setSaving(true);
-    const safePhotos = (form.photos || []).map(p => ({
-      id: p.id || ('ph_' + Date.now()),
-      src: p.rawSrc || (p.src?.startsWith('blob:') ? `idb://${p.id}` : p.src),
-      thumbnail: p.thumbnail || '',
-      caption: p.caption || '',
-      date: p.date || today
-    }));
+    const safePhotos = (form.photos || []).map(p => {
+      const safeThumb = (p.thumbnail && p.thumbnail.startsWith('data:'))
+        ? p.thumbnail
+        : (p.src && p.src.startsWith('data:') ? p.src : '');
+
+      const persistentSrc = (p.src && (p.src.startsWith('http://') || p.src.startsWith('https://')))
+        ? p.src
+        : (safeThumb || (p.rawSrc && !p.rawSrc.startsWith('blob:') && !p.rawSrc.startsWith('idb://') ? p.rawSrc : `idb://${p.id}`));
+
+      return {
+        id: p.id || ('ph_' + Date.now()),
+        src: persistentSrc,
+        rawSrc: p.rawSrc || persistentSrc,
+        thumbnail: safeThumb,
+        caption: p.caption || '',
+        date: p.date || today
+      };
+    });
     const newLog = { 
       ...form, 
       time: form.time || nowTimeISO(),
@@ -297,11 +337,23 @@ function TodayPanel({ project, currentUser, onUpdate }) {
               {form.photos.map((p, i) => (
                 <div key={i} style={{ position: 'relative', width: 85, height: 85, borderRadius: 10, overflow: 'hidden', border: '2px solid var(--border)' }}>
                   <MediaThumbnail item={p} style={{ width: '100%', height: '100%' }} />
+                  {/* Overlay أثناء الرفع */}
+                  {p.isUploading && (
+                    <div style={{
+                      position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.75)',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                      gap: 4, color: '#fff', fontSize: 10, fontWeight: 700, zIndex: 2, pointerEvents: 'none',
+                      backdropFilter: 'blur(2px)'
+                    }}>
+                      <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite', color: '#38BDF8' }} />
+                      <span>جاري الرفع...</span>
+                    </div>
+                  )}
                   <button type="button" onClick={() => removePhoto(i)} style={{
                     position: 'absolute', top: 2, left: 2, width: 22, height: 22,
                     background: 'rgba(239,68,68,0.9)', border: 'none', borderRadius: '50%',
                     color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    zIndex: 2
+                    zIndex: 3
                   }}><X size={12} /></button>
                 </div>
               ))}
@@ -331,18 +383,47 @@ function TodayPanel({ project, currentUser, onUpdate }) {
             </div>
           </div>
 
-          <button type="submit" disabled={saving} style={{
-            minHeight: 48, padding: '12px 28px',
-            background: saved ? '#16A34A' : '#1877F2',
-            color: '#fff', border: 'none', borderRadius: 12,
-            fontFamily: "'Cairo'", fontSize: 15, fontWeight: 800, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            boxShadow: '0 4px 14px rgba(24,119,242,0.25)',
-            transition: 'all 0.2s', alignSelf: 'flex-start'
-          }}>
-            <Save size={18} />
-            {saving ? 'جاري الحفظ في السحابة...' : saved ? '✅ تم الحفظ سحابياً بنجاح!' : '💾 حفظ التقرير اليومي'}
-          </button>
+          {(() => {
+            const isAnyPhotoUploading = form.photos?.some(p => p.isUploading);
+            return (
+              <button 
+                type="submit" 
+                disabled={saving || isAnyPhotoUploading} 
+                style={{
+                  minHeight: 48, padding: '12px 28px',
+                  background: saved ? '#16A34A' : isAnyPhotoUploading ? '#475569' : '#1877F2',
+                  color: '#fff', border: 'none', borderRadius: 12,
+                  fontFamily: "'Cairo'", fontSize: 15, fontWeight: 800, 
+                  cursor: (saving || isAnyPhotoUploading) ? 'not-allowed' : 'pointer',
+                  opacity: isAnyPhotoUploading ? 0.75 : 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  boxShadow: '0 4px 14px rgba(24,119,242,0.25)',
+                  transition: 'all 0.2s', alignSelf: 'flex-start'
+                }}
+              >
+                {isAnyPhotoUploading ? (
+                  <>
+                    <Loader2 size={18} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
+                    <span>جاري رفع الصور... استنّي ⏳</span>
+                  </>
+                ) : saving ? (
+                  <>
+                    <Loader2 size={18} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
+                    <span>جاري الحفظ في السحابة...</span>
+                  </>
+                ) : saved ? (
+                  <>
+                    <span>✅ تم الحفظ سحابياً بنجاح!</span>
+                  </>
+                ) : (
+                  <>
+                    <Save size={18} />
+                    <span>💾 حفظ التقرير اليومي</span>
+                  </>
+                )}
+              </button>
+            );
+          })()}
         </form>
       </div>
     </div>
@@ -452,14 +533,26 @@ function DiaryPanel({ project, onPreviewPhoto }) {
               )}
               {l.photos && l.photos.length > 0 && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                  {l.photos.map((p, i) => (
-                    <MediaThumbnail
-                      key={i}
-                      item={typeof p === 'string' ? { src: p } : p}
-                      onClick={onPreviewPhoto}
-                      style={{ width: 72, height: 72, borderRadius: 8, border: '1px solid var(--border)' }}
-                    />
-                  ))}
+                  {l.photos.map((p, i) => {
+                    const rawSrc = typeof p === 'string' ? p : p?.src;
+                    const thumbnail = typeof p === 'object' ? p?.thumbnail : null;
+                    const bestSrc = (rawSrc && !rawSrc.startsWith('idb://'))
+                      ? rawSrc
+                      : (thumbnail && (thumbnail.startsWith('data:') || thumbnail.startsWith('http')))
+                        ? thumbnail
+                        : rawSrc;
+                    const itemObj = typeof p === 'string' 
+                      ? { src: bestSrc, thumbnail, caption: `يومية ${l.date}` } 
+                      : { ...p, src: bestSrc, thumbnail, caption: p.caption || `يومية ${l.date}` };
+                    return (
+                      <MediaThumbnail
+                        key={i}
+                        item={itemObj}
+                        onClick={onPreviewPhoto}
+                        style={{ width: 72, height: 72, borderRadius: 8, border: '1px solid var(--border)' }}
+                      />
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -488,27 +581,26 @@ function PhotosPanel({ project, onUpdate, onPreviewPhoto }) {
         const thumb = await createMicroThumbnail(file);
         await saveMediaBlob(mediaId, file, { type: file.type, name: file.name });
 
+        let cloudUrl = null;
+        try {
+          cloudUrl = await uploadMediaToFirebaseStorage(
+            file,
+            `companies/${project.companyId || 'company'}/projects/${project.id}`,
+            file.name
+          );
+        } catch (uploadErr) {
+          console.warn("[EngineerView] Cloud upload notice:", uploadErr);
+        }
+
         const pObj = {
           id: mediaId,
-          src: instantUrl,
-          rawSrc: `idb://${mediaId}`,
-          thumbnail: thumb,
+          src: cloudUrl || thumb || instantUrl,
+          rawSrc: cloudUrl || thumb || `idb://${mediaId}`,
+          thumbnail: thumb || '',
           caption: caption.trim() || 'صورة من موقع العمل',
           date: todayISO()
         };
         newPhotos.push(pObj);
-
-        uploadMediaToFirebaseStorage(file, `companies/${project.companyId || 'company'}/projects/${project.id}`, file.name)
-          .then(cloudUrl => {
-            if (cloudUrl) {
-              onUpdate(prevProject => {
-                const sp = prevProject?.sitePhotos || [];
-                return {
-                  sitePhotos: sp.map(x => x.id === mediaId ? { ...x, src: cloudUrl, rawSrc: cloudUrl } : x)
-                };
-              });
-            }
-          }).catch(() => {});
       } catch (err) {
         console.warn("Upload site photo error:", err);
       }

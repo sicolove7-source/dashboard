@@ -5,7 +5,7 @@
  * مزامنة حية ولحظية للمشاريع، الشركات، الإعدادات، والمستخدمين عبر Firestore.
  */
 
-import app, { db, storage, functions, auth } from '../firebase';
+import app, { db, storage, functions, auth, ensureAnonymousAuth } from '../firebase';
 import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, uploadString, getStorage } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
@@ -16,7 +16,18 @@ import { httpsCallable } from 'firebase/functions';
  */
 export async function uploadMediaToFirebaseStorage(fileOrDataUrl, folder = 'site_media', fileName = '') {
   if (!fileOrDataUrl) return null;
-  const cleanName = fileName ? `${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '')}` : `media_${Date.now()}`;
+
+  // التأكد من المصادقة المجهولة كحد أدنى للسماح بالرفع دون أخطاء صلاحيات
+  try {
+    if (typeof ensureAnonymousAuth === 'function') {
+      await ensureAnonymousAuth();
+    }
+  } catch (e) {}
+
+  const extMatch = fileName && typeof fileName === 'string' ? fileName.match(/\.([a-zA-Z0-9]+)$/) : null;
+  const ext = extMatch ? `.${extMatch[1].toLowerCase()}` : '.jpg';
+  const cleanBase = fileName ? fileName.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '') : '';
+  const cleanName = `${Date.now()}_${cleanBase || 'media'}${ext}`;
 
   const storageInstances = [storage];
   try {
@@ -26,22 +37,30 @@ export async function uploadMediaToFirebaseStorage(fileOrDataUrl, folder = 'site
     }
   } catch (e) {}
 
+  // محاولة الرفع في المجلد المطلوب أولاً، ثم site_media كبديل آمن لجميع المستخدمين
+  const targetFolders = [folder, 'site_media'];
+
   for (const st of storageInstances) {
     if (!st) continue;
-    try {
-      const storageRef = ref(st, `${folder}/${cleanName}`);
-      let uploadResult = null;
-      if (fileOrDataUrl instanceof Blob || fileOrDataUrl instanceof File) {
-        uploadResult = await uploadBytes(storageRef, fileOrDataUrl);
-      } else if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
-        uploadResult = await uploadString(storageRef, fileOrDataUrl, 'data_url');
+    for (const fld of targetFolders) {
+      try {
+        const storageRef = ref(st, `${fld}/${cleanName}`);
+        let uploadResult = null;
+        if (fileOrDataUrl instanceof Blob || fileOrDataUrl instanceof File) {
+          uploadResult = await uploadBytes(storageRef, fileOrDataUrl);
+        } else if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
+          uploadResult = await uploadString(storageRef, fileOrDataUrl, 'data_url');
+        }
+        if (uploadResult && uploadResult.ref) {
+          const downloadURL = await getDownloadURL(uploadResult.ref);
+          if (downloadURL) {
+            console.log('[uploadMediaToFirebaseStorage] ✅ Media uploaded successfully:', downloadURL);
+            return downloadURL;
+          }
+        }
+      } catch (error) {
+        console.warn(`[uploadMediaToFirebaseStorage] Upload attempt to ${fld} notice:`, error?.message || error);
       }
-      if (uploadResult && uploadResult.ref) {
-        const downloadURL = await getDownloadURL(uploadResult.ref);
-        if (downloadURL) return downloadURL;
-      }
-    } catch (error) {
-      // تجربة الحاوية التالية
     }
   }
   return null;
@@ -177,40 +196,67 @@ export function sanitizeProjectForCloud(project) {
       if (!log || typeof log !== 'object') return log;
       const l = { ...log };
 
-      // تنقية وتجريد وسائط اليومية من أي سلاسل Base64 ضخمة
+      // تنقية وتجريد وسائط اليومية من أي روابط blob مؤقتة أو Base64 متضخمة فوق الحد
       let safeMedia = [];
       if (Array.isArray(l.media)) {
         safeMedia = l.media.map(m => {
           if (!m || typeof m !== 'object') return null;
           const src = m.src || '';
-          const isHeavyBase64 = typeof src === 'string' && src.startsWith('data:') && src.length > 15000;
+          const thumb = (typeof m.thumbnail === 'string' && m.thumbnail.startsWith('data:')) ? m.thumbnail : '';
+          const isBlob = typeof src === 'string' && src.startsWith('blob:');
+          const isOverLimit = typeof src === 'string' && src.startsWith('data:') && src.length > 15000;
+
+          let cleanSrc = src;
+          if (isBlob) {
+            cleanSrc = thumb || (m.rawSrc && !m.rawSrc.startsWith('blob:') ? m.rawSrc : `idb://${m.id || Date.now()}`);
+          } else if (isOverLimit) {
+            cleanSrc = (thumb && thumb.length <= 65000) ? thumb : (m.rawSrc?.startsWith('idb://') ? m.rawSrc : `idb://${m.id || Date.now()}`);
+          } else if (typeof src === 'string' && src.startsWith('idb://') && thumb && thumb.startsWith('data:')) {
+            cleanSrc = thumb;
+          }
+
           return {
             id: m.id || ('m_' + Math.random().toString(36).substr(2, 6)),
             type: m.type || 'image',
             name: m.name || '',
             caption: m.caption || '',
-            src: isHeavyBase64 ? (m.rawSrc?.startsWith('idb://') ? m.rawSrc : `idb://${m.id || Date.now()}`) : src,
-            thumbnail: (m.thumbnail && m.thumbnail.length < 25000) ? m.thumbnail : ''
+            src: cleanSrc,
+            rawSrc: m.rawSrc || cleanSrc,
+            thumbnail: (thumb && thumb.length < 80000) ? thumb : ''
           };
         }).filter(Boolean);
       }
 
-      // تنقية صور اليومية
+      // تنقية صور اليومية مع ضمان حفظ المصغرة الخفيفة سحابياً للظهور عبر أي متصفح
       let safePhotos = [];
       if (Array.isArray(l.photos)) {
         safePhotos = l.photos.map(photo => {
           if (typeof photo === 'string') {
-            if (photo.startsWith('data:') && photo.length > 15000) return null;
+            if (photo.startsWith('blob:')) return null;
+            if (photo.startsWith('data:') && photo.length > 65000) return null;
             return photo;
           } else if (photo && typeof photo === 'object') {
             const src = photo.src || '';
-            const isHeavyBase64 = typeof src === 'string' && src.startsWith('data:') && src.length > 15000;
+            const thumb = (typeof photo.thumbnail === 'string' && photo.thumbnail.startsWith('data:')) ? photo.thumbnail : '';
+            const isBlob = typeof src === 'string' && src.startsWith('blob:');
+            const isOverLimit = typeof src === 'string' && src.startsWith('data:') && src.length > 15000;
+
+            let cleanSrc = src;
+            if (isBlob) {
+              cleanSrc = thumb || (photo.rawSrc && !photo.rawSrc.startsWith('blob:') ? photo.rawSrc : `idb://${photo.id || Date.now()}`);
+            } else if (isOverLimit) {
+              cleanSrc = (thumb && thumb.length <= 65000) ? thumb : (photo.rawSrc?.startsWith('idb://') ? photo.rawSrc : `idb://${photo.id || Date.now()}`);
+            } else if (typeof src === 'string' && src.startsWith('idb://') && thumb && thumb.startsWith('data:')) {
+              cleanSrc = thumb;
+            }
+
             return {
               id: photo.id || ('ph_' + Math.random().toString(36).substr(2, 6)),
               type: photo.type || 'image',
               caption: photo.caption || '',
-              src: isHeavyBase64 ? (photo.rawSrc?.startsWith('idb://') ? photo.rawSrc : `idb://${photo.id || Date.now()}`) : src,
-              thumbnail: (photo.thumbnail && photo.thumbnail.length < 25000) ? photo.thumbnail : ''
+              src: cleanSrc,
+              rawSrc: photo.rawSrc || cleanSrc,
+              thumbnail: (thumb && thumb.length < 80000) ? thumb : ''
             };
           }
           return photo;
@@ -237,13 +283,20 @@ export function sanitizeProjectForCloud(project) {
     p.sitePhotos = p.sitePhotos.map(photo => {
       if (!photo || typeof photo !== 'object') return photo;
       const src = photo.src || '';
-      if (typeof src === 'string' && src.startsWith('data:') && src.length > 60000) {
-        return {
-          ...photo,
-          src: photo.rawSrc?.startsWith('idb://') ? photo.rawSrc : (photo.thumbnail || `idb://${photo.id || Date.now()}`)
-        };
+      const thumb = photo.thumbnail || '';
+      let cleanSrc = src;
+      if (typeof src === 'string' && src.startsWith('blob:')) {
+        cleanSrc = thumb || photo.rawSrc || `idb://${photo.id || Date.now()}`;
+      } else if (typeof src === 'string' && src.startsWith('data:') && src.length > 60000) {
+        cleanSrc = (thumb && thumb.length <= 60000) ? thumb : (photo.rawSrc?.startsWith('idb://') ? photo.rawSrc : `idb://${photo.id || Date.now()}`);
+      } else if (typeof src === 'string' && src.startsWith('idb://') && thumb && thumb.startsWith('data:')) {
+        cleanSrc = thumb;
       }
-      return photo;
+      return {
+        ...photo,
+        src: cleanSrc,
+        thumbnail: (thumb && thumb.length < 80000) ? thumb : ''
+      };
     });
   }
 
@@ -251,11 +304,20 @@ export function sanitizeProjectForCloud(project) {
     p.snags = p.snags.map(snag => {
       if (!snag || typeof snag !== 'object') return snag;
       const s = { ...snag };
-      if (typeof s.photo === 'string' && s.photo.startsWith('data:') && s.photo.length > 60000) {
+      if (typeof s.photo === 'string' && s.photo.startsWith('blob:')) {
         s.photo = s.thumbnail || (s.mediaId ? `idb://${s.mediaId}` : '');
+      } else if (typeof s.photo === 'string' && s.photo.startsWith('data:') && s.photo.length > 60000) {
+        s.photo = s.thumbnail || (s.mediaId ? `idb://${s.mediaId}` : '');
+      } else if (typeof s.photo === 'string' && s.photo.startsWith('idb://') && s.thumbnail && s.thumbnail.startsWith('data:')) {
+        s.photo = s.thumbnail;
       }
-      if (typeof s.afterPhoto === 'string' && s.afterPhoto.startsWith('data:') && s.afterPhoto.length > 60000) {
+
+      if (typeof s.afterPhoto === 'string' && s.afterPhoto.startsWith('blob:')) {
         s.afterPhoto = s.afterThumbnail || s.thumbnail || (s.afterMediaId ? `idb://${s.afterMediaId}` : '');
+      } else if (typeof s.afterPhoto === 'string' && s.afterPhoto.startsWith('data:') && s.afterPhoto.length > 60000) {
+        s.afterPhoto = s.afterThumbnail || s.thumbnail || (s.afterMediaId ? `idb://${s.afterMediaId}` : '');
+      } else if (typeof s.afterPhoto === 'string' && s.afterPhoto.startsWith('idb://') && (s.afterThumbnail || s.thumbnail)) {
+        s.afterPhoto = s.afterThumbnail || s.thumbnail;
       }
       return s;
     });
@@ -639,34 +701,37 @@ export async function publishProjectToPortalShares(companyId, project) {
       } catch (e) {}
     }
 
+    // تطهير كامل لبيانات المشروع والوسائط لضمان حفظ مصغرات صالحة ونظيفة في وثيقة المشاركة
+    const safeProject = sanitizeProjectForCloud(project);
+
     const sharePayload = {
-      id: project.id,
-      projectId: project.id,
+      id: safeProject.id,
+      projectId: safeProject.id,
       companyId: cId,
-      name: project.name || "مشروع بدون اسم",
-      client: project.client || "عميلنا العزيز",
-      clientPhone: project.clientPhone || "",
-      location: project.location || "",
-      type: project.type || "",
-      floors: project.floors || "",
-      area: Number(project.area || 0),
-      budget: Number(project.budget || project.contractValue || 0),
-      contractValue: Number(project.contractValue || project.budget || 0),
-      progress: Number(project.progress || 0),
-      status: project.status || "active",
-      startDate: project.startDate || "",
-      endDate: project.endDate || "",
-      dueDate: project.dueDate || "",
-      workItems: Array.isArray(project.workItems) ? project.workItems : [],
-      dailyLogs: Array.isArray(project.dailyLogs) ? project.dailyLogs : [],
-      photos: Array.isArray(project.photos) ? project.photos : [],
-      sitePhotos: Array.isArray(project.sitePhotos) ? project.sitePhotos : [],
-      payments: Array.isArray(project.payments) ? project.payments : (project.clientPayments || []),
-      clientPayments: Array.isArray(project.clientPayments) ? project.clientPayments : (project.payments || []),
-      clientSignature: project.clientSignature || null,
-      clientApprovalDate: project.clientApprovalDate || null,
-      clientApprovalNotes: project.clientApprovalNotes || null,
-      clientContract: project.clientContract || null,
+      name: safeProject.name || "مشروع بدون اسم",
+      client: safeProject.client || "عميلنا العزيز",
+      clientPhone: safeProject.clientPhone || "",
+      location: safeProject.location || "",
+      type: safeProject.type || "",
+      floors: safeProject.floors || "",
+      area: Number(safeProject.area || 0),
+      budget: Number(safeProject.budget || safeProject.contractValue || 0),
+      contractValue: Number(safeProject.contractValue || safeProject.budget || 0),
+      progress: Number(safeProject.progress || 0),
+      status: safeProject.status || "active",
+      startDate: safeProject.startDate || "",
+      endDate: safeProject.endDate || "",
+      dueDate: safeProject.dueDate || "",
+      workItems: Array.isArray(safeProject.workItems) ? safeProject.workItems : [],
+      dailyLogs: Array.isArray(safeProject.dailyLogs) ? safeProject.dailyLogs : [],
+      photos: Array.isArray(safeProject.photos) ? safeProject.photos : [],
+      sitePhotos: Array.isArray(safeProject.sitePhotos) ? safeProject.sitePhotos : [],
+      payments: Array.isArray(safeProject.payments) ? safeProject.payments : (safeProject.clientPayments || []),
+      clientPayments: Array.isArray(safeProject.clientPayments) ? safeProject.clientPayments : (safeProject.payments || []),
+      clientSignature: safeProject.clientSignature || null,
+      clientApprovalDate: safeProject.clientApprovalDate || null,
+      clientApprovalNotes: safeProject.clientApprovalNotes || null,
+      clientContract: safeProject.clientContract || null,
       clientPortalEnabled: true,
       clientPortalToken: token,
       token: token,

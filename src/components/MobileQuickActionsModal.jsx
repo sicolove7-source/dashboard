@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Camera, Video, ClipboardList, CheckSquare, X, CheckCircle,
   Plus, HardHat, Save, Trash2, ArrowRight, ShieldCheck, Clock,
-  AlertCircle, AlertTriangle, Play, Eye
+  AlertCircle, AlertTriangle, Play, Eye, Loader2
 } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import { todayISO, nowTimeISO, fmtDate, fmtTime, fmtDateTime, compressImageFile } from '../utils/helpers';
@@ -68,9 +68,9 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
 
       const mediaObj = {
         id: mediaId,
-        src: instantPreviewUrl,
-        rawSrc: `idb://${mediaId}`,
-        thumbnail: thumb,
+        src: thumb || instantPreviewUrl,
+        rawSrc: thumb || `idb://${mediaId}`,
+        thumbnail: thumb || '',
         type: 'image',
         name: file.name,
         isUploading: true
@@ -97,9 +97,28 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
           };
           if (target === 'log') setLogMedia(cloudMedia);
           else setSnagMedia(cloudMedia);
+
+          // تحديث اليوميات إذا كان قد تم الحفظ بالفعل
+          if (activeProject?.dailyLogs?.length) {
+            const hasLogWithThis = activeProject.dailyLogs.some(l => 
+              (Array.isArray(l.photos) && l.photos.some(p => p.id === mediaId)) ||
+              (Array.isArray(l.media) && l.media.some(m => m.id === mediaId))
+            );
+            if (hasLogWithThis) {
+              const patchedLogs = activeProject.dailyLogs.map(l => ({
+                ...l,
+                photos: (l.photos || []).map(p => p.id === mediaId ? { ...p, src: cloudUrl, rawSrc: cloudUrl } : p),
+                media: (l.media || []).map(m => m.id === mediaId ? { ...m, src: cloudUrl, rawSrc: cloudUrl } : m),
+              }));
+              onUpdateProject(activeProject.id, { dailyLogs: patchedLogs });
+            }
+          }
         } else {
           const localMedia = {
             ...mediaObj,
+            src: thumb || mediaObj.src,
+            rawSrc: thumb || mediaObj.rawSrc,
+            thumbnail: thumb || mediaObj.thumbnail,
             isUploading: false
           };
           if (target === 'log') setLogMedia(localMedia);
@@ -108,6 +127,9 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
       }).catch(() => {
         const localMedia = {
           ...mediaObj,
+          src: thumb || mediaObj.src,
+          rawSrc: thumb || mediaObj.rawSrc,
+          thumbnail: thumb || mediaObj.thumbnail,
           isUploading: false
         };
         if (target === 'log') setLogMedia(localMedia);
@@ -152,15 +174,34 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
   // ─── Save Quick Daily Log (حفظ يومية سريعة) ───
   function handleSaveQuickLog(e) {
     e.preventDefault();
+    if (logMedia && logMedia.isUploading) {
+      alert("جاري رفع صورة/فيديو اليومية، يرجى الانتظار ثوانٍ معدودة حتى اكتمال الرفع قبل الحفظ.");
+      return;
+    }
     if (!activeProject || !logWork.trim()) return;
     setSaving(true);
     const today = todayISO();
     const timeVal = nowTimeISO();
 
+    const persistentSrc = logMedia ? (
+      (logMedia.src && (logMedia.src.startsWith('http://') || logMedia.src.startsWith('https://')))
+        ? logMedia.src
+        : (logMedia.thumbnail && logMedia.thumbnail.startsWith('data:'))
+          ? logMedia.thumbnail
+          : (logMedia.src && logMedia.src.startsWith('data:'))
+            ? logMedia.src
+            : (logMedia.rawSrc || `idb://${logMedia.id}`)
+    ) : null;
+
+    const safeThumb = logMedia?.thumbnail && logMedia.thumbnail.startsWith('data:') 
+      ? logMedia.thumbnail 
+      : (persistentSrc && persistentSrc.startsWith('data:') ? persistentSrc : '');
+
     const mediaToSave = logMedia ? {
       id: logMedia.id,
-      src: logMedia.rawSrc || (logMedia.src?.startsWith('blob:') ? `idb://${logMedia.id}` : logMedia.src),
-      thumbnail: logMedia.thumbnail || '',
+      src: persistentSrc,
+      rawSrc: logMedia.rawSrc || `idb://${logMedia.id}`,
+      thumbnail: safeThumb,
       type: logMedia.type,
       name: logMedia.name,
       caption: logMediaCaption.trim() || (logMedia.type === 'video' ? 'فيديو توثيق الموقع' : 'صورة توثيق الموقع')
@@ -174,7 +215,7 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
       work: logWork.trim(),
       issues: logIssues.trim(),
       workers: Number(logWorkers) || 1,
-      photos: mediaToSave && mediaToSave.type === 'image' ? [mediaToSave.thumbnail || mediaToSave.src] : [],
+      photos: mediaToSave && mediaToSave.type === 'image' ? [mediaToSave] : [],
       media: mediaToSave ? [mediaToSave] : [],
       timestamp: new Date().toISOString()
     };
@@ -214,13 +255,26 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
   // ─── Save New Snag (حفظ بند استلام / فحص) ───
   function handleSaveSnag(e) {
     e.preventDefault();
+    if (snagMedia && snagMedia.isUploading) {
+      alert("جاري رفع صورة فحص الملاحظة، يرجى الانتظار ثوانٍ معدودة حتى اكتمال الرفع قبل الحفظ.");
+      return;
+    }
     if (!activeProject || !snagDesc.trim()) return;
     setSaving(true);
     const today = todayISO();
 
+    const persistentSnagSrc = snagMedia ? (
+      (snagMedia.src && (snagMedia.src.startsWith('http://') || snagMedia.src.startsWith('https://')))
+        ? snagMedia.src
+        : (snagMedia.thumbnail && snagMedia.thumbnail.startsWith('data:'))
+          ? snagMedia.thumbnail
+          : (snagMedia.rawSrc || `idb://${snagMedia.id}`)
+    ) : null;
+
     const mediaToSave = snagMedia ? {
       id: snagMedia.id,
-      src: snagMedia.rawSrc || (snagMedia.src?.startsWith('blob:') ? `idb://${snagMedia.id}` : snagMedia.src),
+      src: persistentSnagSrc,
+      rawSrc: snagMedia.rawSrc || `idb://${snagMedia.id}`,
       thumbnail: snagMedia.thumbnail || '',
       type: snagMedia.type,
       name: snagMedia.name
@@ -233,7 +287,8 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
       assignee: snagAssignee.trim() || 'المقاول المختص',
       status: snagStatus,
       date: today,
-      photo: mediaToSave ? (mediaToSave.thumbnail || mediaToSave.src) : null,
+      photo: mediaToSave ? (mediaToSave.src || mediaToSave.thumbnail) : null,
+      thumbnail: mediaToSave?.thumbnail || null,
       mediaType: mediaToSave?.type || null,
       mediaId: mediaToSave?.id || null,
       timestamp: new Date().toISOString()
@@ -652,6 +707,18 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                             ) : (
                               <video src={logMedia.src} controls style={{ maxHeight: 200, width: '100%' }} />
                             )}
+                            {/* Overlay أثناء الرفع */}
+                            {logMedia.isUploading && (
+                              <div style={{
+                                position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.75)',
+                                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                gap: 4, color: '#fff', fontSize: 11, fontWeight: 700, zIndex: 3, pointerEvents: 'none',
+                                backdropFilter: 'blur(2px)'
+                              }}>
+                                <Loader2 size={20} className="spin" style={{ animation: 'spin 1s linear infinite', color: '#38BDF8' }} />
+                                <span>جاري رفع الوسائط...</span>
+                              </div>
+                            )}
                             <button
                               type="button"
                               onClick={() => setLogMedia(null)}
@@ -659,7 +726,8 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                                 position: 'absolute', top: 8, right: 8,
                                 background: 'rgba(239,68,68,0.9)', color: '#fff',
                                 border: 'none', borderRadius: 8, padding: '4px 8px',
-                                fontSize: 11, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
+                                fontSize: 11, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+                                zIndex: 4
                               }}
                             >
                               <Trash2 size={13} /> حذف المرفق
@@ -684,16 +752,33 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                     <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                       <button
                         type="submit"
-                        disabled={saving}
+                        disabled={saving || logMedia?.isUploading}
                         style={{
-                          flex: 1, minHeight: 46, borderRadius: 12, background: 'linear-gradient(135deg, #10B981, #059669)',
-                          color: '#fff', border: 'none', fontWeight: 800, fontSize: 14, fontFamily: "'Cairo'", cursor: 'pointer',
+                          flex: 1, minHeight: 46, borderRadius: 12, 
+                          background: logMedia?.isUploading ? '#475569' : 'linear-gradient(135deg, #10B981, #059669)',
+                          color: '#fff', border: 'none', fontWeight: 800, fontSize: 14, fontFamily: "'Cairo'", 
+                          cursor: (saving || logMedia?.isUploading) ? 'not-allowed' : 'pointer',
+                          opacity: logMedia?.isUploading ? 0.75 : 1,
                           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                           boxShadow: '0 4px 14px rgba(16,185,129,0.35)'
                         }}
                       >
-                        <Save size={16} />
-                        {saving ? 'جاري الحفظ والمزامنة...' : 'حفظ اليومية والوسائط في السحابة'}
+                        {logMedia?.isUploading ? (
+                          <>
+                            <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
+                            <span>جاري رفع الصور... استنّي ⏳</span>
+                          </>
+                        ) : saving ? (
+                          <>
+                            <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
+                            <span>جاري الحفظ والمزامنة...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Save size={16} />
+                            <span>حفظ اليومية والوسائط في السحابة</span>
+                          </>
+                        )}
                       </button>
                       <button
                         type="button"
@@ -996,6 +1081,18 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                           ) : (
                             <video src={snagMedia.src} controls style={{ maxHeight: 160, width: '100%' }} />
                           )}
+                          {/* Overlay أثناء الرفع */}
+                          {snagMedia.isUploading && (
+                            <div style={{
+                              position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.75)',
+                              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                              gap: 4, color: '#fff', fontSize: 11, fontWeight: 700, zIndex: 3, pointerEvents: 'none',
+                              backdropFilter: 'blur(2px)'
+                            }}>
+                              <Loader2 size={18} className="spin" style={{ animation: 'spin 1s linear infinite', color: '#38BDF8' }} />
+                              <span>جاري رفع الصورة...</span>
+                            </div>
+                          )}
                           <button
                             type="button"
                             onClick={() => setSnagMedia(null)}
@@ -1003,7 +1100,8 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                               position: 'absolute', top: 6, right: 6,
                               background: 'rgba(239,68,68,0.9)', color: '#fff',
                               border: 'none', borderRadius: 6, padding: '3px 6px',
-                              fontSize: 11, fontWeight: 700, cursor: 'pointer'
+                              fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                              zIndex: 4
                             }}
                           >
                             حذف
@@ -1016,16 +1114,33 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                     <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                       <button
                         type="submit"
-                        disabled={saving}
+                        disabled={saving || snagMedia?.isUploading}
                         style={{
-                          flex: 1, minHeight: 46, borderRadius: 12, background: 'linear-gradient(135deg, #1877F2, #0D65D9)',
-                          color: '#fff', border: 'none', fontWeight: 800, fontSize: 14, fontFamily: "'Cairo'", cursor: 'pointer',
+                          flex: 1, minHeight: 46, borderRadius: 12, 
+                          background: snagMedia?.isUploading ? '#475569' : 'linear-gradient(135deg, #1877F2, #0D65D9)',
+                          color: '#fff', border: 'none', fontWeight: 800, fontSize: 14, fontFamily: "'Cairo'", 
+                          cursor: (saving || snagMedia?.isUploading) ? 'not-allowed' : 'pointer',
+                          opacity: snagMedia?.isUploading ? 0.75 : 1,
                           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                           boxShadow: '0 4px 14px rgba(24,119,242,0.35)'
                         }}
                       >
-                        <Save size={16} />
-                        {saving ? 'جاري الحفظ...' : 'حفظ واعتماد بند الاستلام'}
+                        {snagMedia?.isUploading ? (
+                          <>
+                            <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
+                            <span>جاري رفع الصور... استنّي ⏳</span>
+                          </>
+                        ) : saving ? (
+                          <>
+                            <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
+                            <span>جاري الحفظ...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Save size={16} />
+                            <span>حفظ واعتماد بند الاستلام</span>
+                          </>
+                        )}
                       </button>
                       <button
                         type="button"
