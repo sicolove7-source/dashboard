@@ -379,3 +379,95 @@ export async function resolveMediaDisplayUrl(item) {
   // 7. منع إرجاع idb:// نهائياً للمتصفح حتى لا يظهر كصورة مكسورة
   return '';
 }
+
+/**
+ * فحص تلقائي وإنقاذ فوري لأي صور محفوظة محلياً بنظام idb:// في المشروع
+ * يقرأ الملف من IndexedDB ويولد المصغرة Base64 ويحدث السحابة فوراً
+ */
+export async function repairProjectLegacyMedia(project, onUpdate) {
+  if (!project || !project.id || typeof onUpdate !== 'function') return 0;
+
+  const dailyLogs = Array.isArray(project.dailyLogs)
+    ? project.dailyLogs
+    : (project.dailyLogs && typeof project.dailyLogs === 'object' ? Object.values(project.dailyLogs) : []);
+
+  if (dailyLogs.length === 0) return 0;
+
+  const itemsToRepair = [];
+  dailyLogs.forEach((log) => {
+    if (Array.isArray(log.photos)) {
+      log.photos.forEach((ph) => {
+        const src = typeof ph === 'string' ? ph : ph?.src;
+        const rawSrc = typeof ph === 'object' ? ph?.rawSrc : null;
+        const thumb = typeof ph === 'object' ? ph?.thumbnail : null;
+        const id = typeof ph === 'object' ? ph?.id : (src?.startsWith('idb://') ? src.replace('idb://', '') : null);
+        const isIdb = (src && src.startsWith('idb://')) || (rawSrc && rawSrc.startsWith('idb://'));
+        const hasNoThumb = !thumb || thumb.length < 50;
+        if (id && isIdb && hasNoThumb && !itemsToRepair.some(i => i.mediaId === id)) {
+          itemsToRepair.push({ mediaId: id });
+        }
+      });
+    }
+    if (Array.isArray(log.media)) {
+      log.media.forEach((md) => {
+        const src = md?.src;
+        const rawSrc = md?.rawSrc;
+        const thumb = md?.thumbnail;
+        const id = md?.id || (src?.startsWith('idb://') ? src.replace('idb://', '') : (rawSrc?.startsWith('idb://') ? rawSrc.replace('idb://', '') : null));
+        const isIdb = (src && src.startsWith('idb://')) || (rawSrc && rawSrc.startsWith('idb://'));
+        const hasNoThumb = !thumb || thumb.length < 50;
+        if (id && isIdb && hasNoThumb && !itemsToRepair.some(i => i.mediaId === id)) {
+          itemsToRepair.push({ mediaId: id });
+        }
+      });
+    }
+  });
+
+  if (itemsToRepair.length === 0) return 0;
+
+  const repairedMediaMap = {};
+  for (const item of itemsToRepair) {
+    try {
+      const blob = await getMediaBlob(item.mediaId);
+      if (blob) {
+        const thumb = await createMicroThumbnail(blob, false);
+        if (thumb) {
+          repairedMediaMap[item.mediaId] = thumb;
+        }
+      }
+    } catch (e) {}
+  }
+
+  if (Object.keys(repairedMediaMap).length === 0) return 0;
+
+  const updatedLogs = dailyLogs.map(l => {
+    let mod = false;
+    const newPhotos = (l.photos || []).map(p => {
+      const mId = typeof p === 'object' ? (p.id || (p.rawSrc ? p.rawSrc.replace('idb://', '') : p.src?.replace('idb://', ''))) : p?.replace('idb://', '');
+      if (mId && repairedMediaMap[mId]) {
+        mod = true;
+        const thumb = repairedMediaMap[mId];
+        return typeof p === 'object'
+          ? { ...p, src: thumb, rawSrc: thumb, thumbnail: thumb }
+          : { id: mId, src: thumb, rawSrc: thumb, thumbnail: thumb, type: 'image' };
+      }
+      return p;
+    });
+
+    const newMedia = (l.media || []).map(m => {
+      const mId = m.id || (m.rawSrc ? m.rawSrc.replace('idb://', '') : m.src?.replace('idb://', ''));
+      if (mId && repairedMediaMap[mId]) {
+        mod = true;
+        const thumb = repairedMediaMap[mId];
+        return { ...m, src: thumb, rawSrc: thumb, thumbnail: thumb };
+      }
+      return m;
+    });
+
+    return mod ? { ...l, photos: newPhotos, media: newMedia } : l;
+  });
+
+  onUpdate({ dailyLogs: updatedLogs, updatedAt: new Date().toISOString() });
+  console.log(`[repairProjectLegacyMedia] ✅ Rescued ${Object.keys(repairedMediaMap).length} photos for project ${project.id}!`);
+  return Object.keys(repairedMediaMap).length;
+}

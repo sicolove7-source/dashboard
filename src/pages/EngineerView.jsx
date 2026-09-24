@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { STAGES } from '../utils/constants';
 import { fmtDate, todayISO, nowTimeISO, fmtTime, fmtDateTime, compressImageFile } from '../utils/helpers';
-import { saveMediaBlob, createMicroThumbnail } from '../utils/mediaStorage';
+import { saveMediaBlob, createMicroThumbnail, repairProjectLegacyMedia } from '../utils/mediaStorage';
 import { uploadMediaToFirebaseStorage } from '../services/cloudSync';
 import MediaThumbnail from '../components/MediaThumbnail';
 import MediaLightbox from '../components/MediaLightbox';
@@ -177,6 +177,12 @@ function TodayPanel({ project, currentUser, onUpdate }) {
       workers: tl?.workers || 5, photos: tl?.photos || []
     }));
   }, [project.id]);
+
+  useEffect(() => {
+    if (project?.id && typeof onUpdate === 'function') {
+      repairProjectLegacyMedia(project, onUpdate);
+    }
+  }, [project?.id]);
 
   async function handlePhoto(e) {
     const file = e.target.files[0];

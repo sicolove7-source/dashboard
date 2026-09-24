@@ -6,7 +6,7 @@ import StampRing from '../components/StampRing';
 import { STAGES, ENGINEERS, TECH_OFFICE } from '../utils/constants';
 import { fmtDate, todayISO, nowTimeISO, fmtTime, fmtDateTime, compressImageFile } from '../utils/helpers';
 import { uploadMediaToFirebaseStorage } from '../services/cloudSync';
-import { saveMediaBlob, getMediaBlob, createMicroThumbnail } from '../utils/mediaStorage';
+import { saveMediaBlob, getMediaBlob, createMicroThumbnail, repairProjectLegacyMedia } from '../utils/mediaStorage';
 import MediaThumbnail from '../components/MediaThumbnail';
 import MediaLightbox from '../components/MediaLightbox';
 import { openWhatsApp, WHATSAPP_TEMPLATES } from '../utils/whatsappTemplates';
@@ -71,6 +71,13 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
   useEffect(() => {
     if (initialSub && SUBTABS.find(t => t.key === initialSub)) setSub(initialSub);
   }, [initialSub]);
+
+  // فحص وإنقاذ تلقائي فوري لأي صور قديمة محلياً بمجرد فتح المشروع
+  useEffect(() => {
+    if (project?.id && typeof onUpdate === 'function') {
+      repairProjectLegacyMedia(project, onUpdate);
+    }
+  }, [project?.id]);
 
   return (
     <div className="tab-fade">
