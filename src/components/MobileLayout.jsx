@@ -52,7 +52,6 @@ const ICON_MAP = {
 const NAV_ICONS = {
   tenants:       'Crown',
   overview:      'LayoutDashboard',
-  price_index:   'TrendingUp',
   automations:   'Zap',
   crm:           'BadgePercent',
   finance:       'TrendingUp',
@@ -67,7 +66,6 @@ const NAV_ICONS = {
 const NAV_LABELS_SHORT = {
   tenants:       'الشركات 👑',
   overview:      'المتابعة',
-  price_index:   'الأسعار 📈',
   automations:   'الأتمتة ⚡',
   crm:           'المبيعات',
   projects:      'المواقع',

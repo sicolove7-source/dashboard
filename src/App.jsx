@@ -21,8 +21,6 @@ const TeamPerformance = React.lazy(() => import('./pages/TeamPerformance'));
 const SuppliersTab = React.lazy(() => import('./pages/SuppliersTab'));
 const SubcontractorsTab = React.lazy(() => import('./pages/SubcontractorsTab'));
 const QuotationBuilder = React.lazy(() => import('./pages/QuotationBuilder'));
-const MaterialPriceIndex = React.lazy(() => import('./pages/MaterialPriceIndex'));
-const LivePriceTicker = React.lazy(() => import('./components/LivePriceTicker'));
 const CompanyFinance = React.lazy(() => import('./pages/CompanyFinance'));
 const Login = React.lazy(() => import('./pages/Login'));
 const LandingPage = React.lazy(() => import('./pages/LandingPage'));
@@ -107,7 +105,6 @@ function getTabFromPath() {
     if (path === 'team') return 'team';
     if (path === 'suppliers') return 'suppliers';
     if (path === 'quotations') return 'quotations';
-    if (path === 'price-index' || path === 'prices' || path === 'materials') return 'price_index';
     if (path === 'automations') return 'automations';
     if (path === 'settings') return 'settings';
     if (path === 'tenants' || path === 'superadmin') return 'tenants';
@@ -1222,7 +1219,6 @@ export default function App() {
       subcontractors: '/subcontractors',
       projects: '/projects',
       overview: '/overview',
-      price_index: '/price-index',
       crm: '/crm',
       finance: '/finance',
       team: '/team',
@@ -2001,23 +1997,10 @@ export default function App() {
               {tab === "overview" && (
                 <div>
                   <React.Suspense fallback={null}>
-                    <LivePriceTicker
-                      onNavigateToPriceIndex={() => setTab("price_index")}
-                      country={companySettings?.country || 'EG'}
-                    />
-                  </React.Suspense>
-                  <React.Suspense fallback={null}>
                     <QuickWinChecklist onNavigate={(t) => setTab(t)} />
                   </React.Suspense>
                   <Overview projects={displayedProjects} />
                 </div>
-              )}
-
-              {tab === "price_index" && (
-                <MaterialPriceIndex
-                  currentUser={currentUser}
-                  companySettings={companySettings}
-                />
               )}
 
               {tab === "crm" && (
