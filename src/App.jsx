@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   Users, Search, Clock, Plus, Save, Info, Compass
 } from "lucide-react";
@@ -63,6 +63,7 @@ import {
   fetchTenantBySubdomain,
   isDemoProject,
 } from './services/cloudSync';
+import { syncAllPendingMedia, onSyncStatusChange } from './services/backgroundMediaSync';
 import { parseClientPortalFromUrl, resolveClientPortalProject, submitClientPortalApproval } from './services/portalResolver';
 import { parseIntakeRouteFromUrl } from './services/intakeResolver';
 import { AREAS } from './utils/constants';
@@ -790,6 +791,58 @@ export default function App() {
       }
     });
     return () => { if (typeof unsub === 'function') unsub(); };
+  }, [activeCompanyId, isAuthenticated]);
+
+  // ─── خدمة المزامنة الخلفية التلقائية للوسائط المعلقة (Background Media Sync) ───
+  const [mediaSyncState, setMediaSyncState] = useState({ isSyncing: false, pendingCount: 0 });
+  const projectsRef = useRef(projects);
+  projectsRef.current = projects;
+
+  useEffect(() => {
+    const unsub = onSyncStatusChange((st) => {
+      setMediaSyncState(st);
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !activeCompanyId) return;
+
+    const triggerSync = () => {
+      const currentProjects = projectsRef.current;
+      if (!Array.isArray(currentProjects) || currentProjects.length === 0) return;
+      syncAllPendingMedia(activeCompanyId, currentProjects, {
+        onProjectUpdated: (projId, patch) => {
+          setProjects(prev => {
+            const list = prev || [];
+            const updated = list.map(p => p.id === projId ? { ...p, ...patch } : p);
+            try {
+              localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(updated));
+            } catch (e) {}
+            return updated;
+          });
+        }
+      }).catch(err => console.warn('[App] Background media sync notice:', err));
+    };
+
+    // 1. تشغيل تلقائي أولي هادئ بعد التحميل
+    const initialTimer = setTimeout(triggerSync, 2500);
+
+    // 2. تشغيل فوري لحظة استعادة الاتصال بالإنترنت (online event)
+    const handleOnline = () => {
+      console.log('[App] 🌐 Device back online! Starting background media sync...');
+      triggerSync();
+    };
+    window.addEventListener('online', handleOnline);
+
+    // 3. مؤقت أمان دوري كل 5 دقائق
+    const intervalTimer = setInterval(triggerSync, 5 * 60 * 1000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(intervalTimer);
+      window.removeEventListener('online', handleOnline);
+    };
   }, [activeCompanyId, isAuthenticated]);
 
 
@@ -1925,6 +1978,11 @@ export default function App() {
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               {saveState === "saved" && <span className="save-pill save-ok tab-fade">تم الحفظ</span>}
               {saveState === "offline" && <span className="save-pill save-err tab-fade">حفظ محلي فقط</span>}
+              {mediaSyncState.isSyncing && (
+                <span className="save-pill tab-fade" style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#0284C7', border: '1px solid rgba(56, 189, 248, 0.3)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <span>☁️ رفع خلفي ({mediaSyncState.pendingCount})</span>
+                </span>
+              )}
               <div className="meta" style={{ display: "flex", alignItems: "center", gap: 6, background: "#F1F5F9", padding: "4px 10px", borderRadius: 6, color: "#64748B", fontSize: 11.5 }}>
                 <Clock size={12} />
                 <span>المواقع: {displayedProjects.length} • {todayISO()}</span>
@@ -2109,6 +2167,33 @@ export default function App() {
 
       {/* ─── Floating WhatsApp Support & Sales Widget ─── */}
       <WhatsAppSupportWidget companySettings={companySettings} />
+
+      {/* ─── Floating Non-blocking Media Sync Pill ─── */}
+      {mediaSyncState.isSyncing && (
+        <div style={{
+          position: 'fixed',
+          bottom: 24,
+          left: 24,
+          background: 'rgba(15, 23, 42, 0.92)',
+          backdropFilter: 'blur(8px)',
+          color: '#38BDF8',
+          border: '1px solid rgba(56, 189, 248, 0.3)',
+          borderRadius: 30,
+          padding: '8px 18px',
+          fontSize: 13,
+          fontWeight: 700,
+          boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          zIndex: 9999,
+          direction: 'rtl',
+          pointerEvents: 'none'
+        }}>
+          <span style={{ fontSize: 16 }}>☁️</span>
+          <span>جاري رفع {mediaSyncState.pendingCount} صورة معلقة إلى السحابة...</span>
+        </div>
+      )}
     </div>
     </AdminProvider>
   );

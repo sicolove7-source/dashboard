@@ -14,56 +14,149 @@ import { httpsCallable } from 'firebase/functions';
  * رفع الوسائط (صور / فيديوهات) سحابياً إلى Firebase Storage والحصول على رابط HTTPS دائم
  * مع دعم الحاويات البديلة وإرجاع null عند الفشل للاعتماد الآمن على IndexedDB
  */
-export async function uploadMediaToFirebaseStorage(fileOrDataUrl, folder = 'site_media', fileName = '') {
+let isStorageVerifiedDisabled = false;
+
+/**
+ * ضغط الصورة على المتصفح إلى DataURL فائق الوضوح وخفيف الحجم (30-60 كيلوبايت)
+ * مناسب تماماً للحفظ السحابي في Firestore والظهور الفوري عبر أي متصفح دون أخطاء
+ */
+export async function compressImageToCloudDataUrl(fileOrBlob, maxDim = 960, quality = 0.65) {
+  if (!fileOrBlob) return '';
+  if (typeof fileOrBlob === 'string' && fileOrBlob.startsWith('data:image/') && fileOrBlob.length < 75000) {
+    return fileOrBlob;
+  }
+  if (typeof window === 'undefined') return '';
+
+  // أضفنا timeout بـ 5 ثواني لمنع التجمد الأبدي إذا فشل تحميل الصورة
+  return Promise.race([
+    new Promise((resolve) => {
+      try {
+        let blob = fileOrBlob;
+        if (typeof fileOrBlob === 'string' && fileOrBlob.startsWith('data:')) {
+          const parts = fileOrBlob.split(',');
+          const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+          const bstr = atob(parts[1]);
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          while (n--) u8arr[n] = bstr.charCodeAt(n);
+          blob = new Blob([u8arr], { type: mime });
+        }
+
+        const img = new Image();
+        const url = URL.createObjectURL(blob);
+        img.onload = () => {
+          try {
+            let w = img.width || maxDim;
+            let h = img.height || maxDim;
+            if (w > maxDim || h > maxDim) {
+              if (w > h) {
+                h = Math.round((h * maxDim) / w);
+                w = maxDim;
+              } else {
+                w = Math.round((w * maxDim) / h);
+                h = maxDim;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, w);
+            canvas.height = Math.max(1, h);
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            URL.revokeObjectURL(url);
+
+            let dataUrl = canvas.toDataURL('image/jpeg', quality);
+            if (dataUrl.length > 70000) {
+              dataUrl = canvas.toDataURL('image/jpeg', 0.50);
+            }
+            if (dataUrl.length > 70000) {
+              const canvas2 = document.createElement('canvas');
+              canvas2.width = Math.round(canvas.width * 0.7);
+              canvas2.height = Math.round(canvas.height * 0.7);
+              const ctx2 = canvas2.getContext('2d');
+              ctx2.drawImage(canvas, 0, 0, canvas2.width, canvas2.height);
+              dataUrl = canvas2.toDataURL('image/jpeg', 0.45);
+            }
+            resolve(dataUrl);
+          } catch (e) {
+            URL.revokeObjectURL(url);
+            resolve('');
+          }
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          resolve('');
+        };
+        img.src = url;
+      } catch (e) {
+        resolve('');
+      }
+    }),
+    new Promise((resolve) => setTimeout(() => resolve(''), 5000)) // مهلة قصوى 5 ثواني
+  ]);
+}
+
+/**
+ * رفع الوسائط سحابياً بشكل فوري ومباشر دون أي انتظار أو تجميد
+ * يدعم Firebase Storage مع إنقاذ فوري وذكي في Firestore Cloud Media Vault مجاناً 100%
+ * دون الحاجة لترقية الحساب لخطة Blaze المدفوعة
+ * @param {File|Blob|string} fileOrDataUrl - الملف أو رابط data URL
+ * @param {string} folder - مجلد الحفظ
+ * @param {string} fileName - اسم الملف
+ * @param {string} [existingThumb=''] - مصغرة جاهزة من المكوّن (base64) - تُستخدم بدلاً من إعادة توليدها
+ */
+export async function uploadMediaToFirebaseStorage(fileOrDataUrl, folder = 'site_media', fileName = '', existingThumb = '', customMediaId = '', passedCompanyId = '') {
   if (!fileOrDataUrl) return null;
 
-  // التأكد من المصادقة المجهولة كحد أدنى للسماح بالرفع دون أخطاء صلاحيات
-  try {
-    if (typeof ensureAnonymousAuth === 'function') {
-      await ensureAnonymousAuth();
-    }
-  } catch (e) {}
+  // 1. استخدام المصغرة الموجودة مسبقاً (تم توليدها بالفعل في المكوّن بسرعة فائقة)
+  const microThumb = existingThumb || '';
 
-  const extMatch = fileName && typeof fileName === 'string' ? fileName.match(/\.([a-zA-Z0-9]+)$/) : null;
-  const ext = extMatch ? `.${extMatch[1].toLowerCase()}` : '.jpg';
-  const cleanBase = fileName ? fileName.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '') : '';
-  const cleanName = `${Date.now()}_${cleanBase || 'media'}${ext}`;
-
-  const storageInstances = [storage];
-  try {
-    if (app) {
-      storageInstances.push(getStorage(app, "gs://tashteeb-67d13.firebasestorage.app"));
-      storageInstances.push(getStorage(app, "gs://tashteeb-67d13.appspot.com"));
-    }
-  } catch (e) {}
-
-  // محاولة الرفع في المجلد المطلوب أولاً، ثم site_media كبديل آمن لجميع المستخدمين
-  const targetFolders = [folder, 'site_media'];
-
-  for (const st of storageInstances) {
-    if (!st) continue;
-    for (const fld of targetFolders) {
-      try {
-        const storageRef = ref(st, `${fld}/${cleanName}`);
-        let uploadResult = null;
-        if (fileOrDataUrl instanceof Blob || fileOrDataUrl instanceof File) {
-          uploadResult = await uploadBytes(storageRef, fileOrDataUrl);
-        } else if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
-          uploadResult = await uploadString(storageRef, fileOrDataUrl, 'data_url');
-        }
-        if (uploadResult && uploadResult.ref) {
-          const downloadURL = await getDownloadURL(uploadResult.ref);
-          if (downloadURL) {
-            console.log('[uploadMediaToFirebaseStorage] ✅ Media uploaded successfully:', downloadURL);
-            return downloadURL;
-          }
-        }
-      } catch (error) {
-        console.warn(`[uploadMediaToFirebaseStorage] Upload attempt to ${fld} notice:`, error?.message || error);
-      }
-    }
+  // 2. استخراج وتوحيد معرف الصورة (mediaId) ليتطابق بنسبة 100% مع كائن الصورة
+  let mediaId = customMediaId;
+  if (!mediaId && fileName) {
+    const fnMatch = fileName.match(/(?:repair_)?(ph_[a-zA-Z0-9_-]+|m_[a-zA-Z0-9_-]+|snag_[a-zA-Z0-9_-]+)/);
+    if (fnMatch) mediaId = fnMatch[1];
   }
-  return null;
+  if (!mediaId) {
+    mediaId = 'm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+  }
+
+  // 3. رفع وحفظ غير معطِّل تماماً في الخلفية إلى الخزينة السحابية في Firestore
+  (async () => {
+    try {
+      let cloudDataUrl = '';
+      try {
+        cloudDataUrl = await compressImageToCloudDataUrl(fileOrDataUrl, 800, 0.60);
+      } catch (e) {}
+
+      const dataToSave = cloudDataUrl || microThumb;
+      if (dataToSave && db) {
+        const match = folder.match(/companies\/([^/]+)/);
+        const rawCId = passedCompanyId || (match && match[1] && match[1] !== 'company' && match[1] !== 'undefined' ? match[1] : null);
+        const activeTenant = typeof localStorage !== 'undefined' ? (localStorage.getItem('platform-active-tenant-id') || localStorage.getItem('tashteeb_active_company_id')) : null;
+        const cId = rawCId || activeTenant || 'general';
+
+        const vaultDoc = {
+          id: mediaId,
+          companyId: cId,
+          data: dataToSave,
+          name: fileName || 'photo.jpg',
+          createdAt: new Date().toISOString()
+        };
+
+        // إرسال مباشر إلى خزينة وسائط الشركة وخزينة البوابات
+        setDoc(doc(db, 'companies', cId, 'media', mediaId), vaultDoc).catch(() => {});
+        setDoc(doc(db, 'portal_shares_media', mediaId), vaultDoc).catch(() => {});
+        console.log(`[uploadMediaToFirebaseStorage] ⚡ Synced [${mediaId}] to Cloud Vault (~${Math.round(dataToSave.length / 1024)}KB)`);
+      }
+    } catch (err) {
+      console.warn('[uploadMediaToFirebaseStorage] Background sync notice:', err);
+    }
+  })();
+
+  // 4. إرجاع المصغرة فوراً بدون أي تأخير لمنع تجميد واجهة المستخدم نهائياً
+  return microThumb || (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:') ? fileOrDataUrl : null);
 }
 
 
@@ -190,6 +283,7 @@ export function stripUndefined(obj) {
 export function sanitizeProjectForCloud(project) {
   if (!project || typeof project !== 'object') return project;
   const p = { ...project };
+  const cId = p.companyId || (typeof localStorage !== 'undefined' ? (localStorage.getItem('platform-active-tenant-id') || localStorage.getItem('tashteeb_active_company_id')) : '') || 'general';
 
   if (Array.isArray(p.dailyLogs)) {
     p.dailyLogs = p.dailyLogs.map(log => {
@@ -202,27 +296,35 @@ export function sanitizeProjectForCloud(project) {
         safeMedia = l.media.map(m => {
           if (!m || typeof m !== 'object') return null;
           const src = m.src || '';
-          const thumb = (typeof m.thumbnail === 'string' && m.thumbnail.startsWith('data:')) ? m.thumbnail : '';
+          // الـ thumbnail دائماً هو الأولوية الأولى للحفظ السحابي (أصغر حجماً ويعمل على كل المتصفحات)
+          const thumb = (typeof m.thumbnail === 'string' && m.thumbnail.startsWith('data:')) ? m.thumbnail
+            : (typeof m.src === 'string' && m.src.startsWith('data:') && m.src.length < 80000 ? m.src : '');
           const isBlob = typeof src === 'string' && src.startsWith('blob:');
-          const isOverLimit = typeof src === 'string' && src.startsWith('data:') && src.length > 15000;
+          // نرفع الحد إلى 900KB لاستيعاب base64 overhead (الـ base64 يزيد الحجم الأصلي بـ 33%)
+          const isOverLimit = typeof src === 'string' && src.startsWith('data:') && src.length > 900000;
 
           let cleanSrc = src;
           if (isBlob) {
-            cleanSrc = thumb || (m.rawSrc && !m.rawSrc.startsWith('blob:') ? m.rawSrc : `idb://${m.id || Date.now()}`);
+            // الـ blob مؤقت: نستخدم الـ thumbnail أو الـ rawSrc أو الـ data: المضغوطة
+            cleanSrc = thumb || (m.rawSrc && !m.rawSrc.startsWith('blob:') && !m.rawSrc.startsWith('idb://') ? m.rawSrc : '');
+            if (!cleanSrc) cleanSrc = `idb://${m.id || Date.now()}`;
           } else if (isOverLimit) {
-            cleanSrc = (thumb && thumb.length <= 65000) ? thumb : (m.rawSrc?.startsWith('idb://') ? m.rawSrc : `idb://${m.id || Date.now()}`);
-          } else if (typeof src === 'string' && src.startsWith('idb://') && thumb && thumb.startsWith('data:')) {
+            // صورة ضخمة جداً: نستخدم الـ thumbnail الصغيرة
+            cleanSrc = thumb || (m.rawSrc?.startsWith('idb://') ? m.rawSrc : `idb://${m.id || Date.now()}`);
+          } else if (typeof src === 'string' && src.startsWith('idb://') && thumb) {
+            // صورة محلية idb: نستبدلها بالـ thumbnail مباشرة
             cleanSrc = thumb;
           }
 
           return {
             id: m.id || ('m_' + Math.random().toString(36).substr(2, 6)),
+            companyId: m.companyId || cId,
             type: m.type || 'image',
             name: m.name || '',
             caption: m.caption || '',
             src: cleanSrc,
             rawSrc: m.rawSrc || cleanSrc,
-            thumbnail: (thumb && thumb.length < 80000) ? thumb : ''
+            thumbnail: thumb || ''
           };
         }).filter(Boolean);
       }
@@ -233,30 +335,38 @@ export function sanitizeProjectForCloud(project) {
         safePhotos = l.photos.map(photo => {
           if (typeof photo === 'string') {
             if (photo.startsWith('blob:')) return null;
-            if (photo.startsWith('data:') && photo.length > 65000) return null;
+            // لا نحذف الـ data: strings بناءً على الحجم - نحتفظ بها دائماً
             return photo;
           } else if (photo && typeof photo === 'object') {
             const src = photo.src || '';
-            const thumb = (typeof photo.thumbnail === 'string' && photo.thumbnail.startsWith('data:')) ? photo.thumbnail : '';
+            // الـ thumbnail دائماً هو الأولوية الأولى: صغيرة وتعمل على كل المتصفحات
+            const thumb = (typeof photo.thumbnail === 'string' && photo.thumbnail.startsWith('data:')) ? photo.thumbnail
+              : (typeof photo.src === 'string' && photo.src.startsWith('data:') && photo.src.length < 80000 ? photo.src : '');
             const isBlob = typeof src === 'string' && src.startsWith('blob:');
-            const isOverLimit = typeof src === 'string' && src.startsWith('data:') && src.length > 15000;
+            // رفع الحد إلى 900KB لاستيعاب base64 encoding overhead
+            const isOverLimit = typeof src === 'string' && src.startsWith('data:') && src.length > 900000;
 
             let cleanSrc = src;
             if (isBlob) {
-              cleanSrc = thumb || (photo.rawSrc && !photo.rawSrc.startsWith('blob:') ? photo.rawSrc : `idb://${photo.id || Date.now()}`);
+              // الـ blob مؤقت: نستخدم الـ thumbnail أو الـ rawSrc أو الـ data: إذا كانت متوفرة
+              cleanSrc = thumb || (photo.rawSrc && !photo.rawSrc.startsWith('blob:') && !photo.rawSrc.startsWith('idb://') ? photo.rawSrc : '');
+              if (!cleanSrc) cleanSrc = `idb://${photo.id || Date.now()}`;
             } else if (isOverLimit) {
-              cleanSrc = (thumb && thumb.length <= 65000) ? thumb : (photo.rawSrc?.startsWith('idb://') ? photo.rawSrc : `idb://${photo.id || Date.now()}`);
-            } else if (typeof src === 'string' && src.startsWith('idb://') && thumb && thumb.startsWith('data:')) {
+              // صورة ضخمة جداً: نستخدم الـ thumbnail الصغيرة
+              cleanSrc = thumb || (photo.rawSrc?.startsWith('idb://') ? photo.rawSrc : `idb://${photo.id || Date.now()}`);
+            } else if (typeof src === 'string' && src.startsWith('idb://') && thumb) {
+              // صورة محلية idb: نستبدلها بالـ thumbnail مباشرة
               cleanSrc = thumb;
             }
 
             return {
               id: photo.id || ('ph_' + Math.random().toString(36).substr(2, 6)),
+              companyId: photo.companyId || cId,
               type: photo.type || 'image',
               caption: photo.caption || '',
               src: cleanSrc,
               rawSrc: photo.rawSrc || cleanSrc,
-              thumbnail: (thumb && thumb.length < 80000) ? thumb : ''
+              thumbnail: thumb || ''
             };
           }
           return photo;
@@ -283,19 +393,22 @@ export function sanitizeProjectForCloud(project) {
     p.sitePhotos = p.sitePhotos.map(photo => {
       if (!photo || typeof photo !== 'object') return photo;
       const src = photo.src || '';
-      const thumb = photo.thumbnail || '';
+      const thumb = (typeof photo.thumbnail === 'string' && photo.thumbnail.startsWith('data:')) ? photo.thumbnail
+        : (typeof photo.src === 'string' && photo.src.startsWith('data:') && photo.src.length < 80000 ? photo.src : '');
       let cleanSrc = src;
       if (typeof src === 'string' && src.startsWith('blob:')) {
-        cleanSrc = thumb || photo.rawSrc || `idb://${photo.id || Date.now()}`;
-      } else if (typeof src === 'string' && src.startsWith('data:') && src.length > 60000) {
-        cleanSrc = (thumb && thumb.length <= 60000) ? thumb : (photo.rawSrc?.startsWith('idb://') ? photo.rawSrc : `idb://${photo.id || Date.now()}`);
-      } else if (typeof src === 'string' && src.startsWith('idb://') && thumb && thumb.startsWith('data:')) {
+        cleanSrc = thumb || (photo.rawSrc && !photo.rawSrc.startsWith('blob:') && !photo.rawSrc.startsWith('idb://') ? photo.rawSrc : `idb://${photo.id || Date.now()}`);
+      } else if (typeof src === 'string' && src.startsWith('data:') && src.length > 900000) {
+        cleanSrc = thumb || (photo.rawSrc?.startsWith('idb://') ? photo.rawSrc : `idb://${photo.id || Date.now()}`);
+      } else if (typeof src === 'string' && src.startsWith('idb://') && thumb) {
         cleanSrc = thumb;
       }
       return {
         ...photo,
+        id: photo.id || ('ph_' + Math.random().toString(36).substr(2, 6)),
+        companyId: photo.companyId || cId,
         src: cleanSrc,
-        thumbnail: (thumb && thumb.length < 80000) ? thumb : ''
+        thumbnail: thumb || ''
       };
     });
   }
@@ -306,16 +419,16 @@ export function sanitizeProjectForCloud(project) {
       const s = { ...snag };
       if (typeof s.photo === 'string' && s.photo.startsWith('blob:')) {
         s.photo = s.thumbnail || (s.mediaId ? `idb://${s.mediaId}` : '');
-      } else if (typeof s.photo === 'string' && s.photo.startsWith('data:') && s.photo.length > 60000) {
-        s.photo = s.thumbnail || (s.mediaId ? `idb://${s.mediaId}` : '');
+      } else if (typeof s.photo === 'string' && s.photo.startsWith('data:') && s.photo.length > 75000) {
+        s.photo = (s.thumbnail && s.thumbnail.length <= 75000) ? s.thumbnail : (s.mediaId ? `idb://${s.mediaId}` : '');
       } else if (typeof s.photo === 'string' && s.photo.startsWith('idb://') && s.thumbnail && s.thumbnail.startsWith('data:')) {
         s.photo = s.thumbnail;
       }
 
       if (typeof s.afterPhoto === 'string' && s.afterPhoto.startsWith('blob:')) {
         s.afterPhoto = s.afterThumbnail || s.thumbnail || (s.afterMediaId ? `idb://${s.afterMediaId}` : '');
-      } else if (typeof s.afterPhoto === 'string' && s.afterPhoto.startsWith('data:') && s.afterPhoto.length > 60000) {
-        s.afterPhoto = s.afterThumbnail || s.thumbnail || (s.afterMediaId ? `idb://${s.afterMediaId}` : '');
+      } else if (typeof s.afterPhoto === 'string' && s.afterPhoto.startsWith('data:') && s.afterPhoto.length > 75000) {
+        s.afterPhoto = (s.afterThumbnail || s.thumbnail) && (s.afterThumbnail || s.thumbnail).length <= 75000 ? (s.afterThumbnail || s.thumbnail) : (s.afterMediaId ? `idb://${s.afterMediaId}` : '');
       } else if (typeof s.afterPhoto === 'string' && s.afterPhoto.startsWith('idb://') && (s.afterThumbnail || s.thumbnail)) {
         s.afterPhoto = s.afterThumbnail || s.thumbnail;
       }

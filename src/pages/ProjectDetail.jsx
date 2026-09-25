@@ -297,15 +297,17 @@ function SnagsPanel({ project, onUpdate }) {
       const mediaId = 'snag_ph_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
       const thumb = await createMicroThumbnail(selected, false);
       await saveMediaBlob(mediaId, selected, { type: selected.type, name: selected.name });
-      const compressed = await compressImageFile(selected, 1200, 0.75);
-      
-      // رفع سحابي لـ Firebase Storage
+      const compId = project.companyId || (typeof localStorage !== 'undefined' ? (localStorage.getItem('platform-active-tenant-id') || localStorage.getItem('tashteeb_active_company_id')) : '') || 'company';
+      // رفع سحابي لـ Cloud Vault
       let cloudUrl = null;
       try {
         cloudUrl = await uploadMediaToFirebaseStorage(
           selected,
-          `companies/${project.companyId || 'company'}/projects/${project.id}`,
-          selected.name
+          `companies/${compId}/projects/${project.id}`,
+          selected.name,
+          thumb,
+          mediaId,
+          compId
         );
       } catch (uploadErr) {
         console.warn("[Snags] Cloud upload notice:", uploadErr);
@@ -360,15 +362,17 @@ function SnagsPanel({ project, onUpdate }) {
       const mediaId = 'snag_after_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
       const thumb = await createMicroThumbnail(selected, false);
       await saveMediaBlob(mediaId, selected, { type: selected.type, name: selected.name });
-      const now = new Date().toISOString();
-
-      // رفع سحابي لـ Firebase Storage
+      const compId = project.companyId || (typeof localStorage !== 'undefined' ? (localStorage.getItem('platform-active-tenant-id') || localStorage.getItem('tashteeb_active_company_id')) : '') || 'company';
+      // رفع سحابي لـ Cloud Vault
       let cloudUrl = null;
       try {
         cloudUrl = await uploadMediaToFirebaseStorage(
           selected,
-          `companies/${project.companyId || 'company'}/projects/${project.id}`,
-          selected.name
+          `companies/${compId}/projects/${project.id}`,
+          selected.name,
+          thumb,
+          mediaId,
+          compId
         );
       } catch (uploadErr) {
         console.warn("[Snags] After photo cloud upload notice:", uploadErr);
@@ -395,10 +399,6 @@ function SnagsPanel({ project, onUpdate }) {
 
   function addSnag(e) {
     e.preventDefault();
-    if (isUploading) {
-      alert("جاري رفع صورة الملاحظة، يرجى الانتظار ثوانٍ معدودة حتى اكتمال الرفع قبل الحفظ.");
-      return;
-    }
     if (!form.desc.trim()) return;
     const now = new Date().toISOString();
     const newSnag = { 
@@ -910,13 +910,16 @@ function DiaryPanel({ project, team, onUpdate }) {
           try {
             const blob = await getMediaBlob(item.mediaId);
             if (blob) {
-              const fileName = `legacy_repair_${item.mediaId}.jpg`;
+              const compId = project.companyId || (typeof localStorage !== 'undefined' ? (localStorage.getItem('platform-active-tenant-id') || localStorage.getItem('tashteeb_active_company_id')) : '') || 'company';
               let cloudUrl = null;
               try {
                 cloudUrl = await uploadMediaToFirebaseStorage(
                   blob,
-                  `companies/${project.companyId || 'company'}/projects/${projId}`,
-                  fileName
+                  `companies/${compId}/projects/${projId}`,
+                  fileName,
+                  '',
+                  item.mediaId,
+                  compId
                 );
               } catch (storageErr) {
                 console.warn('[Phase 2 Repair] Storage upload notice:', storageErr);
@@ -1044,22 +1047,32 @@ function DiaryPanel({ project, team, onUpdate }) {
           thumbnail: thumb || '',
           type: 'image',
           name: file.name,
-          isUploading: true
+          isUploading: false
         };
 
         setMediaList(prev => [...prev, mediaItem]);
 
-        // 4. رفع في الخلفية لسحابة Firebase Storage للحصول على رابط سحابي HTTPS دائم
+        const compId = project.companyId || (typeof localStorage !== 'undefined' ? (localStorage.getItem('platform-active-tenant-id') || localStorage.getItem('tashteeb_active_company_id')) : '') || 'company';
+        // 4. رفع فوري في الخلفية دون تعطيل الواجهة
         uploadMediaToFirebaseStorage(
           file,
-          `companies/${project.companyId || 'company'}/projects/${project.id}`,
-          file.name
+          `companies/${compId}/projects/${project.id}`,
+          file.name,
+          thumb,
+          mediaId,
+          compId
         ).then(cloudUrl => {
           if (cloudUrl) {
-            setMediaList(prev => prev.map(m => m.id === mediaId ? { ...m, src: cloudUrl, rawSrc: cloudUrl, isUploading: false } : m));
-            // إذا كان المستخدم قد حفظ اليومية بالفعل أثناء الرفع، نحدث اليومية في المشروع مباشرة برابط HTTPS
+            setMediaList(prev => prev.map(m => m.id === mediaId ? {
+              ...m,
+              src: cloudUrl,
+              rawSrc: cloudUrl
+            } : m));
+          }
+          // إذا كان المستخدم قد حفظ اليومية بالفعل أثناء الرفع، نحدث اليومية في المشروع مباشرة
+          if (cloudUrl) {
             const currentLogs = project?.dailyLogs || [];
-            const hasLogWithThisMedia = currentLogs.some(l => 
+            const hasLogWithThisMedia = currentLogs.some(l =>
               (Array.isArray(l.photos) && l.photos.some(p => p.id === mediaId)) ||
               (Array.isArray(l.media) && l.media.some(m => m.id === mediaId))
             );
@@ -1071,24 +1084,15 @@ function DiaryPanel({ project, team, onUpdate }) {
               }));
               onUpdate({ dailyLogs: updated });
             }
-          } else {
-            // فشل الرفع السحابي (مثل Storage 404 أو عدم توفر إنترنت) - نعتمد المصغرة Base64 كـ src دائم عبر جميع الأجهزة
-            const fallbackSrc = thumb || mediaItem.thumbnail || instantUrl;
-            setMediaList(prev => prev.map(m => m.id === mediaId ? {
-              ...m,
-              src: fallbackSrc,
-              rawSrc: thumb || mediaItem.thumbnail || m.rawSrc,
-              thumbnail: thumb || mediaItem.thumbnail || '',
-              isUploading: false
-            } : m));
           }
         }).catch(() => {
-          const fallbackSrc = thumb || mediaItem.thumbnail || instantUrl;
+          clearTimeout(failsafeTimer);
+          const fallbackSrc = thumb || mediaItem.thumbnail;
           setMediaList(prev => prev.map(m => m.id === mediaId ? {
             ...m,
             src: fallbackSrc,
-            rawSrc: thumb || mediaItem.thumbnail || m.rawSrc,
-            thumbnail: thumb || mediaItem.thumbnail || '',
+            rawSrc: fallbackSrc,
+            thumbnail: thumb || m.thumbnail,
             isUploading: false
           } : m));
         });
@@ -1097,14 +1101,11 @@ function DiaryPanel({ project, team, onUpdate }) {
       }
     }
     e.target.value = '';
+
   }
 
   function addLog(e) {
     e.preventDefault();
-    if (mediaList.some(m => m.isUploading)) {
-      alert("جاري رفع الصور إلى السحابة حالياً، يرجى الانتظار ثوانٍ معدودة حتى اكتمال الرفع قبل حفظ اليومية.");
-      return;
-    }
     if (!form.work.trim()) return;
     const now = new Date().toISOString();
 
@@ -1498,28 +1499,6 @@ function DiaryPanel({ project, team, onUpdate }) {
                 {mediaList.map((m, idx) => (
                   <div key={idx} style={{ position: 'relative', width: 85, height: 85, borderRadius: 10, overflow: 'hidden', border: '1.5px solid var(--border)', background: '#0F172A', cursor: 'pointer' }}>
                     <img src={m.src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onClick={() => setPreviewModal(m)} />
-                    {/* Overlay طبقة شبه شفافة أثناء الرفع */}
-                    {m.isUploading && (
-                      <div style={{
-                        position: 'absolute',
-                        inset: 0,
-                        background: 'rgba(15, 23, 42, 0.75)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 4,
-                        color: '#fff',
-                        fontSize: 10,
-                        fontWeight: 700,
-                        zIndex: 2,
-                        pointerEvents: 'none',
-                        backdropFilter: 'blur(2px)'
-                      }}>
-                        <Loader2 size={18} className="spin" style={{ animation: 'spin 1s linear infinite', color: '#38BDF8' }} />
-                        <span>جاري الرفع...</span>
-                      </div>
-                    )}
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setMediaList(prev => prev.filter((_, i) => i !== idx)); }}
@@ -1538,28 +1517,12 @@ function DiaryPanel({ project, team, onUpdate }) {
           </div>
 
           <div className="diary-submit-row">
-            {(() => {
-              const isAnyMediaUploading = mediaList.some(m => m.isUploading);
-              return (
-                <button 
-                  className="btn btn-primary diary-submit-btn" 
-                  type="submit"
-                  disabled={isAnyMediaUploading}
-                  style={isAnyMediaUploading ? { opacity: 0.75, cursor: 'not-allowed', background: '#475569' } : {}}
-                >
-                  {isAnyMediaUploading ? (
-                    <>
-                      <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
-                      <span>جاري رفع الصور... استنّي ⏳</span>
-                    </>
-                  ) : (
-                    <>
-                      <Plus size={16} /> تسجيل اليومية
-                    </>
-                  )}
-                </button>
-              );
-            })()}
+            <button 
+              className="btn btn-primary diary-submit-btn" 
+              type="submit"
+            >
+              <Plus size={16} /> تسجيل اليومية
+            </button>
           </div>
         </form>
       </div>

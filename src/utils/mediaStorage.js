@@ -335,24 +335,21 @@ export async function resolveMediaDisplayUrl(item) {
   if (!item) return '';
   const src = typeof item === 'string' ? item : item.src;
   const thumbnail = (typeof item === 'object' && item?.thumbnail) ? item.thumbnail : '';
-  const id = typeof item === 'object' ? (item.id || (src?.startsWith('idb://') ? src.replace('idb://', '') : null)) : (src?.startsWith('idb://') ? src.replace('idb://', '') : null);
+  const id = typeof item === 'object' 
+    ? (item.id || (src?.startsWith('idb://') ? src.replace('idb://', '') : null) || (item.rawSrc?.startsWith('idb://') ? item.rawSrc.replace('idb://', '') : null)) 
+    : (src?.startsWith('idb://') ? src.replace('idb://', '') : null);
 
   // 1. إذا كان رابط سحابي HTTPS صريح
   if (typeof src === 'string' && (src.startsWith('http://') || src.startsWith('https://'))) {
     return src;
   }
 
-  // 2. إذا كان DataURL (مصغرات وبيانات base64)
-  if (typeof src === 'string' && src.startsWith('data:image/')) {
-    return src;
-  }
-
-  // 3. فحص الكاش السريع في الذاكرة
+  // 2. فحص الكاش السريع في الذاكرة
   if (id && blobUrlCache.has(id)) {
     return blobUrlCache.get(id);
   }
 
-  // 4. استرجاع الملف الثنائي الكامل من IndexedDB المحلي (إذا كان نفس جهاز المهندس)
+  // 3. استرجاع الملف الثنائي الكامل من IndexedDB المحلي (إذا كان نفس جهاز المهندس)
   if (id) {
     try {
       const blob = await getMediaBlob(id);
@@ -364,19 +361,46 @@ export async function resolveMediaDisplayUrl(item) {
     } catch (e) {
       console.warn("Could not load media from IndexedDB:", e);
     }
+
+    // 4. إذا لم تكن الصورة في IndexedDB المحلي، جلبها من Firestore Cloud Media Vault
+    try {
+      const { db } = await import('../firebase');
+      const { doc, getDoc } = await import('firebase/firestore');
+      if (db) {
+        const companyId = (typeof item === 'object' && item?.companyId) 
+          || (typeof localStorage !== 'undefined' ? (localStorage.getItem('platform-active-tenant-id') || localStorage.getItem('tashteeb_active_company_id')) : null);
+        let snap = null;
+        if (companyId) {
+          snap = await getDoc(doc(db, 'companies', companyId, 'media', id)).catch(() => null);
+        }
+        if (!snap || !snap.exists()) {
+          snap = await getDoc(doc(db, 'portal_shares_media', id)).catch(() => null);
+        }
+        if (snap && snap.exists() && snap.data()?.data) {
+          const cloudData = snap.data().data;
+          blobUrlCache.set(id, cloudData);
+          return cloudData;
+        }
+      }
+    } catch (err) {}
   }
 
-  // 5. استخدام المصغرة كبديل آمن إن وُجدت (يعمل عبر جميع المتصفحات والعملاء بنسبة 100%)
+  // 5. إذا كان DataURL (مصغرات وبيانات base64)
+  if (typeof src === 'string' && src.startsWith('data:image/')) {
+    return src;
+  }
+
+  // 6. استخدام المصغرة كبديل آمن إن وُجدت (يعمل عبر جميع المتصفحات والعملاء بنسبة 100%)
   if (thumbnail && (thumbnail.startsWith('data:') || thumbnail.startsWith('http'))) {
     return thumbnail;
   }
 
-  // 6. إذا كان رابط blob في الجلسة الحالية
+  // 7. إذا كان رابط blob في الجلسة الحالية
   if (typeof src === 'string' && src.startsWith('blob:')) {
     return src;
   }
 
-  // 7. منع إرجاع idb:// نهائياً للمتصفح حتى لا يظهر كصورة مكسورة
+  // 8. منع إرجاع idb:// نهائياً للمتصفح حتى لا يظهر كصورة مكسورة
   return '';
 }
 
@@ -433,6 +457,18 @@ export async function repairProjectLegacyMedia(project, onUpdate) {
         const thumb = await createMicroThumbnail(blob, false);
         if (thumb) {
           repairedMediaMap[item.mediaId] = thumb;
+          // رفع مباشر إلى Cloud Media Vault أيضاً لضمان توفرها سحابياً للأجهزة الأخرى
+          try {
+            const { uploadMediaToFirebaseStorage } = await import('../services/cloudSync');
+            uploadMediaToFirebaseStorage(
+              blob,
+              `companies/${project.companyId || 'company'}/projects/${project.id}`,
+              `repair_${item.mediaId}.jpg`,
+              thumb,
+              item.mediaId,
+              project.companyId
+            ).catch(() => {});
+          } catch (e) {}
         }
       }
     } catch (e) {}

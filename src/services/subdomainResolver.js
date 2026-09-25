@@ -66,6 +66,20 @@ export function getSubdomain() {
   // 4. استخراج النطاق الفرعي في النطاقات الحقيقية (مثل admin.tashteebpro.com أو amlak.tashteebpro.com)
   const parts = hostname.split('.');
   if (parts.length > 2) {
+    // استثناء نطاقات استضافة فايربيس الافتراضية (*.web.app أو *.firebaseapp.com)
+    if (hostname.endsWith('.web.app') || hostname.endsWith('.firebaseapp.com')) {
+      if (parts.length === 3) {
+        // مثلاً tashteeb-67d13.web.app هو اسم المشروع وليس نطاقاً فرعياً لشركة
+        try {
+          const savedSub = localStorage.getItem(SUBDOMAIN_SESSION_KEY);
+          if (savedSub && !RESERVED_SUBDOMAINS.includes(savedSub)) {
+            return savedSub;
+          }
+        } catch (e) {}
+        return null;
+      }
+    }
+
     const sub = parts[0].toLowerCase();
     if (!RESERVED_SUBDOMAINS.includes(sub)) {
       return sub;
@@ -152,6 +166,11 @@ export function getSubdomainUrl(subdomain) {
 
   // في بيئة التطوير المحلية
   if (hostname.includes('localhost') || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+    return `${protocol}//${window.location.host}/?subdomain=${subdomain}`;
+  }
+
+  // في بيئة استضافة فايربيس الافتراضية (*.web.app أو *.firebaseapp.com)
+  if (hostname.endsWith('.web.app') || hostname.endsWith('.firebaseapp.com')) {
     return `${protocol}//${window.location.host}/?subdomain=${subdomain}`;
   }
 

@@ -188,6 +188,7 @@ function TodayPanel({ project, currentUser, onUpdate }) {
     const file = e.target.files[0];
     if (!file) return;
     try {
+      const compId = project.companyId || (typeof localStorage !== 'undefined' ? (localStorage.getItem('platform-active-tenant-id') || localStorage.getItem('tashteeb_active_company_id')) : '') || 'company';
       const mediaId = 'ph_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
       const instantUrl = URL.createObjectURL(file);
       const thumb = await createMicroThumbnail(file);
@@ -195,49 +196,27 @@ function TodayPanel({ project, currentUser, onUpdate }) {
 
       const photoObj = {
         id: mediaId,
+        companyId: compId,
         src: thumb || instantUrl,
         rawSrc: thumb || `idb://${mediaId}`,
         thumbnail: thumb || '',
         caption: '',
         date: today,
-        isUploading: true
+        isUploading: false
       };
 
       setForm(f => ({ ...f, photos: [...f.photos, photoObj] }));
 
-      uploadMediaToFirebaseStorage(file, `companies/${project.companyId || 'company'}/projects/${project.id}`, file.name)
+      // رفع فوري في الخلفية إلى الخزينة السحابية دون تعطيل الواجهة
+      uploadMediaToFirebaseStorage(file, `companies/${compId}/projects/${project.id}`, file.name, thumb, mediaId, compId)
         .then(cloudUrl => {
           if (cloudUrl) {
             setForm(f => ({
               ...f,
-              photos: f.photos.map(p => p.id === mediaId ? { ...p, src: cloudUrl, rawSrc: cloudUrl, isUploading: false } : p)
-            }));
-          } else {
-            const fallback = thumb || photoObj.thumbnail || '';
-            setForm(f => ({
-              ...f,
-              photos: f.photos.map(p => p.id === mediaId ? {
-                ...p,
-                src: fallback || p.src,
-                rawSrc: fallback || p.rawSrc,
-                thumbnail: fallback || p.thumbnail,
-                isUploading: false
-              } : p)
+              photos: f.photos.map(p => p.id === mediaId ? { ...p, src: cloudUrl, rawSrc: cloudUrl } : p)
             }));
           }
-        }).catch(() => {
-          const fallback = thumb || photoObj.thumbnail || '';
-          setForm(f => ({
-            ...f,
-            photos: f.photos.map(p => p.id === mediaId ? {
-              ...p,
-              src: fallback || p.src,
-              rawSrc: fallback || p.rawSrc,
-              thumbnail: fallback || p.thumbnail,
-              isUploading: false
-            } : p)
-          }));
-        });
+        }).catch(() => {});
     } catch (err) {
       console.error("handlePhoto error:", err);
     }
@@ -250,10 +229,6 @@ function TodayPanel({ project, currentUser, onUpdate }) {
 
   function handleSave(e) {
     e.preventDefault();
-    if (form.photos && form.photos.some(p => p.isUploading)) {
-      alert("جاري رفع الصور حالياً، يرجى الانتظار ثوانٍ معدودة حتى اكتمال الرفع قبل حفظ اليومية.");
-      return;
-    }
     if (!form.work.trim()) return;
     setSaving(true);
     const safePhotos = (form.photos || []).map(p => {
@@ -343,18 +318,6 @@ function TodayPanel({ project, currentUser, onUpdate }) {
               {form.photos.map((p, i) => (
                 <div key={i} style={{ position: 'relative', width: 85, height: 85, borderRadius: 10, overflow: 'hidden', border: '2px solid var(--border)' }}>
                   <MediaThumbnail item={p} style={{ width: '100%', height: '100%' }} />
-                  {/* Overlay أثناء الرفع */}
-                  {p.isUploading && (
-                    <div style={{
-                      position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.75)',
-                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                      gap: 4, color: '#fff', fontSize: 10, fontWeight: 700, zIndex: 2, pointerEvents: 'none',
-                      backdropFilter: 'blur(2px)'
-                    }}>
-                      <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite', color: '#38BDF8' }} />
-                      <span>جاري الرفع...</span>
-                    </div>
-                  )}
                   <button type="button" onClick={() => removePhoto(i)} style={{
                     position: 'absolute', top: 2, left: 2, width: 22, height: 22,
                     background: 'rgba(239,68,68,0.9)', border: 'none', borderRadius: '50%',
@@ -582,6 +545,7 @@ function PhotosPanel({ project, onUpdate, onPreviewPhoto }) {
     const newPhotos = [];
     for (const file of files) {
       try {
+        const compId = project.companyId || (typeof localStorage !== 'undefined' ? (localStorage.getItem('platform-active-tenant-id') || localStorage.getItem('tashteeb_active_company_id')) : '') || 'company';
         const mediaId = 'ph_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
         const instantUrl = URL.createObjectURL(file);
         const thumb = await createMicroThumbnail(file);
@@ -591,8 +555,11 @@ function PhotosPanel({ project, onUpdate, onPreviewPhoto }) {
         try {
           cloudUrl = await uploadMediaToFirebaseStorage(
             file,
-            `companies/${project.companyId || 'company'}/projects/${project.id}`,
-            file.name
+            `companies/${compId}/projects/${project.id}`,
+            file.name,
+            thumb,
+            mediaId,
+            compId
           );
         } catch (uploadErr) {
           console.warn("[EngineerView] Cloud upload notice:", uploadErr);
@@ -600,6 +567,7 @@ function PhotosPanel({ project, onUpdate, onPreviewPhoto }) {
 
         const pObj = {
           id: mediaId,
+          companyId: compId,
           src: cloudUrl || thumb || instantUrl,
           rawSrc: cloudUrl || thumb || `idb://${mediaId}`,
           thumbnail: thumb || '',

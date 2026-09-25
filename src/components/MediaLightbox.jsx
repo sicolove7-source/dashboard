@@ -95,17 +95,19 @@ export default function MediaLightbox({ item, items = [], onClose }) {
           setLoading(false);
           return;
         }
-        // إذا لم توجد في IndexedDB (متصفح آخر أو عميل)، نستخدم الرابط السحابي أو المصغرة فوراً
+        // إذا لم توجد في IndexedDB (متصفح آخر أو عميل)، نعرض المصغرة فوراً ونحاول جلب النسخة عالية الدقة من Cloud Vault في الخلفية
         if (immediateSafeUrl) {
           setResolvedUrl(immediateSafeUrl);
-          setLoading(false);
-          return;
         }
         resolveMediaDisplayUrl(activeItem).then((url) => {
-          if (active) {
-            setResolvedUrl(url || immediateSafeUrl || '');
+          if (active && url && !url.startsWith('idb://')) {
+            setResolvedUrl(url);
+            setLoading(false);
+          } else {
             setLoading(false);
           }
+        }).catch(() => {
+          if (active) setLoading(false);
         });
       }).catch(() => {
         if (active) {

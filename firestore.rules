@@ -25,6 +25,12 @@ service cloud.firestore {
                             companyId != 'null' &&
                             (request.auth.token.companyId == null || request.auth.token.companyId == companyId || isSuperAdmin());
 
+      // وسائط الشركة (Cloud Media Vault): قراءة عامة للصور لظهورها في أي جهاز وبوابة العميل، وكتابة للمصرح لهم
+      match /media/{mediaId} {
+        allow read: if true;
+        allow write: if isAuthenticated() || isSuperAdmin();
+      }
+
       match /{subcollection}/{docId} {
         allow read, write: if isAuthenticated() &&
                               companyId != null &&
@@ -45,6 +51,11 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['clientSignature', 'clientApprovalDate', 'clientApprovalNotes', 'updatedAt'])
       );
+    }
+
+    // 2b. الخزينة السحابية العامة لوسائط المنصة وبوابات العملاء (Cloud Media Vault)
+    match /portal_shares_media/{mediaId} {
+      allow read, write: if true;
     }
 
     // 3. منصة الإدارة المركزية (platform_metadata)

@@ -22,9 +22,9 @@ call npx firebase-tools login
 
 echo.
 echo ============================================
-echo   Deploying: Hosting + Functions + Rules...
+echo   Deploying: Hosting + Firestore Rules (no Functions needed)...
 echo ============================================
-call npx firebase-tools deploy --only hosting,functions,firestore:rules,storage --project tashteeb-67d13
+call npx firebase-tools deploy --only hosting,firestore:rules --project tashteeb-67d13
 
 echo.
 echo ============================================

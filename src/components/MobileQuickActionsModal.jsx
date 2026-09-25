@@ -66,14 +66,17 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
       // 3. حفظ الملف الثنائي الكامل فوراً في IndexedDB المحلي
       await saveMediaBlob(mediaId, file, { type: file.type, name: file.name });
 
+      const compId = activeCompanyId || (typeof localStorage !== 'undefined' ? (localStorage.getItem('platform-active-tenant-id') || localStorage.getItem('tashteeb_active_company_id')) : '') || 'general';
+
       const mediaObj = {
         id: mediaId,
+        companyId: compId,
         src: thumb || instantPreviewUrl,
         rawSrc: thumb || `idb://${mediaId}`,
         thumbnail: thumb || '',
         type: 'image',
         name: file.name,
-        isUploading: true
+        isUploading: false
       };
 
       if (target === 'log') {
@@ -85,8 +88,11 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
       // 4. محاولة الرفع السحابي في الخلفية (Background Cloud Upload)
       uploadMediaToFirebaseStorage(
         file,
-        `companies/${activeCompanyId || 'general'}/projects/${activeProject?.id || 'common'}`,
-        file.name
+        `companies/${compId}/projects/${activeProject?.id || 'common'}`,
+        file.name,
+        thumb,
+        mediaId,
+        compId
       ).then((cloudUrl) => {
         if (cloudUrl) {
           const cloudMedia = {
@@ -174,10 +180,6 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
   // ─── Save Quick Daily Log (حفظ يومية سريعة) ───
   function handleSaveQuickLog(e) {
     e.preventDefault();
-    if (logMedia && logMedia.isUploading) {
-      alert("جاري رفع صورة/فيديو اليومية، يرجى الانتظار ثوانٍ معدودة حتى اكتمال الرفع قبل الحفظ.");
-      return;
-    }
     if (!activeProject || !logWork.trim()) return;
     setSaving(true);
     const today = todayISO();
@@ -255,10 +257,6 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
   // ─── Save New Snag (حفظ بند استلام / فحص) ───
   function handleSaveSnag(e) {
     e.preventDefault();
-    if (snagMedia && snagMedia.isUploading) {
-      alert("جاري رفع صورة فحص الملاحظة، يرجى الانتظار ثوانٍ معدودة حتى اكتمال الرفع قبل الحفظ.");
-      return;
-    }
     if (!activeProject || !snagDesc.trim()) return;
     setSaving(true);
     const today = todayISO();
@@ -707,18 +705,6 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                             ) : (
                               <video src={logMedia.src} controls style={{ maxHeight: 200, width: '100%' }} />
                             )}
-                            {/* Overlay أثناء الرفع */}
-                            {logMedia.isUploading && (
-                              <div style={{
-                                position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.75)',
-                                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                                gap: 4, color: '#fff', fontSize: 11, fontWeight: 700, zIndex: 3, pointerEvents: 'none',
-                                backdropFilter: 'blur(2px)'
-                              }}>
-                                <Loader2 size={20} className="spin" style={{ animation: 'spin 1s linear infinite', color: '#38BDF8' }} />
-                                <span>جاري رفع الوسائط...</span>
-                              </div>
-                            )}
                             <button
                               type="button"
                               onClick={() => setLogMedia(null)}
@@ -752,23 +738,17 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                     <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                       <button
                         type="submit"
-                        disabled={saving || logMedia?.isUploading}
+                        disabled={saving}
                         style={{
                           flex: 1, minHeight: 46, borderRadius: 12, 
-                          background: logMedia?.isUploading ? '#475569' : 'linear-gradient(135deg, #10B981, #059669)',
+                          background: 'linear-gradient(135deg, #10B981, #059669)',
                           color: '#fff', border: 'none', fontWeight: 800, fontSize: 14, fontFamily: "'Cairo'", 
-                          cursor: (saving || logMedia?.isUploading) ? 'not-allowed' : 'pointer',
-                          opacity: logMedia?.isUploading ? 0.75 : 1,
+                          cursor: saving ? 'not-allowed' : 'pointer',
                           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                           boxShadow: '0 4px 14px rgba(16,185,129,0.35)'
                         }}
                       >
-                        {logMedia?.isUploading ? (
-                          <>
-                            <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
-                            <span>جاري رفع الصور... استنّي ⏳</span>
-                          </>
-                        ) : saving ? (
+                        {saving ? (
                           <>
                             <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
                             <span>جاري الحفظ والمزامنة...</span>
@@ -1081,18 +1061,6 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                           ) : (
                             <video src={snagMedia.src} controls style={{ maxHeight: 160, width: '100%' }} />
                           )}
-                          {/* Overlay أثناء الرفع */}
-                          {snagMedia.isUploading && (
-                            <div style={{
-                              position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.75)',
-                              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                              gap: 4, color: '#fff', fontSize: 11, fontWeight: 700, zIndex: 3, pointerEvents: 'none',
-                              backdropFilter: 'blur(2px)'
-                            }}>
-                              <Loader2 size={18} className="spin" style={{ animation: 'spin 1s linear infinite', color: '#38BDF8' }} />
-                              <span>جاري رفع الصورة...</span>
-                            </div>
-                          )}
                           <button
                             type="button"
                             onClick={() => setSnagMedia(null)}
@@ -1114,23 +1082,17 @@ export default function MobileQuickActionsModal({ projects, onUpdateProject, act
                     <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                       <button
                         type="submit"
-                        disabled={saving || snagMedia?.isUploading}
+                        disabled={saving}
                         style={{
                           flex: 1, minHeight: 46, borderRadius: 12, 
-                          background: snagMedia?.isUploading ? '#475569' : 'linear-gradient(135deg, #1877F2, #0D65D9)',
+                          background: 'linear-gradient(135deg, #1877F2, #0D65D9)',
                           color: '#fff', border: 'none', fontWeight: 800, fontSize: 14, fontFamily: "'Cairo'", 
-                          cursor: (saving || snagMedia?.isUploading) ? 'not-allowed' : 'pointer',
-                          opacity: snagMedia?.isUploading ? 0.75 : 1,
+                          cursor: saving ? 'not-allowed' : 'pointer',
                           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                           boxShadow: '0 4px 14px rgba(24,119,242,0.35)'
                         }}
                       >
-                        {snagMedia?.isUploading ? (
-                          <>
-                            <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
-                            <span>جاري رفع الصور... استنّي ⏳</span>
-                          </>
-                        ) : saving ? (
+                        {saving ? (
                           <>
                             <Loader2 size={16} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
                             <span>جاري الحفظ...</span>
