@@ -872,7 +872,7 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
     try {
       const regRaw = localStorage.getItem('platform-all-users-registry');
       const reg = regRaw ? JSON.parse(regRaw) : {};
-      next.forEach(u => {
+      cleanNext.forEach(u => {
         const uWithComp = {
           ...u,
           companyId: activeCompId,

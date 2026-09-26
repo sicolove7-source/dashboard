@@ -5,7 +5,7 @@ import StatusBadge from '../components/StatusBadge';
 import StampRing from '../components/StampRing';
 import { STAGES, ENGINEERS, TECH_OFFICE } from '../utils/constants';
 import { fmtDate, todayISO, nowTimeISO, fmtTime, fmtDateTime, compressImageFile } from '../utils/helpers';
-import { uploadMediaToFirebaseStorage } from '../services/cloudSync';
+import { uploadMediaToFirebaseStorage, generatePortalToken } from '../services/cloudSync';
 import { saveMediaBlob, getMediaBlob, createMicroThumbnail, repairProjectLegacyMedia } from '../utils/mediaStorage';
 import MediaThumbnail from '../components/MediaThumbnail';
 import MediaLightbox from '../components/MediaLightbox';
@@ -255,7 +255,7 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
                   if (!onOpenClientPortal) return;
                   let activeToken = token || project.clientPortalToken;
                   if (!activeToken) {
-                    activeToken = 'cpt_' + (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : (Math.random().toString(36).slice(2, 10) + Date.now().toString(36)));
+                    activeToken = generatePortalToken();
                   }
                   if (onUpdate && (project.clientPortalToken !== activeToken || project.clientPortalEnabled !== true)) {
                     onUpdate({ clientPortalToken: activeToken, clientPortalEnabled: true });

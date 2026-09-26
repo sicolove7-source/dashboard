@@ -169,6 +169,9 @@ export async function submitPublicLead(companyId, leadData) {
   const cId = cleanCompanyId(companyId);
   if (!cId) return { success: false, error: 'معرف الشركة غير صالح' };
 
+  // TODO: الحماية الحالية من التكرار (Rate Limiting) تعتمد فقط على sessionStorage في المتصفح
+  // وهي قابلة للتجاوز بسهولة من العميل. يجب استبدالها أو تعزيزها لاحقاً بتحقق من جهة السيرفر
+  // (Server-side validation via Cloud Functions أو Firebase App Check / Cloudflare Turnstile).
   // Rate Limiting: منع إرسال أكثر من طلب خلال 30 ثانية لمنع هجمات الـ Spam
   try {
     const lastSubmit = sessionStorage.getItem('last_intake_submit');

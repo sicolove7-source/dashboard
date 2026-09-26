@@ -11,7 +11,20 @@ service firebase.storage {
         request.auth.token.role == 'super_admin' ||
         request.auth.token.isSuperAdmin == true ||
         request.auth.token.email == 'sicolove7@gmail.com' ||
-        request.auth.token.email.matches('(?i)^sicolove7@gmail\\.com$')
+        request.auth.token.email == 'admin@platform.com' ||
+        request.auth.token.email == 'admin@tashteebpro.com'
+      );
+    }
+
+    function companyBelongsToUser(companyId) {
+      let tokenCompId = request.auth.token.companyId;
+      return isSuperAdmin() || (
+        isAuthenticated() && tokenCompId != null &&
+        (
+          tokenCompId == companyId ||
+          ('comp_' + companyId) == tokenCompId ||
+          companyId == ('comp_' + tokenCompId)
+        )
       );
     }
 
@@ -20,24 +33,19 @@ service firebase.storage {
              request.resource.contentType.matches('image/.*|application/pdf|video/.*');
     }
 
-    // 1. وسائط وصور ومستندات كل شركة ومشروعاتها (عزل تام على مستوى التخزين)
     match /companies/{companyId}/{allPaths=**} {
-      // السماح بالقراءة لعرض الصور والمخططات في البوابة والتطبيق
       allow read: if true;
-      // السماح بالرفع للمستخدمين الموثقين أو الرفع الميداني للصور المصرح بها
-      allow write: if isValidMedia();
+      allow write: if isValidMedia() && companyBelongsToUser(companyId);
     }
 
-    // 2. وسائط الموقع العامة (site_media) لليوميات وبوابات العملاء
     match /site_media/{allPaths=**} {
       allow read: if true;
-      allow write: if isValidMedia();
+      allow write: if isValidMedia() && isAuthenticated();
     }
 
-    // 3. مسار عام احتياطي للصور والملفات المصرح بها فقط
     match /{allPaths=**} {
       allow read: if true;
-      allow write: if isValidMedia();
+      allow write: if false;
     }
   }
 }

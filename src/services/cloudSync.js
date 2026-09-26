@@ -163,9 +163,27 @@ export async function uploadMediaToFirebaseStorage(fileOrDataUrl, folder = 'site
 export function cleanCompanyId(companyId) {
   if (!companyId) return null;
   if (typeof companyId === 'object') return companyId.id || companyId.companyId || null;
-  const str = String(companyId).trim();
+  let str = String(companyId).trim();
   if (str === '[object Object]' || str === 'undefined' || str === 'null') return null;
+  if (!str.startsWith('comp_')) str = 'comp_' + str;
   return str;
+}
+
+export function generatePortalToken() {
+  if (typeof crypto !== 'undefined') {
+    if (typeof crypto.randomUUID === 'function') {
+      return 'cpt_' + crypto.randomUUID().replace(/-/g, '');
+    }
+    if (typeof crypto.getRandomValues === 'function') {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      return 'cpt_' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    }
+  }
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
+    return 'cpt_' + globalThis.crypto.randomUUID().replace(/-/g, '');
+  }
+  throw new Error('Cryptographically secure PRNG (crypto.randomUUID) is not available');
 }
 
 /**
@@ -508,11 +526,15 @@ export function mergeProjectsPreservingLocal(localProjects, incomingProjects, ta
   const safeLocal = filterByTarget(localProjects);
   const safeIncoming = filterByTarget(incomingProjects);
 
+  if (!incomingProjects) {
+    return safeLocal;
+  }
   if (safeLocal.length === 0) {
     return safeIncoming;
   }
   if (safeIncoming.length === 0) {
-    return safeLocal;
+    // السحابة هي مصدر الحقيقة (Source of Truth): إذا كانت فارغة، لا نعيد إحياء المشاريع المحذوفة
+    return safeLocal.filter(p => p && (p._pendingSync === true || p.isOfflineCreated === true));
   }
 
   const localMap = new Map();
@@ -666,7 +688,7 @@ export function mergeProjectsPreservingLocal(localProjects, incomingProjects, ta
     };
 
     const finalSpent = mergedExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0) || Number(incoming.spent || local.spent || 0);
-    const finalToken = incoming.clientPortalToken || local.clientPortalToken || ('cpt_' + (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : (Math.random().toString(36).slice(2, 10) + Date.now().toString(36))));
+    const finalToken = incoming.clientPortalToken || local.clientPortalToken || generatePortalToken();
     const finalPortalEnabled = incoming.clientPortalEnabled !== false && local.clientPortalEnabled !== false;
 
     const localTime = new Date(local.updatedAt || 0).getTime();
@@ -690,10 +712,12 @@ export function mergeProjectsPreservingLocal(localProjects, incomingProjects, ta
     };
   });
 
-  // إضافة أي مشاريع أُنشئت محلياً فقط ولم تُرفع بعد إلى السحابة مع التأكد من ملكيتها لنفس الشركة
+  // إضافة فقط المشاريع المنشأة محلياً دون اتصال ولم تُرفع بعد (حتى لا نُعيد إحياء المشاريع المحذوفة سحابياً)
   safeLocal.forEach(local => {
     if (local && local.id && !safeIncoming.some(inc => inc.id === local.id)) {
-      merged.push(local);
+      if (local._pendingSync === true || local.isOfflineCreated === true) {
+        merged.push(local);
+      }
     }
   });
 
@@ -855,7 +879,7 @@ export async function syncSingleProjectToCloud(companyId, projectId, patchOrProj
     });
 
     if (!safeProject.clientPortalToken) {
-      safeProject.clientPortalToken = 'cpt_' + (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : (Math.random().toString(36).slice(2, 10) + Date.now().toString(36)));
+      safeProject.clientPortalToken = generatePortalToken();
       safeProject.clientPortalEnabled = true;
     }
 
@@ -1332,8 +1356,22 @@ export function subscribeToCloudCompanyField(companyId, fieldName, onUpdate) {
     const unsub = onSnapshot(docRef, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        if (Array.isArray(data?.[fieldName])) {
-          onUpdate(data[fieldName]);
+        let val = data?.[fieldName];
+        if (fieldName === 'settings' && data) {
+          const directSettings = (val && typeof val === 'object' && !Array.isArray(val)) ? { ...val } : {};
+          if (!directSettings.companyName && data.name) {
+            directSettings.companyName = data.name;
+          }
+          if (!directSettings.companyLogo && data.logo) {
+            directSettings.companyLogo = data.logo;
+          }
+          if (!directSettings.currency && data.currency) {
+            directSettings.currency = data.currency;
+          }
+          val = directSettings;
+        }
+        if (val !== undefined && val !== null) {
+          onUpdate(val);
         }
       }
     }, (err) => {
@@ -1386,11 +1424,14 @@ export function subscribeToCloudProjects(companyId, onUpdate) {
             if (Array.isArray(data?.projects) && data.projects.length > 0) {
               onUpdate(data.projects);
               await migrateLegacyProjectsToSubcollection(cId, data.projects);
+              return;
             }
           }
         } catch (e) {
           console.warn("Legacy projects check error:", e.message);
         }
+        // إذا كانت المجموعة الفرعية فارغة ولا توجد مشاريع قديمة، نُرسل مصفوفة فارغة
+        onUpdate([]);
       }
     }, (err) => {
       console.warn("Cloud snapshot error (subcollection projects):", err.message);

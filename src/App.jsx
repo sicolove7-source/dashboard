@@ -60,6 +60,7 @@ import {
   fetchCompanyDataFromCloud,
   fetchTenantBySubdomain,
   isDemoProject,
+  generatePortalToken,
 } from './services/cloudSync';
 import { syncAllPendingMedia, onSyncStatusChange } from './services/backgroundMediaSync';
 import { parseClientPortalFromUrl, resolveClientPortalProject, submitClientPortalApproval, subscribeToClientPortal } from './services/portalResolver';
@@ -126,8 +127,8 @@ function hasCollectionChanged(prev, next) {
     if (!b || !b.id) return true;
     const a = prevMap.get(String(b.id));
     if (!a) return true;
-    if (a === b) continue;
     if (a.updatedAt !== b.updatedAt) return true;
+    if (a.name !== b.name || a.status !== b.status || a.progress !== b.progress || a.client !== b.client || a.area !== b.area || a.engineer !== b.engineer) return true;
 
     // فحص دقيق للبيانات المالية والمصروفات والدفعات
     if (Number(a.spent || 0) !== Number(b.spent || 0)) return true;
@@ -294,7 +295,7 @@ export default function App() {
     if (currentUser?.isSuperAdmin || currentUser?.role === 'super_admin' || isPreviewing) {
       return getActiveTenantId() || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('tashteeb_preview_tenant_id')) || currentUser?.companyId || null;
     }
-    return currentUser?.companyId || null;
+    return currentUser?.companyId || getActiveTenantId() || null;
   }, [currentUser]);
 
   // استخراج النطاق الفرعي الخاص بالشركة الحالية لعرضه وتسهيل نسخه
@@ -893,6 +894,64 @@ export default function App() {
     return () => window.removeEventListener('company_settings_updated', handleSettingsUpdated);
   }, [activeCompanyId]);
 
+  // استماع ومزامنة سحابية حية لإعدادات وهوية الشركة لحظياً (Cross-Browser Realtime Company Settings)
+  useEffect(() => {
+    if (!isAuthenticated || !activeCompanyId) return;
+    const unsub = subscribeToCloudCompanyField(activeCompanyId, 'settings', (cloudSettings) => {
+      if (cloudSettings && typeof cloudSettings === 'object') {
+        setCompanySettings((prev) => {
+          const isDefaultName = (n) => !n || n === 'شركة المقاولات' || n === 'شركة المقاولات والتشطيبات' || n === 'شركة جديدة';
+          const safeName = !isDefaultName(cloudSettings.companyName)
+            ? cloudSettings.companyName
+            : (prev?.companyName || cloudSettings.companyName || 'شركة المقاولات');
+          const safeLogo = cloudSettings.companyLogo !== undefined ? (cloudSettings.companyLogo || null) : (prev?.companyLogo || null);
+
+          const merged = {
+            ...prev,
+            ...cloudSettings,
+            companyName: safeName,
+            companyLogo: safeLogo,
+          };
+
+          const hasChanged =
+            prev?.companyName !== merged.companyName ||
+            prev?.companyLogo !== merged.companyLogo ||
+            prev?.currency !== merged.currency ||
+            prev?.primaryColor !== merged.primaryColor ||
+            prev?.accentColor !== merged.accentColor;
+
+          if (hasChanged) {
+            try {
+              const rawS = JSON.stringify(merged);
+              localStorage.setItem(`tenant_${activeCompanyId}_settings`, rawS);
+              if (!activeCompanyId.startsWith('comp_')) {
+                localStorage.setItem(`tenant_comp_${activeCompanyId}_settings`, rawS);
+              } else {
+                localStorage.setItem(`tenant_${activeCompanyId.replace(/^comp_/, '')}_settings`, rawS);
+              }
+            } catch (e) {}
+
+            applyCompanyBranding(merged);
+            if (merged.currency) setGlobalCurrency(merged.currency);
+
+            setCurrentUser(curr => {
+              if (curr && (!curr.companyId || curr.companyId === activeCompanyId) && curr.companyName !== merged.companyName) {
+                const updatedUser = { ...curr, companyName: merged.companyName };
+                try { localStorage.setItem('active_session_user', JSON.stringify(updatedUser)); } catch (e) {}
+                return updatedUser;
+              }
+              return curr;
+            });
+
+            return merged;
+          }
+          return prev;
+        });
+      }
+    });
+    return () => { if (typeof unsub === 'function') unsub(); };
+  }, [activeCompanyId, isAuthenticated]);
+
   // استماع ومزامنة سحابية حية للمشاريع لحظياً
   useEffect(() => {
     if (!isAuthenticated || !activeCompanyId) return;
@@ -1128,17 +1187,18 @@ export default function App() {
   }
 
   function saveProject(data) {
+    const effectiveCompId = activeCompanyId || currentUser?.companyId || getActiveTenantId() || null;
     if (data.id) {
-      updateProject(data.id, { ...data, companyId: data.companyId || activeCompanyId });
+      updateProject(data.id, { ...data, companyId: data.companyId || effectiveCompId });
       setActiveId(data.id);
       setView("detail");
     } else {
       const id = "p" + Date.now();
-      const token = "cpt_" + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+      const token = generatePortalToken();
       const newProject = {
         ...data,
         id,
-        companyId: activeCompanyId,
+        companyId: effectiveCompId,
         clientPortalToken: data.clientPortalToken || token,
         clientPortalEnabled: data.clientPortalEnabled !== false,
         submittals: [],
@@ -1153,15 +1213,15 @@ export default function App() {
       };
       setProjects(prev => {
         const updated = [newProject, ...(prev || [])];
-        try {
-          const lean = updated.map(p => sanitizeProjectForCloud(p));
-          localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(lean));
-          flashSave(true);
-        } catch (e) {
-          flashSave(false);
-        }
-        if (activeCompanyId) {
-          syncSingleProjectToCloud(activeCompanyId, id, newProject).catch(err => {
+        if (effectiveCompId) {
+          try {
+            const lean = updated.map(p => sanitizeProjectForCloud(p));
+            localStorage.setItem(`tenant_${effectiveCompId}_projects`, JSON.stringify(lean));
+            flashSave(true);
+          } catch (e) {
+            flashSave(false);
+          }
+          syncSingleProjectToCloud(effectiveCompId, id, newProject).catch(err => {
             console.warn("Cloud sync single project error:", err);
             flashSave(false);
           });
@@ -1174,16 +1234,17 @@ export default function App() {
   }
 
   function deleteProject(id) {
+    const effectiveCompId = activeCompanyId || currentUser?.companyId || getActiveTenantId() || null;
     setProjects(prev => {
       const updated = (prev || []).filter((p) => p.id !== id);
-      try {
-        localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(updated));
-        flashSave(true); 
-      } catch (e) {
-        flashSave(false);
-      }
-      if (activeCompanyId) {
-        deleteSingleProjectFromCloud(activeCompanyId, id).catch(err => {
+      if (effectiveCompId) {
+        try {
+          localStorage.setItem(`tenant_${effectiveCompId}_projects`, JSON.stringify(updated));
+          flashSave(true); 
+        } catch (e) {
+          flashSave(false);
+        }
+        deleteSingleProjectFromCloud(effectiveCompId, id).catch(err => {
           console.warn("Cloud delete project error:", err);
           flashSave(false);
         });
@@ -1194,12 +1255,13 @@ export default function App() {
   }
 
   function updateProject(id, patch) {
+    const effectiveCompId = activeCompanyId || currentUser?.companyId || getActiveTenantId() || null;
     const now = new Date().toISOString();
     setProjects(prev => {
       const list = prev || [];
       const updated = list.map((p) => {
         if (p.id === id) {
-          const merged = { ...p, ...patch, updatedAt: patch?.updatedAt || now };
+          const merged = { ...p, ...patch, companyId: p.companyId || effectiveCompId, updatedAt: patch?.updatedAt || now };
           if (Array.isArray(merged.expenses)) {
             merged.spent = merged.expenses.reduce((s, e) => s + (Number(e?.amount) || 0), 0);
           }
@@ -1208,24 +1270,24 @@ export default function App() {
             merged.paidAmount = merged.totalPaid;
           }
           if (!merged.clientPortalToken) {
-            merged.clientPortalToken = 'cpt_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+            merged.clientPortalToken = generatePortalToken();
             merged.clientPortalEnabled = true;
           }
           return merged;
         }
         return p;
       });
-      try {
-        const lean = updated.map(p => sanitizeProjectForCloud(p));
-        localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(lean));
-        flashSave(true);
-      } catch (e) {
-        console.error("localStorage save error", e);
-        flashSave(false);
-      }
-      if (activeCompanyId) {
+      if (effectiveCompId) {
+        try {
+          const lean = updated.map(p => sanitizeProjectForCloud(p));
+          localStorage.setItem(`tenant_${effectiveCompId}_projects`, JSON.stringify(lean));
+          flashSave(true);
+        } catch (e) {
+          console.error("localStorage save error", e);
+          flashSave(false);
+        }
         const fullProject = updated.find(p => p.id === id);
-        syncSingleProjectToCloud(activeCompanyId, id, fullProject || { ...patch, updatedAt: now }).catch(err => {
+        syncSingleProjectToCloud(effectiveCompId, id, fullProject || { ...patch, updatedAt: now }).catch(err => {
           console.warn("Cloud sync update project error:", err);
           flashSave(false);
         });
@@ -1299,7 +1361,19 @@ export default function App() {
             resolvedUser.isSuperAdmin === true
           );
           const role = isSuperAdmin ? 'super_admin' : (claimRole || resolvedUser.role || 'engineer');
-          const companyId = claims.companyId || resolvedUser.companyId || (isSuperAdmin ? (getActiveTenantId() || null) : null);
+
+          let resolvedCompanyIdForSuperAdmin = null;
+          if (isSuperAdmin) {
+            try {
+              const currentSub = getSubdomain();
+              if (currentSub) {
+                const subTenant = await fetchTenantBySubdomain(currentSub);
+                resolvedCompanyIdForSuperAdmin = subTenant?.id || null;
+              }
+            } catch (e) {}
+          }
+          const companyId = claims.companyId || resolvedUser.companyId ||
+            (isSuperAdmin ? (resolvedCompanyIdForSuperAdmin || getActiveTenantId() || null) : null);
 
           // إذا كان الحساب فرعياً (ليس سوبر أدمن) ودخول الحسابات الفرعية مقفل سحابياً أو محلياً -> إنهاء الجلسة فوراً
           if (role !== 'super_admin' && !isSuperAdmin) {
@@ -1457,10 +1531,11 @@ export default function App() {
     }
 
     // 3. تسجيل الدخول العادي (إما على سب-دومين الشركة الصحيح، أو الإدارة، أو سوبر أدمن)
-    setCurrentUser(userData);
+    const finalUserData = { ...userData, companyId: userData?.companyId || compId };
+    setCurrentUser(finalUserData);
     setIsAuthenticated(true);
     try {
-      localStorage.setItem('active_session_user', JSON.stringify(userData));
+      localStorage.setItem('active_session_user', JSON.stringify(finalUserData));
     } catch (e) {}
     setTab(defaultTab);
     setView('list');

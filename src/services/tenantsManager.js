@@ -831,14 +831,21 @@ export async function getTenantDataAsync(companyId) {
   if (!companyId) return getTenantData(null);
   try {
     const cloud = await fetchCompanyDataFromCloud(companyId);
-    if (cloud) {
+    const subProjects = await fetchProjectsFromCloud(companyId);
+
+    if (cloud || Array.isArray(subProjects)) {
       const tenants = await loadAllTenantsAsync();
       // لا نستخدم tenants[0] كـ fallback لأن ذلك يُعطي بيانات شركة خاطئة
       const tenant = tenants.find(t => t.id === companyId) || null;
 
       const localFallback = getTenantData(companyId);
       const localSettings = localFallback?.settings;
-      const cloudSettings = cloud.settings;
+      const rawCloudSettings = cloud?.settings || (cloud?.name ? { companyName: cloud.name, companyLogo: cloud.logo, currency: cloud.currency } : null);
+      const cloudSettings = rawCloudSettings ? { ...rawCloudSettings } : null;
+      const isDefaultName = (n) => !n || n === 'شركة المقاولات' || n === 'شركة المقاولات والتشطيبات' || String(n).includes('المقاولات النموذجية') || n === 'شركة جديدة';
+      if (cloud?.name && (!cloudSettings?.companyName || isDefaultName(cloudSettings.companyName))) {
+        if (cloudSettings) cloudSettings.companyName = cloud.name;
+      }
 
       // مقارنة تاريخ التعديل لضمان عدم إتلاف التعديلات الأحدث
       const localTime = localSettings?.updatedAt ? new Date(localSettings.updatedAt).getTime() : 0;
@@ -858,7 +865,6 @@ export async function getTenantDataAsync(companyId) {
       }
 
       // الحفاظ على اسم الشركة المخصص ومنع طمسه بالاسم الافتراضي القديم أو التجريبي
-      const isDefaultName = (n) => !n || n === 'شركة المقاولات' || n === 'شركة المقاولات والتشطيبات' || String(n).includes('المقاولات النموذجية') || n === 'شركة جديدة';
       let mergedName = 'شركة المقاولات';
       if (isLocalNewer && !isDefaultName(localSettings?.companyName)) {
         mergedName = localSettings.companyName;
@@ -929,16 +935,17 @@ export async function getTenantDataAsync(companyId) {
           (isLocalNewer && localSettings?.companyName !== cloudSettings?.companyName)) {
         try { syncSettingsToCloud(companyId, settings); } catch (e) {}
       }
-      const rawUsers = Array.isArray(cloud.users) && cloud.users.length > 0 ? cloud.users : null;
+      const rawUsers = Array.isArray(cloud?.users) && cloud.users.length > 0 ? cloud.users : null;
       const mergedUsers = sanitizeCompanyUsersForCloud(mergeUsersPreservingLocal(localFallback.users, rawUsers));
-      const mergedTeam = mergeTeamsPreservingLocal(localFallback.team, cloud.team, mergedUsers);
-      const leads = Array.isArray(cloud.leads) ? cloud.leads : null;
-      const subProjects = await fetchProjectsFromCloud(companyId);
-      const cloudProjects = (Array.isArray(subProjects) && subProjects.length > 0)
+      const mergedTeam = mergeTeamsPreservingLocal(localFallback.team, cloud?.team, mergedUsers);
+      const leads = Array.isArray(cloud?.leads) ? cloud.leads : null;
+      const cloudProjects = Array.isArray(subProjects)
         ? subProjects
-        : (Array.isArray(cloud.projects) ? cloud.projects : null);
+        : (Array.isArray(cloud?.projects) ? cloud.projects : null);
 
-      const projects = mergeProjectsPreservingLocal(localFallback.projects, cloudProjects, companyId);
+      const projects = cloudProjects !== null
+        ? mergeProjectsPreservingLocal(localFallback.projects, cloudProjects, companyId)
+        : localFallback.projects;
 
       // تحديث الـ LocalStorage Cache في كافة المفاتيح المعنية
       if (settings) {

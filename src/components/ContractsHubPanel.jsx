@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { getGlobalCurrency } from '../utils/helpers';
 import { openWhatsApp } from '../utils/whatsappTemplates';
-import { syncSingleProjectToCloud, publishProjectToPortalShares } from '../services/cloudSync';
+import { syncSingleProjectToCloud, publishProjectToPortalShares, generatePortalToken } from '../services/cloudSync';
 import { getActiveTenantId } from '../services/tenantsManager';
 
 export default function ContractsHubPanel({
@@ -27,14 +27,14 @@ export default function ContractsHubPanel({
   // Generate public client portal URL with token as document identifier
   const companyId = activeCompanyId || project.companyId || currentUser?.companyId || getActiveTenantId() || null;
   const isPortalActive = project.clientPortalEnabled === true;
-  const activeToken = project.clientPortalToken || ('cpt_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36));
+  const activeToken = project.clientPortalToken || generatePortalToken();
   const portalUrl = `${window.location.origin}/portal/${project.clientPortalToken || activeToken}`;
 
   // دالة مركزية لضمان توليد التوكن وحفظه ونشره سحابياً في portal_shares فوراً
   const ensurePortalPublished = async (desiredState = true) => {
     let tok = project.clientPortalToken;
     if (!tok || typeof tok !== 'string' || tok.trim().length === 0) {
-      tok = 'cpt_' + (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : Math.random().toString(36).substring(2, 10) + Date.now().toString(36));
+      tok = generatePortalToken();
     }
     const patch = {
       clientPortalEnabled: desiredState,

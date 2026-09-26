@@ -16,17 +16,18 @@ service cloud.firestore {
       );
     }
 
-    // دالة تتحقق من ملكية الشركة مع قبول صيغتي المعرف (comp_xxx أو xxx)
     function companyBelongsToUser(companyId) {
       let tokenCompId = request.auth.token.companyId;
-      return tokenCompId == null ||
-             tokenCompId == companyId ||
-             ('comp_' + companyId) == tokenCompId ||
-             companyId == ('comp_' + tokenCompId) ||
-             isSuperAdmin();
+      return isSuperAdmin() || (
+        tokenCompId != null &&
+        (
+          tokenCompId == companyId ||
+          ('comp_' + companyId) == tokenCompId ||
+          companyId == ('comp_' + tokenCompId)
+        )
+      );
     }
 
-    // 1. بيانات كل شركة ومشروعاتها وفريقها وعملائها (عزل تام لكل شركة)
     match /companies/{companyId} {
       allow read, write: if isAuthenticated() &&
                             companyId != null &&
@@ -35,10 +36,9 @@ service cloud.firestore {
                             companyId != 'null' &&
                             companyBelongsToUser(companyId);
 
-      // وسائط الشركة (Cloud Media Vault): قراءة عامة للصور لظهورها في أي جهاز وبوابة العميل، وكتابة للمصرح لهم
       match /media/{mediaId} {
         allow read: if true;
-        allow write: if isAuthenticated() || isSuperAdmin();
+        allow write: if companyBelongsToUser(companyId);
       }
 
       match /{subcollection}/{docId} {
@@ -50,60 +50,50 @@ service cloud.firestore {
       }
     }
 
-    // 2. بوابة العميل بالتوكن السري فقط (قراءة عامة للعميل، ونشر وتوقيع آمن)
     match /portal_shares/{token} {
-      // قراءة المشروع بالتوكن متاحة لأي زائر خارجي
       allow read: if true;
-      // السماح بنشر وحذف البوابة للمستخدم الموثق (المقاول / المشرف)
-      allow create, delete: if isAuthenticated();
-      // السماح بالتحديث للمستخدم الموثق أو للعميل غير المسجل بتحديث التوقيع والاعتماد فقط
-      allow update: if isAuthenticated() || (
+      allow create: if companyBelongsToUser(request.resource.data.companyId);
+      allow delete: if companyBelongsToUser(resource.data.companyId);
+      allow update: if companyBelongsToUser(resource.data.companyId) ||
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['clientSignature', 'clientApprovalDate', 'clientApprovalNotes', 'updatedAt'])
-      );
+          .hasOnly(['clientSignature', 'clientApprovalDate', 'clientApprovalNotes', 'updatedAt']);
     }
 
-    // 2b. الخزينة السحابية العامة لوسائط المنصة وبوابات العملاء (Cloud Media Vault)
     match /portal_shares_media/{mediaId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
-    // 3. منصة الإدارة المركزية (platform_metadata)
-    // منع الوصول لبيانات المشرف السري
     match /platform_metadata/superadmin {
       allow read, write: if false;
     }
 
-    // إعدادات المنصة: قراءة للجميع، كتابة للمشرف العام
     match /platform_metadata/platform_settings {
       allow read: if true;
       allow write: if isSuperAdmin();
     }
 
-    // دليل الشركات المشتركة: متاح للقراءة لدعم النطاقات الفرعية (Subdomains) للزوار
     match /platform_metadata/tenants {
       allow read: if true;
-      allow write: if isAuthenticated() || isSuperAdmin();
+      allow write: if isSuperAdmin();
     }
 
-    // دليل السابدومين العام المخصص لربط السابدومين بالشركة للزوار بدون تسجيل دخول
     match /tenant_directory/{subdomain} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if isSuperAdmin() || (isAuthenticated() && resource == null);
+      allow update, delete: if isSuperAdmin();
     }
 
-    // دليل المستخدمين المركزي: قراءة للجميع لدعم تسجيل دخول الموظفين بالهاتف، وكتابة للموثقين والسوبر أدمن
     match /platform_metadata/users_directory {
       allow read: if true;
-      allow write: if isAuthenticated() || isSuperAdmin();
+      allow write: if isSuperAdmin();
     }
 
-    // أي وثائق إدارية أخرى في platform_metadata
     match /platform_metadata/{docId} {
       allow read: if isAuthenticated();
       allow write: if isSuperAdmin();
     }
 
-    // 4. إغلاق أي مسار آخر غير معرف
     match /{document=**} {
       allow read, write: if false;
     }
