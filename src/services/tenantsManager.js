@@ -1109,9 +1109,30 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
   // 3. فحص صلاحيات الشركة المحددة بدقة داخل الـ Custom Claims
   if (claims.companyId) {
     const claimTenant = tenants.find(t => t.id === claims.companyId);
+
+    // جلب اسم وشعار الشركة من Firestore مباشرة لضمان التوافق عبر جميع المتصفحات
+    let cloudCompanyName = null;
+    let cloudCompanyLogo = null;
+    try {
+      const { fetchCompanyDataFromCloud } = await import('./cloudSync');
+      const compCloud = await fetchCompanyDataFromCloud(claims.companyId);
+      if (compCloud?.settings?.companyName) cloudCompanyName = compCloud.settings.companyName;
+      if (compCloud?.name && !cloudCompanyName) cloudCompanyName = compCloud.name;
+      if (compCloud?.settings?.companyLogo) cloudCompanyLogo = compCloud.settings.companyLogo;
+      if (compCloud?.logo && !cloudCompanyLogo) cloudCompanyLogo = compCloud.logo;
+      // حفظ محلي لتسريع الزيارات التالية
+      if (compCloud?.settings) {
+        try {
+          localStorage.setItem(`tenant_${claims.companyId}_settings`, JSON.stringify(compCloud.settings));
+        } catch (e) {}
+      }
+    } catch (e) {
+      console.warn('[resolveTenantUserByEmail] Could not fetch company from cloud:', e?.message);
+    }
+
     if (claimTenant) {
-      const compName = getTenantCurrentName(claimTenant);
-      const compLogo = getTenantCurrentLogo(claimTenant);
+      const compName = cloudCompanyName || getTenantCurrentName(claimTenant);
+      const compLogo = cloudCompanyLogo || getTenantCurrentLogo(claimTenant);
       return {
         success: true,
         user: {
@@ -1142,10 +1163,14 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
         name: claims.name || cleanEmail.split('@')[0],
         role: claims.role || 'owner',
         companyId: claims.companyId,
-        companyName: claims.companyName || claims.companyId,
+        companyName: cloudCompanyName || claims.companyName || claims.companyId,
         currency: claims.currency || 'ج.م',
       },
-      tenant: null,
+      tenant: cloudCompanyName ? {
+        id: claims.companyId,
+        name: cloudCompanyName,
+        logo: cloudCompanyLogo,
+      } : null,
       isSuperAdmin: false,
     };
   }
