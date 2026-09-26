@@ -19,14 +19,14 @@ export default function ClientPortal({
   userRole = 'engineer',
   currentUser = null,
 }) {
-  // فحص صفة المستخدم: العميل يرى كافة تفاصيل مشروعه بما فيها الحسابات والدفعات والعقد للتوقيع
+  // فحص صفة المستخدم: العميل والإدارة والموظفون المفوّضون يرون الحسابات والدفعات والعقد
   const isClientRole = userRole === 'client' || (!currentUser && !userRole);
-  const isEngineerUser = !isClientRole && (isEngineer(currentUser || userRole) || userRole === 'engineer' || !can(currentUser || userRole, 'finance_view'));
+  const canViewFinance = isClientRole || isOwner(currentUser || userRole) || can(currentUser || userRole, 'finance_view') || can(currentUser || userRole, 'project_tab_finance');
   const isOwnerUser = !isClientRole && (isOwner(currentUser || userRole) || can(currentUser || userRole, 'finance_view'));
   const [ownerPreviewEngineer, setOwnerPreviewEngineer] = useState(false);
 
   // وضع العرض المقيد للمهندس (مراحل التنفيذ + صور وتقارير الموقع فقط)
-  const isEngineerRestricted = isEngineerUser || ownerPreviewEngineer;
+  const isEngineerRestricted = !canViewFinance || ownerPreviewEngineer;
 
   // التبويبات المسموحة
   const allowedTabs = useMemo(() => {
@@ -131,10 +131,26 @@ export default function ClientPortal({
     return photos;
   }, [project]);
 
-  // Financial calculations (فقط عند السماح للمدير)
-  const totalBudget = project?.budget || 0;
-  const clientPayments = project?.clientPayments || [];
-  const totalPaid = clientPayments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+  // Financial calculations
+  const totalBudget = Number(project?.budget || project?.contractValue || 0);
+  const clientPayments = (Array.isArray(project?.clientPayments) && project.clientPayments.length > 0)
+    ? project.clientPayments
+    : (Array.isArray(project?.payments) ? project.payments : []);
+  const paymentMilestones = Array.isArray(project?.paymentMilestones) ? project.paymentMilestones : [];
+  const expenses = Array.isArray(project?.expenses) ? project.expenses : [];
+
+  const totalPaid = Number(
+    project?.totalPaid !== undefined && project?.totalPaid !== null
+      ? project.totalPaid
+      : (project?.paidAmount !== undefined && project?.paidAmount !== null
+          ? project.paidAmount
+          : clientPayments.reduce((acc, p) => acc + (Number(p?.amount) || 0), 0))
+  );
+  const totalSpent = Number(
+    project?.spent !== undefined && project?.spent !== null
+      ? project.spent
+      : expenses.reduce((acc, e) => acc + (Number(e?.amount) || 0), 0)
+  );
   const remaining = Math.max(0, totalBudget - totalPaid);
 
   function handleSaveSignature(sigData) {
@@ -731,9 +747,9 @@ export default function ClientPortal({
                   <tbody>
                     {clientPayments.map((p, idx) => (
                       <tr key={idx}>
-                        <td style={{ fontWeight: 700 }}>{p.title || `الدفعة رقم ${idx + 1}`}</td>
+                        <td style={{ fontWeight: 700 }}>{p.title || p.description || p.note || `الدفعة رقم ${idx + 1}`}</td>
                         <td className="font-mono">{p.date || "—"}</td>
-                        <td>{p.method || "تحويل بنكي"}</td>
+                        <td>{p.method || p.category || "تحويل بنكي / نقدي"}</td>
                         <td className="font-mono" style={{ fontWeight: 800, color: "#10B981" }}>
                           {Number(p.amount || 0).toLocaleString("ar-EG")} {companySettings?.currency || getGlobalCurrency()}
                         </td>
@@ -746,6 +762,49 @@ export default function ClientPortal({
                 </table>
               )}
             </div>
+
+            {/* جدول استحقاقات ومراحل الدفعات (الأقساط) */}
+            {paymentMilestones.length > 0 && (
+              <div className="panel">
+                <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 800 }}>جدول استحقاقات ومراحل الدفعات (الأقساط)</h3>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>المرحلة / الاستحقاق</th>
+                      <th>تاريخ الاستحقاق</th>
+                      <th>القيمة المستحقة</th>
+                      <th>حالة الدفعة</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paymentMilestones.map((m, idx) => {
+                      const isCollected = m.status === 'collected';
+                      return (
+                        <tr key={m.id || idx}>
+                          <td style={{ fontWeight: 700 }}>{m.label || m.title || `المرحلة ${idx + 1}`}</td>
+                          <td className="font-mono">{m.dueDate || m.date || "—"}</td>
+                          <td className="font-mono" style={{ fontWeight: 800 }}>
+                            {Number(m.amount || 0).toLocaleString("ar-EG")} {companySettings?.currency || getGlobalCurrency()}
+                          </td>
+                          <td>
+                            <span style={{
+                              padding: "3px 10px",
+                              borderRadius: 12,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              background: isCollected ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.12)",
+                              color: isCollected ? "#10B981" : "#D97706"
+                            }}>
+                              {isCollected ? "✓ تم السداد والتحصيل" : "⏳ قيد الاستحقاق"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 

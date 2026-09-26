@@ -283,7 +283,13 @@ export function stripUndefined(obj) {
 export function sanitizeProjectForCloud(project) {
   if (!project || typeof project !== 'object') return project;
   const p = { ...project };
-  const cId = p.companyId || (typeof localStorage !== 'undefined' ? (localStorage.getItem('platform-active-tenant-id') || localStorage.getItem('tashteeb_active_company_id')) : '') || 'general';
+  const hasStorage = typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function';
+  const cId = p.companyId || (hasStorage ? (localStorage.getItem('platform-active-tenant-id') || localStorage.getItem('tashteeb_active_company_id')) : '') || 'general';
+
+  // حساب إجمالي المصروفات بدقة دائماً لضمان تناسق الحسابات في كل مكان
+  if (Array.isArray(p.expenses) && p.expenses.length > 0) {
+    p.spent = p.expenses.reduce((s, e) => s + (Number(e?.amount) || 0), 0);
+  }
 
   if (Array.isArray(p.dailyLogs)) {
     p.dailyLogs = p.dailyLogs.map(log => {
@@ -298,10 +304,9 @@ export function sanitizeProjectForCloud(project) {
           const src = m.src || '';
           // الـ thumbnail دائماً هو الأولوية الأولى للحفظ السحابي (أصغر حجماً ويعمل على كل المتصفحات)
           const thumb = (typeof m.thumbnail === 'string' && m.thumbnail.startsWith('data:')) ? m.thumbnail
-            : (typeof m.src === 'string' && m.src.startsWith('data:') && m.src.length < 80000 ? m.src : '');
+            : (typeof m.src === 'string' && m.src.startsWith('data:') && m.src.length <= 15000 ? m.src : '');
           const isBlob = typeof src === 'string' && src.startsWith('blob:');
-          // نرفع الحد إلى 900KB لاستيعاب base64 overhead (الـ base64 يزيد الحجم الأصلي بـ 33%)
-          const isOverLimit = typeof src === 'string' && src.startsWith('data:') && src.length > 900000;
+          const isOverLimit = typeof src === 'string' && src.startsWith('data:') && src.length > 15000;
 
           let cleanSrc = src;
           if (isBlob) {
@@ -309,7 +314,7 @@ export function sanitizeProjectForCloud(project) {
             cleanSrc = thumb || (m.rawSrc && !m.rawSrc.startsWith('blob:') && !m.rawSrc.startsWith('idb://') ? m.rawSrc : '');
             if (!cleanSrc) cleanSrc = `idb://${m.id || Date.now()}`;
           } else if (isOverLimit) {
-            // صورة ضخمة جداً: نستخدم الـ thumbnail الصغيرة
+            // صورة ضخمة جداً: نستخدم الـ thumbnail الصغيرة أو idb
             cleanSrc = thumb || (m.rawSrc?.startsWith('idb://') ? m.rawSrc : `idb://${m.id || Date.now()}`);
           } else if (typeof src === 'string' && src.startsWith('idb://') && thumb) {
             // صورة محلية idb: نستبدلها بالـ thumbnail مباشرة
@@ -341,10 +346,9 @@ export function sanitizeProjectForCloud(project) {
             const src = photo.src || '';
             // الـ thumbnail دائماً هو الأولوية الأولى: صغيرة وتعمل على كل المتصفحات
             const thumb = (typeof photo.thumbnail === 'string' && photo.thumbnail.startsWith('data:')) ? photo.thumbnail
-              : (typeof photo.src === 'string' && photo.src.startsWith('data:') && photo.src.length < 80000 ? photo.src : '');
+              : (typeof photo.src === 'string' && photo.src.startsWith('data:') && photo.src.length <= 15000 ? photo.src : '');
             const isBlob = typeof src === 'string' && src.startsWith('blob:');
-            // رفع الحد إلى 900KB لاستيعاب base64 encoding overhead
-            const isOverLimit = typeof src === 'string' && src.startsWith('data:') && src.length > 900000;
+            const isOverLimit = typeof src === 'string' && src.startsWith('data:') && src.length > 15000;
 
             let cleanSrc = src;
             if (isBlob) {
@@ -352,7 +356,7 @@ export function sanitizeProjectForCloud(project) {
               cleanSrc = thumb || (photo.rawSrc && !photo.rawSrc.startsWith('blob:') && !photo.rawSrc.startsWith('idb://') ? photo.rawSrc : '');
               if (!cleanSrc) cleanSrc = `idb://${photo.id || Date.now()}`;
             } else if (isOverLimit) {
-              // صورة ضخمة جداً: نستخدم الـ thumbnail الصغيرة
+              // صورة ضخمة جداً: نستخدم الـ thumbnail الصغيرة أو idb
               cleanSrc = thumb || (photo.rawSrc?.startsWith('idb://') ? photo.rawSrc : `idb://${photo.id || Date.now()}`);
             } else if (typeof src === 'string' && src.startsWith('idb://') && thumb) {
               // صورة محلية idb: نستبدلها بالـ thumbnail مباشرة
@@ -394,11 +398,11 @@ export function sanitizeProjectForCloud(project) {
       if (!photo || typeof photo !== 'object') return photo;
       const src = photo.src || '';
       const thumb = (typeof photo.thumbnail === 'string' && photo.thumbnail.startsWith('data:')) ? photo.thumbnail
-        : (typeof photo.src === 'string' && photo.src.startsWith('data:') && photo.src.length < 80000 ? photo.src : '');
+        : (typeof photo.src === 'string' && photo.src.startsWith('data:') && photo.src.length <= 15000 ? photo.src : '');
       let cleanSrc = src;
       if (typeof src === 'string' && src.startsWith('blob:')) {
         cleanSrc = thumb || (photo.rawSrc && !photo.rawSrc.startsWith('blob:') && !photo.rawSrc.startsWith('idb://') ? photo.rawSrc : `idb://${photo.id || Date.now()}`);
-      } else if (typeof src === 'string' && src.startsWith('data:') && src.length > 900000) {
+      } else if (typeof src === 'string' && src.startsWith('data:') && src.length > 15000) {
         cleanSrc = thumb || (photo.rawSrc?.startsWith('idb://') ? photo.rawSrc : `idb://${photo.id || Date.now()}`);
       } else if (typeof src === 'string' && src.startsWith('idb://') && thumb) {
         cleanSrc = thumb;
@@ -588,6 +592,83 @@ export function mergeProjectsPreservingLocal(localProjects, incomingProjects, ta
     });
     const mergedFiles = Array.from(filesMap.values());
 
+    // 4. دمج المقبوضات ودفعات العميل (clientPayments / payments): دمج فريد بالـ ID لمنع ضياع أي دفعة
+    const payMap = new Map();
+    const incPayments = Array.isArray(incoming.clientPayments) ? incoming.clientPayments : (Array.isArray(incoming.payments) ? incoming.payments : []);
+    const locPayments = Array.isArray(local.clientPayments) ? local.clientPayments : (Array.isArray(local.payments) ? local.payments : []);
+    incPayments.forEach(p => {
+      if (p && (p.id || p.date)) payMap.set(p.id || `${p.date}_${p.amount}`, p);
+    });
+    locPayments.forEach(p => {
+      if (p && (p.id || p.date)) {
+        const k = p.id || `${p.date}_${p.amount}`;
+        if (!payMap.has(k)) payMap.set(k, p);
+      }
+    });
+    const mergedPayments = Array.from(payMap.values()).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+    // 5. دمج مصروفات وتكاليف الموقع (expenses): دمج فريد بالـ ID لضمان ظهور كافة المصروفات للجميع
+    const expMap = new Map();
+    (incoming.expenses || []).forEach(e => {
+      if (e && (e.id || e.date)) expMap.set(e.id || `${e.date}_${e.amount}`, e);
+    });
+    (local.expenses || []).forEach(e => {
+      if (e && (e.id || e.date)) {
+        const k = e.id || `${e.date}_${e.amount}`;
+        if (!expMap.has(k)) expMap.set(k, e);
+      }
+    });
+    const mergedExpenses = Array.from(expMap.values()).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+    // 6. دمج محطات واستحقاقات الدفعات (paymentMilestones)
+    const msMap = new Map();
+    (incoming.paymentMilestones || []).forEach(m => {
+      if (m && (m.id || m.label)) msMap.set(m.id || m.label, m);
+    });
+    (local.paymentMilestones || []).forEach(m => {
+      if (m && (m.id || m.label)) {
+        const k = m.id || m.label;
+        if (!msMap.has(k)) msMap.set(k, m);
+        else {
+          const incM = msMap.get(k);
+          if (m.status === 'collected' && incM.status !== 'collected') msMap.set(k, m);
+        }
+      }
+    });
+    const mergedMilestones = Array.from(msMap.values());
+
+    // 7. دمج صنايعية الموقع (craftsmen)
+    const crMap = new Map();
+    (incoming.craftsmen || []).forEach(c => {
+      if (c && (c.id || c.name)) crMap.set(c.id || c.name, c);
+    });
+    (local.craftsmen || []).forEach(c => {
+      if (c && (c.id || c.name)) {
+        const k = c.id || c.name;
+        if (!crMap.has(k)) crMap.set(k, c);
+        else {
+          const inc = crMap.get(k);
+          crMap.set(k, { ...inc, ...c });
+        }
+      }
+    });
+    const mergedCraftsmen = Array.from(crMap.values());
+
+    // 8. دمج الخامات والتوريدات (resources)
+    const incMaterials = incoming.resources?.materials || [];
+    const locMaterials = local.resources?.materials || [];
+    const matMap = new Map();
+    incMaterials.forEach(m => { if (m && (m.id || m.item)) matMap.set(m.id || m.item, m); });
+    locMaterials.forEach(m => { if (m && (m.id || m.item) && !matMap.has(m.id || m.item)) matMap.set(m.id || m.item, m); });
+    const mergedResources = {
+      ...(incoming.resources || local.resources || {}),
+      materials: Array.from(matMap.values())
+    };
+
+    const finalSpent = mergedExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0) || Number(incoming.spent || local.spent || 0);
+    const finalToken = incoming.clientPortalToken || local.clientPortalToken || ('cpt_' + (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : (Math.random().toString(36).slice(2, 10) + Date.now().toString(36))));
+    const finalPortalEnabled = incoming.clientPortalEnabled !== false && local.clientPortalEnabled !== false;
+
     const localTime = new Date(local.updatedAt || 0).getTime();
     const incomingTime = new Date(incoming.updatedAt || 0).getTime();
     const base = localTime > incomingTime ? { ...incoming, ...local } : { ...local, ...incoming };
@@ -597,6 +678,15 @@ export function mergeProjectsPreservingLocal(localProjects, incomingProjects, ta
       dailyLogs: mergedLogs,
       snags: mergedSnags,
       files: mergedFiles,
+      clientPayments: mergedPayments,
+      payments: mergedPayments,
+      expenses: mergedExpenses,
+      paymentMilestones: mergedMilestones,
+      craftsmen: mergedCraftsmen,
+      resources: mergedResources,
+      spent: finalSpent,
+      clientPortalToken: finalToken,
+      clientPortalEnabled: finalPortalEnabled,
     };
   });
 
@@ -764,6 +854,11 @@ export async function syncSingleProjectToCloud(companyId, projectId, patchOrProj
       updatedAt: new Date().toISOString()
     });
 
+    if (!safeProject.clientPortalToken) {
+      safeProject.clientPortalToken = 'cpt_' + (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : (Math.random().toString(36).slice(2, 10) + Date.now().toString(36)));
+      safeProject.clientPortalEnabled = true;
+    }
+
     // 1. كتابة وثيقة المشروع المستقلة في الـ Sub-collection
     await setDoc(projectRef, safeProject, { merge: true });
 
@@ -774,7 +869,7 @@ export async function syncSingleProjectToCloud(companyId, projectId, patchOrProj
     }, { merge: true });
 
     // 3. النشر الفوري لبوابة العميل في portal_shares/{token} لتمكين العميل من فتحها من أي جهاز فوراً
-    if (safeProject.clientPortalToken) {
+    if (safeProject.clientPortalToken && safeProject.clientPortalEnabled !== false) {
       publishProjectToPortalShares(cId, safeProject).catch(() => {});
     }
 
@@ -830,6 +925,7 @@ export async function publishProjectToPortalShares(companyId, project) {
       area: Number(safeProject.area || 0),
       budget: Number(safeProject.budget || safeProject.contractValue || 0),
       contractValue: Number(safeProject.contractValue || safeProject.budget || 0),
+      spent: Number(safeProject.spent || (Array.isArray(safeProject.expenses) ? safeProject.expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0) : 0)),
       progress: Number(safeProject.progress || 0),
       status: safeProject.status || "active",
       startDate: safeProject.startDate || "",
@@ -841,6 +937,8 @@ export async function publishProjectToPortalShares(companyId, project) {
       sitePhotos: Array.isArray(safeProject.sitePhotos) ? safeProject.sitePhotos : [],
       payments: Array.isArray(safeProject.payments) ? safeProject.payments : (safeProject.clientPayments || []),
       clientPayments: Array.isArray(safeProject.clientPayments) ? safeProject.clientPayments : (safeProject.payments || []),
+      expenses: Array.isArray(safeProject.expenses) ? safeProject.expenses : [],
+      paymentMilestones: Array.isArray(safeProject.paymentMilestones) ? safeProject.paymentMilestones : [],
       clientSignature: safeProject.clientSignature || null,
       clientApprovalDate: safeProject.clientApprovalDate || null,
       clientApprovalNotes: safeProject.clientApprovalNotes || null,
@@ -928,10 +1026,85 @@ export async function fetchProjectsFromCloud(companyId) {
 }
 
 /**
- * حفظ ومزامنة إعدادات الشركة
+ * حفظ ومزامنة إعدادات الشركة وهوية البراندينج في كافة الوجهات السحابية
+ * (وثيقة الشركة، قائمة المنصة المركزية platform_metadata/tenants، ودليل النطاقات الفرعية tenant_directory)
  */
 export async function syncSettingsToCloud(companyId, settings) {
-  return syncCompanyDataToCloud(companyId, { settings });
+  const cId = cleanCompanyId(companyId);
+  if (!cId || !settings) return false;
+
+  // 1. تحديث وثيقة الشركة في /companies/{cId}
+  const companyPatch = {
+    settings,
+    updatedAt: new Date().toISOString(),
+  };
+  if (settings.companyName) {
+    companyPatch.name = settings.companyName;
+  }
+  if (settings.companyLogo !== undefined) {
+    companyPatch.logo = settings.companyLogo || null;
+  }
+  if (settings.currency) {
+    companyPatch.currency = settings.currency;
+  }
+
+  const res = await syncCompanyDataToCloud(cId, companyPatch);
+
+  // 2. تحديث قائمة الشركات المركزية platform_metadata/tenants سحابياً
+  try {
+    const tenantsRef = doc(db, 'platform_metadata', 'tenants');
+    const snap = await getDoc(tenantsRef);
+    if (snap.exists()) {
+      const tenantsList = snap.data()?.tenants || [];
+      const cleanTarget = cId.replace(/^comp_/, '');
+      const idx = tenantsList.findIndex(t => {
+        if (!t?.id) return false;
+        const cleanTId = t.id.replace(/^comp_/, '');
+        return cleanTId === cleanTarget;
+      });
+      if (idx !== -1) {
+        tenantsList[idx] = {
+          ...tenantsList[idx],
+          name: settings.companyName || tenantsList[idx].name,
+          logo: settings.companyLogo !== undefined ? (settings.companyLogo || null) : tenantsList[idx].logo,
+          currency: settings.currency || tenantsList[idx].currency,
+          updatedAt: new Date().toISOString(),
+        };
+        await setDoc(tenantsRef, {
+          tenants: tenantsList,
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+
+        // تحديث الكاش المحلي لقائمة الشركات أيضاً
+        if (typeof localStorage !== 'undefined') {
+          try {
+            localStorage.setItem('platform-tenants-master-v1', JSON.stringify(tenantsList));
+          } catch (e) {}
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[syncSettingsToCloud] Error syncing to platform_metadata/tenants:", e.message);
+  }
+
+  // 3. تحديث tenant_directory/{subdomain} سحابياً لدعم النطاقات الفرعية فوراً
+  try {
+    const sub = settings.subdomain || (typeof window !== 'undefined' ? window.location.hostname.split('.')[0] : null);
+    if (sub && sub !== 'tashteebpro' && sub !== 'www' && sub !== 'localhost' && sub !== '127') {
+      const dirDocRef = doc(db, 'tenant_directory', sub.toLowerCase().trim());
+      await setDoc(dirDocRef, {
+        companyId: cId,
+        name: settings.companyName || 'شركة المقاولات',
+        logo: settings.companyLogo || null,
+        subdomain: sub.toLowerCase().trim(),
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    }
+  } catch (e) {
+    console.warn("[syncSettingsToCloud] Error updating tenant_directory:", e.message);
+  }
+
+  return res;
 }
 
 /**
@@ -1257,7 +1430,7 @@ export async function syncTenantsListToCloud(tenants) {
     // نستدعي Cloud Function الآمنة لتحديث بيانات شركته فقط دون المساس بباقي المنصة
     try {
       const currentUser = auth.currentUser;
-      const callerCompanyId = (typeof localStorage !== 'undefined' && localStorage.getItem('tashteeb_active_company_id')) || null;
+      const callerCompanyId = (typeof localStorage !== 'undefined' && (localStorage.getItem('tashteeb_active_company_id') || localStorage.getItem('platform-active-tenant-id'))) || null;
       const ownTenant = sanitizedTenants.find(t => 
         (callerCompanyId && t.id === callerCompanyId) || 
         (currentUser?.email && t.adminEmail?.toLowerCase() === currentUser.email.toLowerCase())

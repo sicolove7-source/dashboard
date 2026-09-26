@@ -89,7 +89,7 @@ export const PERMISSIONS = {
   projects_view_all:      ['owner', 'accountant', 'tech_office', 'customer_service', 'procurement'],
 
   // ── تفاصيل المشروع: تبويبات داخلية ──
-  project_tab_finance:    ['owner', 'accountant'],
+  project_tab_finance:    ['owner', 'accountant', 'engineer', 'tech_office'],
   project_tab_gantt:      ['owner', 'engineer', 'tech_office'],
   project_tab_diary:      ['owner', 'engineer', 'tech_office'],
   project_tab_drawings:   ['owner', 'engineer', 'tech_office'],
@@ -104,7 +104,7 @@ export const PERMISSIONS = {
   supply_request_status:  ['owner', 'accountant', 'engineer', 'tech_office', 'procurement'],
 
   // ── المالية الشاملة ──
-  finance_view:           ['owner', 'accountant'],
+  finance_view:           ['owner', 'accountant', 'engineer', 'tech_office'],
   finance_add_expense:    ['owner', 'accountant'],
   finance_add_income:     ['owner', 'accountant'],
 

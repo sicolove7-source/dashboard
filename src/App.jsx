@@ -35,7 +35,7 @@ const QuickWinChecklist = React.lazy(() => import('./components/QuickWinChecklis
 import ErrorBoundary from './components/ErrorBoundary';
 import { isFirstLogin, markFirstLoginDone, seedDemoData } from './utils/seedDemoData';
 
-import { loadCompanySettings, applyCompanyBranding, DEFAULT_COMPANY_SETTINGS } from './utils/branding';
+import { loadCompanySettings, saveCompanySettings, applyCompanyBranding, DEFAULT_COMPANY_SETTINGS } from './utils/branding';
 try { if (typeof localStorage !== 'undefined') localStorage.removeItem('company-settings-v1'); } catch (e) {}
 import { getActiveTenantId, setActiveTenantId, ACTIVE_TENANT_ID_KEY, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail, syncAllLocalUsersToCloud, loadAllTenants, loadAllTenantsAsync, saveAllTenants } from './services/tenantsManager';
 import { getSubdomain, isAdminSubdomain, isCompanySubdomain, clearActiveSubdomain, getSubdomainUrl, getCrossSubdomainCookie } from './services/subdomainResolver';
@@ -62,7 +62,7 @@ import {
   isDemoProject,
 } from './services/cloudSync';
 import { syncAllPendingMedia, onSyncStatusChange } from './services/backgroundMediaSync';
-import { parseClientPortalFromUrl, resolveClientPortalProject, submitClientPortalApproval } from './services/portalResolver';
+import { parseClientPortalFromUrl, resolveClientPortalProject, submitClientPortalApproval, subscribeToClientPortal } from './services/portalResolver';
 import { parseIntakeRouteFromUrl } from './services/intakeResolver';
 import { AREAS } from './utils/constants';
 
@@ -116,12 +116,46 @@ function hasCollectionChanged(prev, next) {
   if (prev === next) return false;
   if (!prev || !next) return true;
   if (prev.length !== next.length) return true;
-  for (let i = 0; i < prev.length; i++) {
-    const a = prev[i];
-    const b = next[i];
+
+  const prevMap = new Map();
+  for (const item of prev) {
+    if (item && item.id) prevMap.set(String(item.id), item);
+  }
+
+  for (const b of next) {
+    if (!b || !b.id) return true;
+    const a = prevMap.get(String(b.id));
+    if (!a) return true;
     if (a === b) continue;
-    if (!a || !b) return true;
-    if (a.id !== b.id || a.updatedAt !== b.updatedAt) return true;
+    if (a.updatedAt !== b.updatedAt) return true;
+
+    // فحص دقيق للبيانات المالية والمصروفات والدفعات
+    if (Number(a.spent || 0) !== Number(b.spent || 0)) return true;
+    if (Number(a.budget || a.contractValue || 0) !== Number(b.budget || b.contractValue || 0)) return true;
+    if (Number(a.totalPaid || a.paidAmount || 0) !== Number(b.totalPaid || b.paidAmount || 0)) return true;
+
+    // فحص أطوال المصفوفات التابعة للمشروع
+    const aExpLen = Array.isArray(a.expenses) ? a.expenses.length : 0;
+    const bExpLen = Array.isArray(b.expenses) ? b.expenses.length : 0;
+    if (aExpLen !== bExpLen) return true;
+
+    const aPayLen = Array.isArray(a.clientPayments) ? a.clientPayments.length : (Array.isArray(a.payments) ? a.payments.length : 0);
+    const bPayLen = Array.isArray(b.clientPayments) ? b.clientPayments.length : (Array.isArray(b.payments) ? b.payments.length : 0);
+    if (aPayLen !== bPayLen) return true;
+
+    const aMsLen = Array.isArray(a.paymentMilestones) ? a.paymentMilestones.length : 0;
+    const bMsLen = Array.isArray(b.paymentMilestones) ? b.paymentMilestones.length : 0;
+    if (aMsLen !== bMsLen) return true;
+
+    const aLogsLen = Array.isArray(a.dailyLogs) ? a.dailyLogs.length : 0;
+    const bLogsLen = Array.isArray(b.dailyLogs) ? b.dailyLogs.length : 0;
+    if (aLogsLen !== bLogsLen) return true;
+
+    // فحص المحتوى في حالة تعديل بند بدون تغيير الطول
+    try {
+      if (aExpLen > 0 && JSON.stringify(a.expenses) !== JSON.stringify(b.expenses)) return true;
+      if (aPayLen > 0 && JSON.stringify(a.clientPayments || a.payments) !== JSON.stringify(b.clientPayments || b.payments)) return true;
+    } catch (_) {}
   }
   return false;
 }
@@ -406,26 +440,43 @@ export default function App() {
             }
           } catch (e) {}
 
-          // بناء الإعدادات والهوية البصرية الحديثة من السحابة
+          // أولاً: فحص الإعدادات المخزنة محلياً لهذه الشركة للحفاظ التام على أحدث اسم وهوية قام المستخدم بحفظها
+          let localSaved = null;
+          try {
+            const raw = localStorage.getItem(`tenant_${result.id}_settings`);
+            if (raw) localSaved = JSON.parse(raw);
+          } catch (e) {}
+
+          // بناء الإعدادات والهوية البصرية الحديثة من الكاش المحلي والسحابة مع إعطاء الأولوية للبيانات المحفوظة
           let resolvedSettings = {
             ...DEFAULT_COMPANY_SETTINGS,
-            companyName: result.name || result.companyName || DEFAULT_COMPANY_SETTINGS.companyName,
-            companySubtitle: result.subtitle || result.companySubtitle || DEFAULT_COMPANY_SETTINGS.companySubtitle,
-            companyLogo: result.logo || result.companyLogo || null,
-            primaryColor: result.primaryColor || DEFAULT_COMPANY_SETTINGS.primaryColor,
-            accentColor: result.accentColor || DEFAULT_COMPANY_SETTINGS.accentColor,
-            currency: result.currency || DEFAULT_COMPANY_SETTINGS.currency,
-            city: result.city || '',
-            country: result.country || '',
-            phone: result.phone || '',
+            companyName: localSaved?.companyName || result.name || result.companyName || DEFAULT_COMPANY_SETTINGS.companyName,
+            companySubtitle: localSaved?.companySubtitle !== undefined ? localSaved.companySubtitle : (result.subtitle || result.companySubtitle || DEFAULT_COMPANY_SETTINGS.companySubtitle),
+            companyLogo: localSaved?.companyLogo !== undefined ? localSaved.companyLogo : (result.logo || result.companyLogo || null),
+            primaryColor: localSaved?.primaryColor || result.primaryColor || DEFAULT_COMPANY_SETTINGS.primaryColor,
+            accentColor: localSaved?.accentColor || result.accentColor || DEFAULT_COMPANY_SETTINGS.accentColor,
+            currency: localSaved?.currency || result.currency || DEFAULT_COMPANY_SETTINGS.currency,
+            city: localSaved?.city || result.city || '',
+            country: localSaved?.country || result.country || '',
+            phone: localSaved?.phone || result.phone || '',
             subdomain: result.subdomain || result.slug || sub,
+            ...(localSaved || {}),
           };
 
           // فحص إضافي لوثيقة الشركة التفصيلية من السحابة إذا كانت متوفرة
           try {
             const companyDoc = await fetchCompanyDataFromCloud(result.id);
             if (companyDoc?.settings) {
-              resolvedSettings = { ...resolvedSettings, ...companyDoc.settings };
+              const cloudSet = companyDoc.settings;
+              const safeLogo = (cloudSet.companyLogo && String(cloudSet.companyLogo).trim()) ? cloudSet.companyLogo : (resolvedSettings.companyLogo || null);
+              const isDefaultName = (n) => !n || n === 'شركة المقاولات' || n === 'شركة المقاولات والتشطيبات';
+              const safeName = !isDefaultName(cloudSet.companyName) ? cloudSet.companyName : (resolvedSettings.companyName || result.name || 'شركة المقاولات');
+              resolvedSettings = {
+                ...resolvedSettings,
+                ...cloudSet,
+                companyName: safeName,
+                companyLogo: safeLogo,
+              };
             }
           } catch (e) {}
 
@@ -436,15 +487,15 @@ export default function App() {
 
           setCompanySettings(resolvedSettings);
           applyCompanyBranding(resolvedSettings);
-          setSubdomainCompanyName(result.name || result.companyName || null);
+          setSubdomainCompanyName(resolvedSettings.companyName || result.name || null);
           setSubdomainNotFound(false);
 
-          // مزامنة علاجية تلقائية لـ tenant_directory في السحابة إن أمكن
+          // مزامنة علاجية تلقائية لـ tenant_directory في السحابة لضمان حفظ الاسم المحدث دائماً
           try {
             setDoc(doc(db, 'tenant_directory', sub), {
               companyId: result.id,
-              name: result.name || result.companyName || sub,
-              logo: result.logo || null,
+              name: resolvedSettings.companyName || result.name || sub,
+              logo: resolvedSettings.companyLogo || result.logo || null,
               subdomain: sub,
               updatedAt: new Date().toISOString(),
             }, { merge: true }).catch(() => {});
@@ -614,20 +665,21 @@ export default function App() {
     }
   }, []);
 
-  // التحميل الفوري لبوابة العميل العامة عند فتح رابط /portal/:id
+  // التحميل الفوري والاشتراك الحي لبوابة العميل العامة عند فتح رابط /portal/:id
   useEffect(() => {
     if (!portalRouteInfo) {
       setPortalLoading(false);
       return;
     }
     let isCancelled = false;
+    let unsub = () => {};
+
+    const targetToken = portalRouteInfo.token || portalRouteInfo.projectId;
 
     async function loadPortal() {
       setPortalLoading(true);
       try {
-        const resolved = await resolveClientPortalProject(
-          portalRouteInfo.token || portalRouteInfo.projectId
-        );
+        const resolved = await resolveClientPortalProject(targetToken);
         if (!isCancelled && resolved?.project) {
           setPublicPortalProject(resolved.project);
           if (resolved.companySettings) {
@@ -645,7 +697,23 @@ export default function App() {
     }
 
     loadPortal();
-    return () => { isCancelled = true; };
+
+    if (targetToken) {
+      unsub = subscribeToClientPortal(targetToken, (liveData) => {
+        if (!isCancelled && liveData?.project) {
+          setPublicPortalProject(liveData.project);
+          if (liveData.companySettings) {
+            setPublicPortalCompanySettings(liveData.companySettings);
+            applyCompanyBranding(liveData.companySettings);
+          }
+        }
+      });
+    }
+
+    return () => {
+      isCancelled = true;
+      if (typeof unsub === 'function') unsub();
+    };
   }, [portalRouteInfo]);
 
   // الاستماع لتغيير الروابط وأزرار الرجوع/التقدم بالمتصفح والـ Hash
@@ -719,14 +787,48 @@ export default function App() {
 
 
         if (cloudData.settings) {
+          const safeMergedLogo = (cloudData.settings.companyLogo && String(cloudData.settings.companyLogo).trim())
+            ? cloudData.settings.companyLogo
+            : (localData.settings?.companyLogo || null);
+
+          const isDefault = (n) => !n || n === 'شركة المقاولات' || n === 'شركة المقاولات والتشطيبات' || String(n).includes('المقاولات النموذجية') || n === 'شركة جديدة';
+          
+          const localTime = localData.settings?.updatedAt ? new Date(localData.settings.updatedAt).getTime() : 0;
+          const cloudTime = cloudData.settings?.updatedAt ? new Date(cloudData.settings.updatedAt).getTime() : 0;
+          const isLocalNewer = localTime > cloudTime;
+
+          let safeMergedName = 'شركة المقاولات';
+          if (isLocalNewer && !isDefault(localData.settings?.companyName)) {
+            safeMergedName = localData.settings.companyName;
+          } else if (!isDefault(cloudData.settings.companyName)) {
+            safeMergedName = cloudData.settings.companyName;
+          } else if (!isDefault(localData.settings?.companyName)) {
+            safeMergedName = localData.settings.companyName;
+          } else {
+            safeMergedName = cloudData.settings.companyName || localData.settings?.companyName || 'شركة المقاولات';
+          }
+
+          const base = isLocalNewer
+            ? { ...(cloudData.settings || {}), ...(localData.settings || {}) }
+            : { ...(localData.settings || {}), ...(cloudData.settings || {}) };
+
           const mergedSettings = {
-            ...localData.settings,
-            ...cloudData.settings,
-            companyLogo: cloudData.settings.companyLogo !== undefined ? cloudData.settings.companyLogo : (localData.settings?.companyLogo || null),
+            ...base,
+            companyName: safeMergedName,
+            companyLogo: safeMergedLogo,
           };
           setCompanySettings(mergedSettings);
           applyCompanyBranding(mergedSettings);
           if (mergedSettings.currency) setGlobalCurrency(mergedSettings.currency);
+          try {
+            const rawS = JSON.stringify(mergedSettings);
+            localStorage.setItem(`tenant_${companyId}_settings`, rawS);
+            if (!companyId.startsWith('comp_')) {
+              localStorage.setItem(`tenant_comp_${companyId}_settings`, rawS);
+            } else {
+              localStorage.setItem(`tenant_${companyId.replace(/^comp_/, '')}_settings`, rawS);
+            }
+          } catch (e) {}
         }
       }
     } catch (e) {
@@ -993,10 +1095,13 @@ export default function App() {
       setView("detail");
     } else {
       const id = "p" + Date.now();
+      const token = "cpt_" + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
       const newProject = {
         ...data,
         id,
         companyId: activeCompanyId,
+        clientPortalToken: data.clientPortalToken || token,
+        clientPortalEnabled: data.clientPortalEnabled !== false,
         submittals: [],
         tasks: [],
         dailyLogs: [],
@@ -1053,7 +1158,24 @@ export default function App() {
     const now = new Date().toISOString();
     setProjects(prev => {
       const list = prev || [];
-      const updated = list.map((p) => (p.id === id ? { ...p, ...patch, updatedAt: patch?.updatedAt || now } : p));
+      const updated = list.map((p) => {
+        if (p.id === id) {
+          const merged = { ...p, ...patch, updatedAt: patch?.updatedAt || now };
+          if (Array.isArray(merged.expenses)) {
+            merged.spent = merged.expenses.reduce((s, e) => s + (Number(e?.amount) || 0), 0);
+          }
+          if (Array.isArray(merged.clientPayments)) {
+            merged.totalPaid = merged.clientPayments.reduce((s, cp) => s + (Number(cp?.amount) || 0), 0);
+            merged.paidAmount = merged.totalPaid;
+          }
+          if (!merged.clientPortalToken) {
+            merged.clientPortalToken = 'cpt_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+            merged.clientPortalEnabled = true;
+          }
+          return merged;
+        }
+        return p;
+      });
       try {
         const lean = updated.map(p => sanitizeProjectForCloud(p));
         localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(lean));
@@ -1309,18 +1431,18 @@ export default function App() {
       setActiveTenantId(compId);
     }
 
-    // 🔒 مسح أمني: إزالة مسودات المشاريع غير المحفوظة للشركات الأخرى مع الحفاظ التام على أدلة المستخدمين
+    // 🔒 مسح أمني: الحفاظ الحاسم على الإعدادات والشعار وسجلات المستخدمين والفريق
     if (compId && !roleIsSuperAdmin) {
       try {
+        const cleanCompId = compId.replace(/^comp_/, '');
         const keysToRemove = Object.keys(localStorage).filter(k => {
           if (!k.startsWith('tenant_')) return false;
-          // الحفاظ الحاسم على سجلات المستخدمين والفريق لتمكين التبديل وتسجيل الدخول السلس
-          if (k.endsWith('_users') || k.endsWith('_team')) return false;
-          // استخراج الـ company ID من المفتاح: tenant_{companyId}_{field}
+          // الحفاظ التام على الإعدادات، الشعار، المستخدمين، والفريق
+          if (k.endsWith('_users') || k.endsWith('_team') || k.endsWith('_settings')) return false;
           const parts = k.split('_');
           if (parts.length < 3) return false;
-          const keyCompanyId = parts.slice(1, -1).join('_');
-          return keyCompanyId !== compId;
+          const keyCompanyId = parts.slice(1, -1).join('_').replace(/^comp_/, '');
+          return keyCompanyId !== cleanCompId;
         });
         keysToRemove.forEach(k => localStorage.removeItem(k));
       } catch (e) {}
@@ -1336,13 +1458,13 @@ export default function App() {
     } catch (e) {
       console.error('Logout error:', e);
     }
-    // مسح جلسة المستخدم الحالية والمفاتيح وسجلات المستخدمين المحلية
+    // مسح جلسة المستخدم الحالية والمفاتيح المؤقتة للجلسة فقط مع الحفاظ التام على الإعدادات وسجل المستخدمين
     try {
       localStorage.removeItem('active_session_user');
       localStorage.removeItem(ACTIVE_TENANT_ID_KEY);
       localStorage.removeItem('platform-active-tenant-id');
       localStorage.removeItem('active_tenant_id');
-      localStorage.removeItem('platform-all-users-registry');
+      localStorage.removeItem('tashteeb_active_company_id');
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.clear();
       }
@@ -1350,6 +1472,7 @@ export default function App() {
     setCurrentUser(null);
     setIsAuthenticated(false);
     setActiveTenantId(null);
+    setCompanySettings(DEFAULT_COMPANY_SETTINGS);
     setProjects([]);
     setTeam({ engineers: [], accountants: [], techOffice: [], customerService: [] });
     setLeads([]);
@@ -2075,7 +2198,12 @@ export default function App() {
                     if (updated?.currency) {
                       setGlobalCurrency(updated.currency);
                     }
-                    syncSettingsToCloud(activeCompanyId, updated).catch(e => console.warn("Cloud sync error for company settings:", e));
+                    if (updated?.companyName) {
+                      setCurrentUser(prev => prev ? ({ ...prev, companyName: updated.companyName }) : prev);
+                    }
+                    const targetCompId = activeCompanyId || currentUser?.companyId || getActiveTenantId();
+                    saveCompanySettings(updated, targetCompId);
+                    syncSettingsToCloud(targetCompId, updated).catch(e => console.warn("Cloud sync error for company settings:", e));
                   }}
                   team={team}
                   onTeamChange={(nextTeam) => {

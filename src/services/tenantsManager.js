@@ -182,18 +182,36 @@ export function loadAllTenants() {
     });
     parsed.forEach(t => {
       if (t?.id && !deletedIds.has(t.id)) {
+        let enhanced = { ...t };
+        try {
+          const sRaw = localStorage.getItem(`tenant_${t.id}_settings`);
+          if (sRaw) {
+            const s = JSON.parse(sRaw);
+            if (s.companyName && s.companyName !== 'شركة المقاولات' && s.companyName !== 'شركة المقاولات والتشطيبات') {
+              enhanced.name = s.companyName;
+            }
+            if (s.companyLogo) {
+              enhanced.logo = s.companyLogo;
+            }
+            if (s.currency) {
+              enhanced.currency = s.currency;
+            }
+          }
+        } catch (e) {}
         if (!map.has(t.id)) {
-          map.set(t.id, t);
+          map.set(t.id, enhanced);
         } else {
           const defT = map.get(t.id);
-          const mergedUsers = mergeUsersPreservingLocal(t.users || [], defT.users || []);
+          const mergedUsers = mergeUsersPreservingLocal(enhanced.users || [], defT.users || []);
           map.set(t.id, {
             ...defT,
-            ...t,
+            ...enhanced,
+            name: enhanced.name || defT.name,
+            logo: enhanced.logo || defT.logo || null,
             users: mergedUsers,
             authorizedEmails: Array.from(new Set([
               ...(defT.authorizedEmails || []),
-              ...(t.authorizedEmails || []),
+              ...(enhanced.authorizedEmails || []),
               ...mergedUsers.map(u => (u.email || '').toLowerCase().trim()).filter(Boolean)
             ]))
           });
@@ -233,9 +251,17 @@ export async function loadAllTenantsAsync() {
               ...(t.authorizedEmails || []),
               ...(mergedUsers || []).map(u => (u.email || '').toLowerCase().trim()).filter(Boolean)
             ]));
+
+            // الحفاظ على الاسم والشعار الأحدث ومنع طمس التعديلات بالاسم الافتراضي
+            const isDef = (n) => !n || n === 'شركة المقاولات' || n === 'شركة المقاولات والتشطيبات';
+            const safeName = !isDef(t.name) ? t.name : (!isDef(cloudT.name) ? cloudT.name : (t.name || cloudT.name));
+            const safeLogo = (t.logo && String(t.logo).trim()) ? t.logo : (cloudT.logo || null);
+
             mergedMap.set(t.id, {
               ...cloudT,
               ...t,
+              name: safeName,
+              logo: safeLogo,
               users: mergedUsers,
               authorizedEmails: mergedEmails,
             });
@@ -619,8 +645,10 @@ export function setActiveTenantId(companyId) {
     if (typeof localStorage !== 'undefined') {
       if (companyId) {
         localStorage.setItem(ACTIVE_TENANT_ID_KEY, companyId);
+        localStorage.setItem('tashteeb_active_company_id', companyId);
       } else {
         localStorage.removeItem(ACTIVE_TENANT_ID_KEY);
+        localStorage.removeItem('tashteeb_active_company_id');
       }
     }
   } catch (e) {}
@@ -652,14 +680,18 @@ export function getTenantData(companyId) {
   }
 
   const tenants = loadAllTenants();
-  const tenant = tenants.find(t => t.id === companyId);
+  const isMatch = (t) => t?.id === companyId || t?.id === `comp_${companyId}` || (companyId.startsWith('comp_') && t?.id === companyId.replace(/^comp_/, ''));
+  const tenant = tenants.find(isMatch);
 
   // 1. الإعدادات والعملة
   let settings = null;
   try {
-    const raw = localStorage.getItem(`tenant_${companyId}_settings`);
+    const raw = localStorage.getItem(`tenant_${companyId}_settings`) ||
+                (!companyId.startsWith('comp_') ? localStorage.getItem(`tenant_comp_${companyId}_settings`) : null) ||
+                (companyId.startsWith('comp_') ? localStorage.getItem(`tenant_${companyId.replace(/^comp_/, '')}_settings`) : null);
     if (raw) settings = JSON.parse(raw);
   } catch (e) {}
+
   if (!settings) {
     settings = {
       companyName: tenant ? tenant.name : 'شركة المقاولات والتشطيبات',
@@ -670,9 +702,10 @@ export function getTenantData(companyId) {
       phone: tenant?.phone || '',
       primaryColor: tenant?.primaryColor || '#1877F2',
       accentColor: tenant?.accentColor || '#166FE5',
-      companyLogo: null,
+      companyLogo: tenant?.logo || null,
     };
-    try { localStorage.setItem(`tenant_${companyId}_settings`, JSON.stringify(settings)); } catch (e) {}
+  } else if (tenant && settings.companyName && tenant.name !== settings.companyName) {
+    tenant.name = settings.companyName;
   }
 
   // 2. المستخدمين
@@ -796,21 +829,93 @@ export async function getTenantDataAsync(companyId) {
       const localSettings = localFallback?.settings;
       const cloudSettings = cloud.settings;
 
+      // مقارنة تاريخ التعديل لضمان عدم إتلاف التعديلات الأحدث
+      const localTime = localSettings?.updatedAt ? new Date(localSettings.updatedAt).getTime() : 0;
+      const cloudTime = cloudSettings?.updatedAt ? new Date(cloudSettings.updatedAt).getTime() : 0;
+      const isLocalNewer = localTime > cloudTime;
+
+      // الحفاظ على الشعار: إذا كان الشعار موجوداً في أي من المكانين نتمسك به دائماً
+      let mergedLogo = null;
+      if (cloudSettings?.companyLogo && String(cloudSettings.companyLogo).trim()) {
+        mergedLogo = cloudSettings.companyLogo;
+      }
+      if (!mergedLogo && localSettings?.companyLogo && String(localSettings.companyLogo).trim()) {
+        mergedLogo = localSettings.companyLogo;
+      }
+      if (!mergedLogo && tenant?.logo && String(tenant.logo).trim()) {
+        mergedLogo = tenant.logo;
+      }
+
+      // الحفاظ على اسم الشركة المخصص ومنع طمسه بالاسم الافتراضي القديم أو التجريبي
+      const isDefaultName = (n) => !n || n === 'شركة المقاولات' || n === 'شركة المقاولات والتشطيبات' || String(n).includes('المقاولات النموذجية') || n === 'شركة جديدة';
+      let mergedName = 'شركة المقاولات';
+      if (isLocalNewer && !isDefaultName(localSettings?.companyName)) {
+        mergedName = localSettings.companyName;
+      } else if (!isDefaultName(cloudSettings?.companyName)) {
+        mergedName = cloudSettings.companyName;
+      } else if (!isDefaultName(localSettings?.companyName)) {
+        mergedName = localSettings.companyName;
+      } else if (!isDefaultName(tenant?.name)) {
+        mergedName = tenant.name;
+      }
+
+      const baseSettings = isLocalNewer
+        ? { ...(cloudSettings || {}), ...(localSettings || {}) }
+        : { ...(localSettings || {}), ...(cloudSettings || {}) };
+
       const settings = {
-        companyName: tenant?.name || cloud.settings?.companyName || 'شركة المقاولات',
-        companySubtitle: tenant?.subtitle || cloud.settings?.companySubtitle || 'نظام إدارة المشاريع',
-        city: tenant?.city || cloud.settings?.city || '',
-        country: tenant?.country || cloud.settings?.country || 'مصر',
-        currency: tenant?.currency || cloud.settings?.currency || 'ج.م',
-        phone: tenant?.phone || cloud.settings?.phone || '',
-        primaryColor: tenant?.primaryColor || cloud.settings?.primaryColor || '#1877F2',
-        accentColor: tenant?.accentColor || cloud.settings?.accentColor || '#166FE5',
-        ...(localSettings || {}),
-        ...(cloudSettings || {}),
-        companyLogo: cloudSettings?.companyLogo || localSettings?.companyLogo || null,
+        companyName: mergedName,
+        companySubtitle: baseSettings.companySubtitle || tenant?.subtitle || 'نظام إدارة المشاريع',
+        city: baseSettings.city || tenant?.city || '',
+        country: baseSettings.country || tenant?.country || 'مصر',
+        currency: baseSettings.currency || tenant?.currency || 'ج.م',
+        phone: baseSettings.phone || tenant?.phone || '',
+        primaryColor: baseSettings.primaryColor || tenant?.primaryColor || '#1877F2',
+        accentColor: baseSettings.accentColor || tenant?.accentColor || '#166FE5',
+        ...baseSettings,
+        companyName: mergedName,
+        companyLogo: mergedLogo,
+        updatedAt: isLocalNewer ? (localSettings?.updatedAt || new Date().toISOString()) : (cloudSettings?.updatedAt || new Date().toISOString()),
       };
 
-      if (localSettings?.companyLogo && !cloudSettings?.companyLogo) {
+      // مزامنة اسم وشعار الشركة في سجل الـ Tenant إذا تم تعديله
+      if (tenant) {
+        if (settings.companyName && tenant.name !== settings.companyName) {
+          tenant.name = settings.companyName;
+        }
+        if (settings.companyLogo && tenant.logo !== settings.companyLogo) {
+          tenant.logo = settings.companyLogo;
+        }
+      }
+
+      // مزامنة فورية في قائمة الشركات المركزية PLATFORM_TENANTS_KEY
+      try {
+        const rawTenants = localStorage.getItem(PLATFORM_TENANTS_KEY);
+        if (rawTenants) {
+          const tList = JSON.parse(rawTenants);
+          if (Array.isArray(tList)) {
+            let changed = false;
+            const updatedTList = tList.map(t => {
+              if (t.id === companyId) {
+                changed = true;
+                return {
+                  ...t,
+                  name: settings.companyName || t.name,
+                  logo: settings.companyLogo || t.logo,
+                  currency: settings.currency || t.currency,
+                };
+              }
+              return t;
+            });
+            if (changed) {
+              localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(updatedTList));
+            }
+          }
+        }
+      } catch (e) {}
+
+      if ((localSettings?.companyLogo && !cloudSettings?.companyLogo) ||
+          (isLocalNewer && localSettings?.companyName !== cloudSettings?.companyName)) {
         try { syncSettingsToCloud(companyId, settings); } catch (e) {}
       }
       const rawUsers = Array.isArray(cloud.users) && cloud.users.length > 0 ? cloud.users : null;
@@ -824,8 +929,18 @@ export async function getTenantDataAsync(companyId) {
 
       const projects = mergeProjectsPreservingLocal(localFallback.projects, cloudProjects, companyId);
 
-      // تحديث الـ LocalStorage Cache
-      if (settings) try { localStorage.setItem(`tenant_${companyId}_settings`, JSON.stringify(settings)); } catch (e) {}
+      // تحديث الـ LocalStorage Cache في كافة المفاتيح المعنية
+      if (settings) {
+        try {
+          const rawS = JSON.stringify(settings);
+          localStorage.setItem(`tenant_${companyId}_settings`, rawS);
+          if (!companyId.startsWith('comp_')) {
+            localStorage.setItem(`tenant_comp_${companyId}_settings`, rawS);
+          } else {
+            localStorage.setItem(`tenant_${companyId.replace(/^comp_/, '')}_settings`, rawS);
+          }
+        } catch (e) {}
+      }
       if (mergedUsers) try { localStorage.setItem(`tenant_${companyId}_users`, JSON.stringify(mergedUsers)); } catch (e) {}
       if (mergedTeam) try { localStorage.setItem(`tenant_${companyId}_team`, JSON.stringify(mergedTeam)); } catch (e) {}
       if (leads) try { localStorage.setItem(`tenant_${companyId}_leads`, JSON.stringify(leads)); } catch (e) {}
@@ -872,6 +987,36 @@ export async function getTenantDataAsync(companyId) {
  * في توكن المستخدم، حيث تقوم بمطابقة البريد الإلكتروني للمستخدم الموثق مع سجلات الشركة المصرح لها
  * لضمان استمرار الجلسة وسلاسة الدخول والتعرف على الشركة النشطة.
  */
+export function getTenantCurrentName(t) {
+  if (!t) return 'الشركة';
+  try {
+    const sRaw = localStorage.getItem(`tenant_${t.id}_settings`) ||
+                 (t.id && !t.id.startsWith('comp_') ? localStorage.getItem(`tenant_comp_${t.id}_settings`) : null) ||
+                 (t.id && t.id.startsWith('comp_') ? localStorage.getItem(`tenant_${t.id.replace(/^comp_/, '')}_settings`) : null);
+    if (sRaw) {
+      const s = JSON.parse(sRaw);
+      if (s.companyName && s.companyName !== 'شركة المقاولات' && s.companyName !== 'شركة المقاولات والتشطيبات') {
+        return s.companyName;
+      }
+    }
+  } catch (e) {}
+  return t.name || 'الشركة';
+}
+
+export function getTenantCurrentLogo(t) {
+  if (!t) return null;
+  try {
+    const sRaw = localStorage.getItem(`tenant_${t.id}_settings`) ||
+                 (t.id && !t.id.startsWith('comp_') ? localStorage.getItem(`tenant_comp_${t.id}_settings`) : null) ||
+                 (t.id && t.id.startsWith('comp_') ? localStorage.getItem(`tenant_${t.id.replace(/^comp_/, '')}_settings`) : null);
+    if (sRaw) {
+      const s = JSON.parse(sRaw);
+      if (s.companyLogo) return s.companyLogo;
+    }
+  } catch (e) {}
+  return t.logo || null;
+}
+
 export async function resolveTenantUserByEmail(email, firebaseUid = '', claims = {}) {
   const cleanEmail = (email || '').toLowerCase().trim();
 
@@ -954,6 +1099,8 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
   if (claims.companyId) {
     const claimTenant = tenants.find(t => t.id === claims.companyId);
     if (claimTenant) {
+      const compName = getTenantCurrentName(claimTenant);
+      const compLogo = getTenantCurrentLogo(claimTenant);
       return {
         success: true,
         user: {
@@ -962,10 +1109,14 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
           name: cleanEmail === claimTenant.adminEmail ? claimTenant.adminName : (claims.name || cleanEmail.split('@')[0]),
           role: claims.role || 'owner',
           companyId: claimTenant.id,
-          companyName: claimTenant.name,
+          companyName: compName,
           currency: claimTenant.currency || 'ج.م',
         },
-        tenant: claimTenant,
+        tenant: {
+          ...claimTenant,
+          name: compName,
+          logo: compLogo,
+        },
         isSuperAdmin: false,
       };
     }
@@ -1007,6 +1158,8 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
         name: cloudUser.companyName || 'الشركة',
         currency: cloudUser.currency || 'ج.م',
       };
+      const compName = getTenantCurrentName(matchTenant);
+      const compLogo = getTenantCurrentLogo(matchTenant);
       console.log('[resolveTenantUserByEmail] ✅ Found user in cloud directory:', cleanEmail, 'company:', matchTenant.id);
 
       // حفظ محلي فوري لتسريع عمليات الدخول التالية على هذا المتصفح
@@ -1026,10 +1179,14 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
           id: firebaseUid || cloudUser.id,
           role: cloudUser.role || 'engineer',
           companyId: matchTenant.id,
-          companyName: matchTenant.name || cloudUser.companyName,
+          companyName: compName || matchTenant.name || cloudUser.companyName,
           currency: matchTenant.currency || cloudUser.currency || 'ج.م',
         },
-        tenant: matchTenant,
+        tenant: {
+          ...matchTenant,
+          name: compName,
+          logo: compLogo,
+        },
         isSuperAdmin: false,
       };
     }
@@ -1056,6 +1213,8 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
             name: u.companyName || 'الشركة',
             currency: u.currency || 'ج.م',
           };
+          const compName = getTenantCurrentName(matchTenant);
+          const compLogo = getTenantCurrentLogo(matchTenant);
           console.log('[resolveTenantUserByEmail] Found user in platform-all-users-registry:', cleanEmail, 'role:', u.role, 'company:', matchTenant.id);
           return {
             success: true,
@@ -1064,10 +1223,14 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
               id: firebaseUid || u.id,
               role: u.role || 'engineer',
               companyId: matchTenant.id,
-              companyName: matchTenant.name || u.companyName,
+              companyName: compName || matchTenant.name || u.companyName,
               currency: matchTenant.currency || u.currency || 'ج.م',
             },
-            tenant: matchTenant,
+            tenant: {
+              ...matchTenant,
+              name: compName,
+              logo: compLogo,
+            },
             isSuperAdmin: false,
           };
         }
@@ -1133,23 +1296,31 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
         localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
       } catch (e) {}
 
+      const compName = getTenantCurrentName(t);
+      const compLogo = getTenantCurrentLogo(t);
       return {
         success: true,
         user: {
           ...match,
           id: firebaseUid || match.id,
           companyId: t.id,
-          companyName: t.name,
+          companyName: compName,
           currency: t.currency || 'ج.م',
           role: match.role || 'engineer',
         },
-        tenant: t,
+        tenant: {
+          ...t,
+          name: compName,
+          logo: compLogo,
+        },
         isSuperAdmin: false,
       };
     }
 
     // ب) هل هو مالك الشركة (Owner / Admin)
     if (isTenantAdminMatch(t)) {
+      const compName = getTenantCurrentName(t);
+      const compLogo = getTenantCurrentLogo(t);
       return {
         success: true,
         user: {
@@ -1159,10 +1330,14 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
           name: t.adminName || 'مدير الشركة',
           role: 'owner',
           companyId: t.id,
-          companyName: t.name,
+          companyName: compName,
           currency: t.currency || 'ج.م',
         },
-        tenant: t,
+        tenant: {
+          ...t,
+          name: compName,
+          logo: compLogo,
+        },
         isSuperAdmin: false,
       };
     }
@@ -1179,6 +1354,8 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
             const m = uList.find(isUserMatch);
             if (m) {
               const matchedTenant = tenants.find(t => t.id === cId) || { id: cId, name: 'الشركة', currency: 'ج.م' };
+              const compName = getTenantCurrentName(matchedTenant);
+              const compLogo = getTenantCurrentLogo(matchedTenant);
               console.log('[resolveTenantUserByEmail] ✅ Found user in local storage key:', k, cleanEmail);
               return {
                 success: true,
@@ -1186,11 +1363,15 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
                   ...m,
                   id: firebaseUid || m.id,
                   companyId: cId,
-                  companyName: matchedTenant.name,
+                  companyName: compName,
                   currency: matchedTenant.currency || 'ج.م',
                   role: m.role || 'engineer'
                 },
-                tenant: matchedTenant,
+                tenant: {
+                  ...matchedTenant,
+                  name: compName,
+                  logo: compLogo,
+                },
                 isSuperAdmin: false
               };
             }
@@ -1219,6 +1400,8 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
       if (!currentList.some(t => t.id === lastRegTenant.id)) {
         saveAllTenants([lastRegTenant, ...currentList]);
       }
+      const compName = getTenantCurrentName(lastRegTenant);
+      const compLogo = getTenantCurrentLogo(lastRegTenant);
       return {
         success: true,
         user: {
@@ -1227,10 +1410,14 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
           name: lastRegTenant.adminName || cleanEmail.split('@')[0],
           role: 'owner',
           companyId: lastRegTenant.id,
-          companyName: lastRegTenant.name,
+          companyName: compName || lastRegTenant.name,
           currency: lastRegTenant.currency || 'ج.م',
         },
-        tenant: lastRegTenant,
+        tenant: {
+          ...lastRegTenant,
+          name: compName || lastRegTenant.name,
+          logo: compLogo || lastRegTenant.logo || null,
+        },
         isSuperAdmin: false,
       };
     }
@@ -1250,6 +1437,8 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
         const matchUser = Array.isArray(matchCookieTenant.users) 
           ? matchCookieTenant.users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail)
           : null;
+        const compName = getTenantCurrentName(matchCookieTenant);
+        const compLogo = getTenantCurrentLogo(matchCookieTenant);
         return {
           success: true,
           user: {
@@ -1258,10 +1447,14 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
             name: matchUser?.name || matchCookieTenant.adminName || cleanEmail.split('@')[0],
             role: matchUser?.role || (matchCookieTenant.adminEmail === cleanEmail ? 'owner' : 'engineer'),
             companyId: matchCookieTenant.id,
-            companyName: matchCookieTenant.name,
+            companyName: compName || matchCookieTenant.name,
             currency: matchCookieTenant.currency || 'ج.م',
           },
-          tenant: matchCookieTenant,
+          tenant: {
+            ...matchCookieTenant,
+            name: compName || matchCookieTenant.name,
+            logo: compLogo || matchCookieTenant.logo || null,
+          },
           isSuperAdmin: false,
         };
       }
@@ -1288,6 +1481,9 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
         }
       } catch (e) {}
 
+      const compName = getTenantCurrentName(subTenant);
+      const compLogo = getTenantCurrentLogo(subTenant);
+
       return {
         success: true,
         user: {
@@ -1296,10 +1492,14 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
           name: cleanEmail.split('@')[0],
           role: 'owner',
           companyId: companyId,
-          companyName: companyName,
+          companyName: compName || companyName,
           currency: 'ج.م',
         },
-        tenant: subTenant,
+        tenant: {
+          ...subTenant,
+          name: compName || companyName,
+          logo: compLogo || null,
+        },
         isSuperAdmin: false,
       };
     }

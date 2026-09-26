@@ -8,7 +8,7 @@ import {
 
 import { setGlobalCurrency } from '../utils/helpers';
 import { getActiveTenantId } from '../services/tenantsManager';
-import { syncSettingsToCloud, syncCompanyUsersToCloud, syncTenantUsersToCloud } from '../services/cloudSync';
+import { syncSettingsToCloud, syncCompanyUsersToCloud, syncTenantUsersToCloud, uploadMediaToFirebaseStorage } from '../services/cloudSync';
 import { callCreateCompanyUser } from '../services/auth';
 import AutomationsCenter from './AutomationsCenter';
 import UserManagement, { loadUsers, saveUsers } from './UserManagement';
@@ -43,7 +43,7 @@ const TEAM_GROUPS = [
 /* ────────────────────────────────────────────────────────────
    Component: LogoUploader
 ──────────────────────────────────────────────────────────── */
-function LogoUploader({ logo, onChange }) {
+function LogoUploader({ logo, onChange, activeCompanyId }) {
   const inputRef = useRef(null);
   const [drag, setDrag] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -52,9 +52,19 @@ function LogoUploader({ logo, onChange }) {
     if (!file || !file.type.startsWith('image/')) return;
     setProcessing(true);
     try {
-      const compressed = await compressLogoImage(file, 400, 0.88);
+      const compressed = await compressLogoImage(file, 360, 0.85);
       if (compressed) {
         onChange(compressed);
+        try {
+          uploadMediaToFirebaseStorage(
+            compressed,
+            `companies/${activeCompanyId || 'general'}/branding`,
+            `logo_${Date.now()}.png`,
+            compressed,
+            `logo_${activeCompanyId || 'main'}`,
+            activeCompanyId
+          );
+        } catch (e) {}
       }
     } catch (err) {
       console.warn('Logo compression error, fallback to FileReader:', err);
@@ -155,11 +165,18 @@ export default function CompanySettings({
   activeSubTab = 'branding',
   onSubTabChange,
 }) {
+  const effectiveCompanyId = activeCompanyId || currentUser?.companyId || (typeof localStorage !== 'undefined' ? (localStorage.getItem('platform-active-tenant-id') || localStorage.getItem('tashteeb_active_company_id')) : '') || 'comp_demo';
+
   const [settings, setSettings] = useState(() => {
-    if (companySettings && Object.keys(companySettings).length > 0) {
-      return { ...DEFAULT_COMPANY_SETTINGS, ...companySettings };
+    const loaded = loadCompanySettings(effectiveCompanyId);
+    const hasCustomProp = companySettings && (
+      companySettings.companyLogo ||
+      (companySettings.companyName && companySettings.companyName !== 'شركة المقاولات' && companySettings.companyName !== 'شركة المقاولات والتشطيبات')
+    );
+    if (hasCustomProp) {
+      return { ...DEFAULT_COMPANY_SETTINGS, ...loaded, ...companySettings, companyLogo: companySettings.companyLogo || loaded.companyLogo || null };
     }
-    return loadCompanySettings(activeCompanyId);
+    return loaded;
   });
 
   const [saved, setSaved] = useState(false);
@@ -178,18 +195,48 @@ export default function CompanySettings({
   const [teamErrors, setTeamErrors] = useState({});
   const [teamSuccess, setTeamSuccess] = useState({});
 
+  const lastCompanyIdRef = useRef(effectiveCompanyId);
+  const isDirtyRef = useRef(false);
+
   // مزامنة حالة الإعدادات عند تغيير الشركة النشطة أو استلام إعدادات محدثة مع عزل تام يمنع وراثة بيانات شركة سابقة
   useEffect(() => {
-    const fresh = (companySettings && Object.keys(companySettings).length > 0)
-      ? companySettings
-      : loadCompanySettings(activeCompanyId);
+    // إذا تغيرت الشركة النشطة، نعيد التعيين دائماً من الكاش الخاص بها
+    if (lastCompanyIdRef.current !== effectiveCompanyId) {
+      lastCompanyIdRef.current = effectiveCompanyId;
+      isDirtyRef.current = false;
+      const loaded = loadCompanySettings(effectiveCompanyId);
+      const hasCustomProp = companySettings && (
+        companySettings.companyLogo ||
+        (companySettings.companyName && companySettings.companyName !== 'شركة المقاولات' && companySettings.companyName !== 'شركة المقاولات والتشطيبات')
+      );
+      const fresh = hasCustomProp
+        ? { ...loaded, ...companySettings, companyLogo: companySettings.companyLogo || loaded.companyLogo || null }
+        : loaded;
 
-    setSettings({
-      ...DEFAULT_COMPANY_SETTINGS,
-      ...fresh,
-      companyLogo: fresh?.companyLogo || null,
-    });
-  }, [companySettings, activeCompanyId]);
+      setSettings({
+        ...DEFAULT_COMPANY_SETTINGS,
+        ...fresh,
+        companyLogo: fresh?.companyLogo || loaded?.companyLogo || null,
+      });
+      return;
+    }
+
+    // إذا لم يقم المستخدم بتعديل الحقول محلياً (غير محفوظة)، يمكن تحديث الحالة فقط إذا كانت هناك بيانات مخصصة حقيقية
+    if (!isDirtyRef.current && companySettings && Object.keys(companySettings).length > 0) {
+      const hasCustomProp = companySettings.companyLogo || (
+        companySettings.companyName &&
+        companySettings.companyName !== 'شركة المقاولات' &&
+        companySettings.companyName !== 'شركة المقاولات والتشطيبات'
+      );
+      if (hasCustomProp) {
+        setSettings(prev => ({
+          ...prev,
+          ...companySettings,
+          companyLogo: companySettings.companyLogo || prev.companyLogo || null,
+        }));
+      }
+    }
+  }, [companySettings, effectiveCompanyId]);
 
   // Apply branding on load & settings change
   useEffect(() => {
@@ -197,29 +244,64 @@ export default function CompanySettings({
   }, [settings]);
 
   const handleSave = useCallback(async () => {
-    saveCompanySettings(settings, activeCompanyId);
+    isDirtyRef.current = false;
+    saveCompanySettings(settings, effectiveCompanyId);
     onCompanySettingsChange?.(settings);
     try {
-      await syncSettingsToCloud(activeCompanyId, settings);
+      await syncSettingsToCloud(effectiveCompanyId, settings);
     } catch (e) {
       console.warn("syncSettingsToCloud in handleSave error:", e);
     }
+
+    // تحديث فوري لـ tenant_directory في السحابة لضمان ثبات اسم الشركة الجديد عند أي إعادة تحميل
+    try {
+      const sub = companySubdomain || settings.subdomain || (typeof window !== 'undefined' ? window.location.hostname.split('.')[0] : null);
+      if (sub && sub !== 'tashteebpro' && sub !== 'www' && sub !== 'localhost') {
+        const { db } = await import('../firebase');
+        const { doc, setDoc } = await import('firebase/firestore');
+        await setDoc(doc(db, 'tenant_directory', sub.toLowerCase().trim()), {
+          companyId: effectiveCompanyId,
+          name: settings.companyName,
+          logo: settings.companyLogo || null,
+          subdomain: sub.toLowerCase().trim(),
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+      }
+    } catch (e) {
+      console.warn("Error updating tenant_directory in handleSave:", e);
+    }
+
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
-  }, [settings, activeCompanyId, onCompanySettingsChange]);
+  }, [settings, effectiveCompanyId, companySubdomain, onCompanySettingsChange]);
+
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
+  // حفظ تلقائي فوري إذا غادر المستخدم الصفحة وكانت هناك تعديلات غير محفوظة
+  useEffect(() => {
+    return () => {
+      if (isDirtyRef.current && settingsRef.current && effectiveCompanyId) {
+        saveCompanySettings(settingsRef.current, effectiveCompanyId);
+        onCompanySettingsChange?.(settingsRef.current);
+        syncSettingsToCloud(effectiveCompanyId, settingsRef.current).catch(() => {});
+      }
+    };
+  }, [effectiveCompanyId, onCompanySettingsChange]);
 
   function updateSetting(key, val) {
-    setSettings(prev => {
-      const next = { ...prev, [key]: val };
-      if (key === 'companyLogo') {
-        saveCompanySettings(next, activeCompanyId);
-        onCompanySettingsChange?.(next);
-        try {
-          syncSettingsToCloud(activeCompanyId, next);
-        } catch (e) {}
-      }
-      return next;
-    });
+    isDirtyRef.current = true;
+    const next = { ...settingsRef.current, [key]: val };
+    settingsRef.current = next;
+    setSettings(next);
+
+    if (key === 'companyLogo' || key === 'companyName' || key === 'currency') {
+      saveCompanySettings(next, effectiveCompanyId);
+      onCompanySettingsChange?.(next);
+      try {
+        syncSettingsToCloud(effectiveCompanyId, next);
+      } catch (e) {}
+    }
   }
 
   // ── Team Management ──
@@ -542,7 +624,7 @@ export default function CompanySettings({
                 شعار الشركة الرسمي
               </h3>
               <div className="cs-logo-panel-body" style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
-                <LogoUploader logo={settings.companyLogo} onChange={(val) => updateSetting('companyLogo', val)} />
+                <LogoUploader logo={settings.companyLogo} onChange={(val) => updateSetting('companyLogo', val)} activeCompanyId={activeCompanyId} />
                 <div className="cs-logo-guidelines" style={{ flex: '1 1 200px', minWidth: 0, width: '100%' }}>
                   <div style={{
                     padding: '12px 14px',
@@ -579,6 +661,13 @@ export default function CompanySettings({
                     style={{ width: '100%', fontWeight: 700, fontSize: 14 }}
                     value={settings.companyName || ''}
                     onChange={(e) => updateSetting('companyName', e.target.value)}
+                    onBlur={() => {
+                      if (settingsRef.current) {
+                        saveCompanySettings(settingsRef.current, effectiveCompanyId);
+                        onCompanySettingsChange?.(settingsRef.current);
+                        syncSettingsToCloud(effectiveCompanyId, settingsRef.current).catch(() => {});
+                      }
+                    }}
                     placeholder="مثال: شركة النيل للتصميم والتشطيبات"
                     maxLength={70}
                   />
@@ -594,6 +683,13 @@ export default function CompanySettings({
                     style={{ width: '100%', fontSize: 13 }}
                     value={settings.companySubtitle || ''}
                     onChange={(e) => updateSetting('companySubtitle', e.target.value)}
+                    onBlur={() => {
+                      if (settingsRef.current) {
+                        saveCompanySettings(settingsRef.current, effectiveCompanyId);
+                        onCompanySettingsChange?.(settingsRef.current);
+                        syncSettingsToCloud(effectiveCompanyId, settingsRef.current).catch(() => {});
+                      }
+                    }}
                     placeholder="مثال: مقاولات عامة وتصميم داخلي فاخر"
                     maxLength={90}
                   />
@@ -909,7 +1005,7 @@ export default function CompanySettings({
               type="button"
               className="btn cs-btn-reset"
               style={{ gap: 6, color: 'var(--muted)', borderColor: 'var(--border)' }}
-              onClick={() => { setSettings(loadCompanySettings(activeCompanyId)); }}
+              onClick={() => { setSettings(loadCompanySettings(effectiveCompanyId)); }}
             >
               <RefreshCw size={13} /> إعادة تعيين
             </button>

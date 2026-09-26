@@ -48,17 +48,35 @@ export default function ProjectFinance({ project, onUpdate }) {
 
   function handleSave() {
     if (!formData.amount || !formData.description) return;
-    const entry = { ...formData, id: 'fin-' + Date.now() };
-    if (type === 'payment') onUpdate({ clientPayments: [entry, ...payments] });
-    else onUpdate({ expenses: [entry, ...expenses] });
+    const numAmount = parseFloat(formData.amount) || 0;
+    const entry = { ...formData, amount: numAmount, id: 'fin-' + Date.now() };
+
+    if (type === 'payment') {
+      const nextPayments = [entry, ...payments];
+      const nextTotalPaid = nextPayments.reduce((a, c) => a + parseFloat(c.amount || 0), 0);
+      onUpdate({
+        clientPayments: nextPayments,
+        payments: nextPayments,
+        totalPaid: nextTotalPaid,
+        paidAmount: nextTotalPaid,
+      });
+    } else {
+      const nextExpenses = [entry, ...expenses];
+      const nextSpent = nextExpenses.reduce((a, c) => a + parseFloat(c.amount || 0), 0);
+      onUpdate({
+        expenses: nextExpenses,
+        spent: nextSpent,
+      });
+    }
     setShowAddForm(false);
     setFormData({ amount: '', date: todayISO(), description: '', category: 'دفعات نقدية' });
   }
 
   function addMilestone() {
     if (!milestoneForm.label || !milestoneForm.amount) return;
+    const numAmount = parseFloat(milestoneForm.amount) || 0;
     onUpdate({
-      paymentMilestones: [...milestones, { id: 'ms-' + Date.now(), ...milestoneForm, status: 'pending' }]
+      paymentMilestones: [...milestones, { id: 'ms-' + Date.now(), ...milestoneForm, amount: numAmount, status: 'pending' }]
     });
     setMilestoneForm({ label: '', amount: '', dueDate: '', note: '' });
     setShowMilestoneForm(false);
@@ -86,12 +104,17 @@ export default function ProjectFinance({ project, onUpdate }) {
     if (ms) {
       const entry = {
         id: 'fin-' + Date.now(),
-        amount: ms.amount,
+        amount: parseFloat(ms.amount) || 0,
         date: todayISO(),
         description: ms.label,
         category: 'دفعات نقدية',
       };
-      updates.clientPayments = [entry, ...payments];
+      const nextPayments = [entry, ...payments];
+      const nextTotalPaid = nextPayments.reduce((a, c) => a + parseFloat(c.amount || 0), 0);
+      updates.clientPayments = nextPayments;
+      updates.payments = nextPayments;
+      updates.totalPaid = nextTotalPaid;
+      updates.paidAmount = nextTotalPaid;
     }
     onUpdate(updates);
   }

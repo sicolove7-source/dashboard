@@ -7,7 +7,7 @@
  */
 
 import { db, functions } from '../firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { getTenantData, loadAllTenants } from './tenantsManager';
 import { loadCompanySettings } from '../utils/branding';
@@ -118,11 +118,25 @@ export function parseClientPortalFromUrl(urlInput) {
 export function sanitizeProjectForClientPortal(rawProject) {
   if (!rawProject) return null;
   const {
-    expenses,        // إسقاط المصروفات والتكاليف الداخلية للمقاول
     subcontractors,  // إسقاط عقود الباطن الداخلية وهوامش الأرباح
     resources,       // إسقاط سجلات العمالة وتكاليف المعدات
+    craftsmen,       // إسقاط تفاصيل وأجور الصنايعية الفردية
     ...clientSafe
   } = rawProject;
+
+  const rawBudget = Number(rawProject.budget || rawProject.contractValue || 0);
+  const rawContract = Number(rawProject.contractValue || rawProject.budget || 0);
+  const rawExpenses = Array.isArray(rawProject.expenses) ? rawProject.expenses : [];
+  const rawPayments = Array.isArray(rawProject.clientPayments) && rawProject.clientPayments.length > 0
+    ? rawProject.clientPayments
+    : (Array.isArray(rawProject.payments) ? rawProject.payments : []);
+  const rawMilestones = Array.isArray(rawProject.paymentMilestones) ? rawProject.paymentMilestones : [];
+
+  const calculatedSpent = rawExpenses.reduce((sum, e) => sum + (Number(e?.amount) || 0), 0);
+  const finalSpent = Number(rawProject.spent !== undefined && rawProject.spent !== null ? rawProject.spent : calculatedSpent);
+
+  const calculatedPaid = rawPayments.reduce((sum, p) => sum + (Number(p?.amount) || 0), 0);
+  const finalPaid = Number(rawProject.totalPaid !== undefined && rawProject.totalPaid !== null ? rawProject.totalPaid : (rawProject.paidAmount || calculatedPaid));
 
   return {
     ...clientSafe,
@@ -132,17 +146,59 @@ export function sanitizeProjectForClientPortal(rawProject) {
     client: rawProject.client || 'عميلنا العزيز',
     progress: Number(rawProject.progress || 0),
     status: rawProject.status || 'active',
-    budget: Number(rawProject.budget || rawProject.contractValue || 0),
-    contractValue: Number(rawProject.contractValue || rawProject.budget || 0),
+    budget: rawBudget,
+    contractValue: rawContract,
+    spent: finalSpent,
+    totalPaid: finalPaid,
+    paidAmount: finalPaid,
     clientPortalEnabled: rawProject.clientPortalEnabled === true,
     clientPortalToken: rawProject.clientPortalToken || rawProject.token || null,
     dailyLogs: Array.isArray(rawProject.dailyLogs) ? rawProject.dailyLogs : [],
     workItems: Array.isArray(rawProject.workItems) ? rawProject.workItems : [],
-    payments: Array.isArray(rawProject.payments) ? rawProject.payments : (rawProject.clientPayments || []),
-    clientPayments: Array.isArray(rawProject.clientPayments) ? rawProject.clientPayments : (rawProject.payments || []),
+    tasks: Array.isArray(rawProject.tasks) ? rawProject.tasks : [],
+    payments: rawPayments,
+    clientPayments: rawPayments,
+    paymentMilestones: rawMilestones,
+    expenses: rawExpenses,
     photos: Array.isArray(rawProject.photos) ? rawProject.photos : [],
     sitePhotos: Array.isArray(rawProject.sitePhotos) ? rawProject.sitePhotos : [],
   };
+}
+
+/**
+ * الاشتراك الحي والتلقائي في تحديثات بوابة العميل
+ * يضمن ظهور العمليات الحسابية واليوميات ونسب الإنجاز فور إدخالها من الإدارة دون الحاجة لإعادة تحميل الصفحة
+ */
+export function subscribeToClientPortal(token, onUpdate) {
+  if (!token || typeof token !== 'string') return () => {};
+  const cleanToken = token.trim();
+  if (!cleanToken) return () => {};
+
+  try {
+    const shareDocRef = doc(db, 'portal_shares', cleanToken);
+    return onSnapshot(
+      shareDocRef,
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          const sanitized = sanitizeProjectForClientPortal(data);
+          if (typeof onUpdate === 'function') {
+            onUpdate({
+              project: sanitized,
+              companyId: data.companyId || null,
+              companySettings: data.companySettings || null
+            });
+          }
+        }
+      },
+      (err) => {
+        console.warn('[PortalResolver] Realtime listener notice:', err.message);
+      }
+    );
+  } catch (err) {
+    console.warn('[PortalResolver] Failed to attach realtime listener:', err.message);
+    return () => {};
+  }
 }
 
 /**
