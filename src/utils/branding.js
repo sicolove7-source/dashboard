@@ -193,7 +193,13 @@ export function saveCompanySettings(settings, companyId) {
       let tenants = rawTenants ? JSON.parse(rawTenants) : [];
       if (!Array.isArray(tenants)) tenants = [];
 
-      const isMatch = (t) => t?.id === cId || t?.id === `comp_${cId}` || (cId.startsWith('comp_') && t?.id === cId.replace(/^comp_/, ''));
+      const cleanTarget = String(cId).replace(/^comp_/, '');
+      const isMatch = (t) => {
+        if (!t) return false;
+        const tId = String(t.id || t.companyId || '').trim();
+        const cleanTId = tId.replace(/^comp_/, '');
+        return tId === cId || cleanTId === cleanTarget;
+      };
       let found = false;
       const updated = tenants.map(t => {
         if (isMatch(t)) {

@@ -680,7 +680,13 @@ export function getTenantData(companyId) {
   }
 
   const tenants = loadAllTenants();
-  const isMatch = (t) => t?.id === companyId || t?.id === `comp_${companyId}` || (companyId.startsWith('comp_') && t?.id === companyId.replace(/^comp_/, ''));
+  const cleanTarget = String(companyId).replace(/^comp_/, '');
+  const isMatch = (t) => {
+    if (!t) return false;
+    const tId = String(t.id || t.companyId || '').trim();
+    const cleanTId = tId.replace(/^comp_/, '');
+    return tId === companyId || cleanTId === cleanTarget;
+  };
   const tenant = tenants.find(isMatch);
 
   // 1. الإعدادات والعملة
@@ -704,8 +710,13 @@ export function getTenantData(companyId) {
       accentColor: tenant?.accentColor || '#166FE5',
       companyLogo: tenant?.logo || null,
     };
-  } else if (tenant && settings.companyName && tenant.name !== settings.companyName) {
-    tenant.name = settings.companyName;
+  } else {
+    if (!settings.companyLogo && tenant?.logo) {
+      settings.companyLogo = tenant.logo;
+    }
+    if (tenant && settings.companyName && tenant.name !== settings.companyName) {
+      tenant.name = settings.companyName;
+    }
   }
 
   // 2. المستخدمين

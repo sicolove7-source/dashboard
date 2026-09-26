@@ -1050,37 +1050,56 @@ export async function syncSettingsToCloud(companyId, settings) {
 
   const res = await syncCompanyDataToCloud(cId, companyPatch);
 
-  // 2. تحديث قائمة الشركات المركزية platform_metadata/tenants سحابياً
+  // 2. تحديث قائمة الشركات المركزية platform_metadata/tenants سحابياً لأي شركة على الإطلاق
   try {
     const tenantsRef = doc(db, 'platform_metadata', 'tenants');
     const snap = await getDoc(tenantsRef);
     if (snap.exists()) {
       const tenantsList = snap.data()?.tenants || [];
       const cleanTarget = cId.replace(/^comp_/, '');
+      const sub = settings.subdomain || (typeof window !== 'undefined' ? window.location.hostname.split('.')[0] : null);
+
       const idx = tenantsList.findIndex(t => {
-        if (!t?.id) return false;
-        const cleanTId = t.id.replace(/^comp_/, '');
-        return cleanTId === cleanTarget;
+        if (!t) return false;
+        const tId = String(t.id || t.companyId || '').trim();
+        const cleanTId = tId.replace(/^comp_/, '');
+        const subMatches = sub && sub !== 'tashteebpro' && sub !== 'www' && sub !== 'localhost' && (t.subdomain === sub || t.slug === sub);
+        return tId === cId || cleanTId === cleanTarget || subMatches;
       });
+
       if (idx !== -1) {
         tenantsList[idx] = {
           ...tenantsList[idx],
           name: settings.companyName || tenantsList[idx].name,
           logo: settings.companyLogo !== undefined ? (settings.companyLogo || null) : tenantsList[idx].logo,
           currency: settings.currency || tenantsList[idx].currency,
+          phone: settings.phone !== undefined ? settings.phone : tenantsList[idx].phone,
           updatedAt: new Date().toISOString(),
         };
-        await setDoc(tenantsRef, {
-          tenants: tenantsList,
+      } else {
+        // إذا لم تكن الشركة مسجلة بعد في قائمة المنصة، تُضاف فوراً لكي تظهر للجميع
+        tenantsList.unshift({
+          id: cId,
+          companyId: cId,
+          name: settings.companyName || 'شركة جديدة',
+          logo: settings.companyLogo || null,
+          currency: settings.currency || 'ج.م',
+          subdomain: (sub && sub !== 'tashteebpro' && sub !== 'www' && sub !== 'localhost') ? sub : cleanTarget,
+          status: 'active',
           updatedAt: new Date().toISOString(),
-        }, { merge: true });
+        });
+      }
 
-        // تحديث الكاش المحلي لقائمة الشركات أيضاً
-        if (typeof localStorage !== 'undefined') {
-          try {
-            localStorage.setItem('platform-tenants-master-v1', JSON.stringify(tenantsList));
-          } catch (e) {}
-        }
+      await setDoc(tenantsRef, {
+        tenants: tenantsList,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+
+      // تحديث الكاش المحلي لقائمة الشركات أيضاً
+      if (typeof localStorage !== 'undefined') {
+        try {
+          localStorage.setItem('platform-tenants-master-v1', JSON.stringify(tenantsList));
+        } catch (e) {}
       }
     }
   } catch (e) {
