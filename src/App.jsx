@@ -753,10 +753,13 @@ export default function App() {
     setProjects(scopedLocalProjects);
     setTeam(localData.team || { engineers: [], accountants: [], techOffice: [] });
     setLeads(localData.leads || []);
-    setCompanySettings(localData.settings);
-    applyCompanyBranding(localData.settings);
-    if (localData.settings?.currency) {
-      setGlobalCurrency(localData.settings.currency);
+
+    // 1b. تحميل الإعدادات من localStorage أولاً للسرعة، مع الحرص على عدم فقدان اللوجو
+    const localSettings = localData.settings || {};
+    setCompanySettings(localSettings);
+    applyCompanyBranding(localSettings);
+    if (localSettings?.currency) {
+      setGlobalCurrency(localSettings.currency);
     }
 
     if (!companyId) return;
@@ -784,12 +787,12 @@ export default function App() {
         }
         if (Array.isArray(cloudData.leads)) setLeads(cloudData.leads);
 
-
-
         if (cloudData.settings) {
-          const safeMergedLogo = (cloudData.settings.companyLogo && String(cloudData.settings.companyLogo).trim())
-            ? cloudData.settings.companyLogo
-            : (localData.settings?.companyLogo || null);
+          // دمج الإعدادات مع إعطاء أولوية للوجو والاسم من أي مصدر (سحابي أو محلي)
+          const safeMergedLogo =
+            (cloudData.settings.companyLogo && String(cloudData.settings.companyLogo).trim())
+              ? cloudData.settings.companyLogo
+              : (localData.settings?.companyLogo || null);
 
           const isDefault = (n) => !n || n === 'شركة المقاولات' || n === 'شركة المقاولات والتشطيبات' || String(n).includes('المقاولات النموذجية') || n === 'شركة جديدة';
           
@@ -829,12 +832,48 @@ export default function App() {
               localStorage.setItem(`tenant_${companyId.replace(/^comp_/, '')}_settings`, rawS);
             }
           } catch (e) {}
+        } else {
+          // 2b. إذا لم تُرجع getTenantDataAsync إعدادات، نقرأ مباشرةً من Firestore
+          try {
+            const { db: firestoreDb } = await import('./firebase');
+            const { doc: fsDoc, getDoc: fsGetDoc } = await import('firebase/firestore');
+            const compSnap = await fsGetDoc(fsDoc(firestoreDb, 'companies', companyId));
+            if (compSnap.exists()) {
+              const compData = compSnap.data();
+              if (compData?.settings) {
+                const cloudSettings = compData.settings;
+                const safeLogo = (cloudSettings.companyLogo && String(cloudSettings.companyLogo).trim())
+                  ? cloudSettings.companyLogo
+                  : (localData.settings?.companyLogo || null);
+                const isDefault = (n) => !n || n === 'شركة المقاولات' || n === 'شركة المقاولات والتشطيبات' || n === 'شركة جديدة';
+                const safeName = !isDefault(cloudSettings.companyName)
+                  ? cloudSettings.companyName
+                  : (localData.settings?.companyName || cloudSettings.companyName || 'شركة المقاولات');
+                const directSettings = { ...localData.settings, ...cloudSettings, companyName: safeName, companyLogo: safeLogo };
+                setCompanySettings(directSettings);
+                applyCompanyBranding(directSettings);
+                if (directSettings.currency) setGlobalCurrency(directSettings.currency);
+                try {
+                  const rawS = JSON.stringify(directSettings);
+                  localStorage.setItem(`tenant_${companyId}_settings`, rawS);
+                  if (!companyId.startsWith('comp_')) {
+                    localStorage.setItem(`tenant_comp_${companyId}_settings`, rawS);
+                  } else {
+                    localStorage.setItem(`tenant_${companyId.replace(/^comp_/, '')}_settings`, rawS);
+                  }
+                } catch (e) {}
+              }
+            }
+          } catch (directErr) {
+            console.warn('[loadTenantWorkspace] Direct Firestore settings fetch error:', directErr?.message);
+          }
         }
       }
     } catch (e) {
       console.warn("Could not sync tenant workspace from cloud:", e);
     }
   };
+
 
   useEffect(() => {
     if (!isAuthenticated) return;

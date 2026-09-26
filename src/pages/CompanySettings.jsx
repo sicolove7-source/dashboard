@@ -247,10 +247,16 @@ export default function CompanySettings({
     isDirtyRef.current = false;
     saveCompanySettings(settings, effectiveCompanyId);
     onCompanySettingsChange?.(settings);
+
+    // حفظ سحابي مع تسجيل تشخيصي واضح
+    let cloudSyncSuccess = false;
     try {
-      await syncSettingsToCloud(effectiveCompanyId, settings);
+      console.log('[CompanySettings] syncSettingsToCloud → companyId:', effectiveCompanyId, '| logo:', settings.companyLogo ? `${String(settings.companyLogo).length} chars` : 'null');
+      const result = await syncSettingsToCloud(effectiveCompanyId, settings);
+      cloudSyncSuccess = !!result;
+      console.log('[CompanySettings] syncSettingsToCloud result:', cloudSyncSuccess);
     } catch (e) {
-      console.warn("syncSettingsToCloud in handleSave error:", e);
+      console.error("[CompanySettings] syncSettingsToCloud FAILED:", e?.message || e);
     }
 
     // تحديث فوري لـ tenant_directory في السحابة لضمان ثبات اسم الشركة الجديد عند أي إعادة تحميل
@@ -266,6 +272,7 @@ export default function CompanySettings({
           subdomain: sub.toLowerCase().trim(),
           updatedAt: new Date().toISOString(),
         }, { merge: true });
+        console.log('[CompanySettings] tenant_directory updated:', sub);
       }
     } catch (e) {
       console.warn("Error updating tenant_directory in handleSave:", e);
@@ -274,6 +281,7 @@ export default function CompanySettings({
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   }, [settings, effectiveCompanyId, companySubdomain, onCompanySettingsChange]);
+
 
   const settingsRef = useRef(settings);
   settingsRef.current = settings;

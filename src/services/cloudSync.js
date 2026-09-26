@@ -1033,22 +1033,41 @@ export async function syncSettingsToCloud(companyId, settings) {
   const cId = cleanCompanyId(companyId);
   if (!cId || !settings) return false;
 
-  // 1. تحديث وثيقة الشركة في /companies/{cId}
-  const companyPatch = {
-    settings,
-    updatedAt: new Date().toISOString(),
-  };
-  if (settings.companyName) {
-    companyPatch.name = settings.companyName;
-  }
-  if (settings.companyLogo !== undefined) {
-    companyPatch.logo = settings.companyLogo || null;
-  }
-  if (settings.currency) {
-    companyPatch.currency = settings.currency;
+  // 0. ضغط اللوجو الإجباري قبل الحفظ لمنع رفض Firestore بسبب الحجم (الحد 1MB للوثيقة الكاملة)
+  let safeLogo = settings.companyLogo || null;
+  if (safeLogo && typeof safeLogo === 'string' && safeLogo.startsWith('data:') && safeLogo.length > 60000) {
+    try {
+      safeLogo = await compressImageToCloudDataUrl(safeLogo, 480, 0.60);
+      if (!safeLogo || safeLogo.length > 60000) {
+        safeLogo = await compressImageToCloudDataUrl(safeLogo || settings.companyLogo, 320, 0.45);
+      }
+      console.log('[syncSettingsToCloud] Logo compressed to:', safeLogo ? `${safeLogo.length} chars` : 'null');
+    } catch (compErr) {
+      console.warn('[syncSettingsToCloud] Logo compression failed, using original:', compErr?.message);
+    }
   }
 
+  const safeSettings = { ...settings, companyLogo: safeLogo };
+
+  // 1. تحديث وثيقة الشركة في /companies/{cId}
+  const companyPatch = {
+    settings: safeSettings,
+    updatedAt: new Date().toISOString(),
+  };
+  if (safeSettings.companyName) {
+    companyPatch.name = safeSettings.companyName;
+  }
+  if (safeSettings.companyLogo !== undefined) {
+    companyPatch.logo = safeSettings.companyLogo || null;
+  }
+  if (safeSettings.currency) {
+    companyPatch.currency = safeSettings.currency;
+  }
+
+  console.log('[syncSettingsToCloud] Saving to companies/', cId, '| logo size:', safeLogo ? safeLogo.length : 0);
   const res = await syncCompanyDataToCloud(cId, companyPatch);
+  console.log('[syncSettingsToCloud] syncCompanyDataToCloud result:', res);
+
 
   // 2. تحديث قائمة الشركات المركزية platform_metadata/tenants سحابياً لأي شركة على الإطلاق
   try {

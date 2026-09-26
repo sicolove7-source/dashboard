@@ -16,6 +16,16 @@ service cloud.firestore {
       );
     }
 
+    // دالة تتحقق من ملكية الشركة مع قبول صيغتي المعرف (comp_xxx أو xxx)
+    function companyBelongsToUser(companyId) {
+      let tokenCompId = request.auth.token.companyId;
+      return tokenCompId == null ||
+             tokenCompId == companyId ||
+             ('comp_' + companyId) == tokenCompId ||
+             companyId == ('comp_' + tokenCompId) ||
+             isSuperAdmin();
+    }
+
     // 1. بيانات كل شركة ومشروعاتها وفريقها وعملائها (عزل تام لكل شركة)
     match /companies/{companyId} {
       allow read, write: if isAuthenticated() &&
@@ -23,7 +33,7 @@ service cloud.firestore {
                             companyId != '' &&
                             companyId != 'undefined' &&
                             companyId != 'null' &&
-                            (request.auth.token.companyId == null || request.auth.token.companyId == companyId || isSuperAdmin());
+                            companyBelongsToUser(companyId);
 
       // وسائط الشركة (Cloud Media Vault): قراءة عامة للصور لظهورها في أي جهاز وبوابة العميل، وكتابة للمصرح لهم
       match /media/{mediaId} {
@@ -36,7 +46,7 @@ service cloud.firestore {
                               companyId != null &&
                               companyId != '' &&
                               companyId != 'undefined' &&
-                              (request.auth.token.companyId == null || request.auth.token.companyId == companyId || isSuperAdmin());
+                              companyBelongsToUser(companyId);
       }
     }
 
