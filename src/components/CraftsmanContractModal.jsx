@@ -127,12 +127,15 @@ export const CRAFTSMAN_SPECS = {
 
 export const CRAFTSMAN_PRESETS = CRAFTSMAN_SPECS;
 
-export default function CraftsmanContractModal({ project, initialWorker, onUpdate, onClose, companySettings: propCompanySettings, isInline = false }) {
+export default function CraftsmanContractModal({ project, projects = [], initialWorker, onUpdate, onClose, companySettings: propCompanySettings, isInline = false }) {
   const activeCompanySettings = propCompanySettings || loadCompanySettings();
+  const [selectedProjectId, setSelectedProjectId] = useState(project?.id || (projects && projects.length > 0 ? projects[0].id : null));
+  const effectiveProject = project || (projects && projects.find(p => p.id === selectedProjectId)) || null;
+
   const [tradeKey, setTradeKey] = useState(initialWorker?.trade ? mapTradeToKey(initialWorker.trade) : 'ceramics');
   const activeTrade = CRAFTSMAN_SPECS[tradeKey] || CRAFTSMAN_SPECS.ceramics;
 
-  const savedCraftsmanContracts = project?.craftsmanContracts || {};
+  const savedCraftsmanContracts = effectiveProject?.craftsmanContracts || {};
   const savedForThisTrade = savedCraftsmanContracts[tradeKey] || {};
 
   const [formData, setFormData] = useState({
@@ -142,7 +145,7 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
     // First Party (الطرف الأول - الشركة / الجهة المشرفة / صاحب العمل)
     firstPartyRole: savedForThisTrade.firstPartyRole || 'الجهة المشرفة / المقاول العام',
     companyName: savedForThisTrade.companyName || activeCompanySettings?.companyName || 'شركة المقاولات والتشطيبات',
-    companyRep: savedForThisTrade.companyRep || project?.engineer || 'مدير المشروعات',
+    companyRep: savedForThisTrade.companyRep || effectiveProject?.engineer || 'مدير المشروعات',
     companyPhone: savedForThisTrade.companyPhone || activeCompanySettings?.phone || '',
     companyAddress: savedForThisTrade.companyAddress || activeCompanySettings?.address || '',
 
@@ -155,9 +158,9 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
     craftsmanTitle: savedForThisTrade.craftsmanTitle || (activeTrade.name ? activeTrade.name.replace('أعمال ', 'معلم / مقاول ') : 'مقاول مصنعية وباطن'),
 
     // Project & Location
-    projectName: savedForThisTrade.projectName || project?.name || 'موقع تشطيب دمياط',
-    projectLocation: savedForThisTrade.projectLocation || project?.area || 'دمياط الجديدة',
-    unitDetails: savedForThisTrade.unitDetails || (project ? `${project.type || 'شقة'} - عميل: ${project.client || ''}` : 'شقة سكنية'),
+    projectName: savedForThisTrade.projectName || effectiveProject?.name || '',
+    projectLocation: savedForThisTrade.projectLocation || effectiveProject?.area || '',
+    unitDetails: savedForThisTrade.unitDetails || (effectiveProject ? `${effectiveProject.type || 'شقة'} - عميل: ${effectiveProject.client || ''}` : ''),
 
     // Pricing & Quantities
     pricingType: savedForThisTrade.pricingType || 'unit_price',
@@ -259,16 +262,19 @@ export default function CraftsmanContractModal({ project, initialWorker, onUpdat
   }
 
   function handleSave() {
-    if (onUpdate && project) {
-      const existing = project.craftsmanContracts || {};
-      const updated = {
-        ...existing,
-        [tradeKey]: formData
-      };
-      onUpdate({ craftsmanContracts: updated });
-      setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 2500);
+    const existing = effectiveProject?.craftsmanContracts || {};
+    const updated = {
+      ...existing,
+      [tradeKey]: formData
+    };
+    if (onUpdate) {
+      onUpdate({ craftsmanContracts: updated }, effectiveProject?.id);
     }
+    try {
+      localStorage.setItem(`contract_${tradeKey}_${effectiveProject?.id || 'draft'}`, JSON.stringify(formData));
+    } catch (e) {}
+    setSavedSuccess(true);
+    setTimeout(() => setSavedSuccess(false), 2500);
   }
 
   const total = Number(formData.totalAgreedAmount) || 0;

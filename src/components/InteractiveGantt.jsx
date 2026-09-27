@@ -432,7 +432,9 @@ export default function InteractiveGantt({ project, onUpdate }) {
         {/* Scrollable Timeline Area */}
         <div
           ref={scrollContainerRef}
+          dir="ltr"
           style={{
+            direction: 'ltr',
             overflowX: 'auto',
             position: 'relative',
             width: '100%',
@@ -458,14 +460,16 @@ export default function InteractiveGantt({ project, onUpdate }) {
             >
               {/* Fixed Left Column for Task/Phase Names */}
               <div
+                dir="rtl"
                 style={{
+                  direction: 'rtl',
                   width: 280,
                   flexShrink: 0,
                   padding: '12px 18px',
                   fontWeight: 800,
                   fontSize: 13,
                   color: 'var(--ink)',
-                  borderLeft: '1.5px solid var(--border)',
+                  borderRight: '1.5px solid var(--border)',
                   background: 'var(--card)',
                   display: 'flex',
                   alignItems: 'center',
@@ -579,11 +583,13 @@ export default function InteractiveGantt({ project, onUpdate }) {
                     >
                       {/* Name Column */}
                       <div
+                        dir="rtl"
                         style={{
+                          direction: 'rtl',
                           width: 280,
                           flexShrink: 0,
                           padding: '10px 16px',
-                          borderLeft: '1.5px solid var(--border)',
+                          borderRight: '1.5px solid var(--border)',
                           background: 'var(--card)',
                           display: 'flex',
                           alignItems: 'center',
@@ -746,11 +752,13 @@ export default function InteractiveGantt({ project, onUpdate }) {
                           >
                             {/* Item Name Column */}
                             <div
+                              dir="rtl"
                               style={{
+                                direction: 'rtl',
                                 width: 280,
                                 flexShrink: 0,
                                 padding: '8px 16px 8px 36px',
-                                borderLeft: '1.5px solid var(--border)',
+                                borderRight: '1.5px solid var(--border)',
                                 background: 'var(--card)',
                                 display: 'flex',
                                 alignItems: 'center',

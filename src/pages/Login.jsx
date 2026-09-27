@@ -18,7 +18,7 @@ import {
   loadAllTenants,
   getTenantData,
 } from "../services/tenantsManager";
-import { isCompanySubdomain, getSubdomain, getSubdomainUrl, getCrossSubdomainCookie, setCrossSubdomainCookie } from "../services/subdomainResolver";
+import { isCompanySubdomain, getSubdomain, getSubdomainUrl, getCrossSubdomainCookie, setCrossSubdomainCookie, removeCrossSubdomainCookie } from "../services/subdomainResolver";
 import { auth, db } from "../firebase";
 import { doc, setDoc } from "firebase/firestore";
 import { syncTenantsListToCloud, syncCompanyDataToCloud, cleanPhoneNumber, fetchUserByPhoneFromCloudDirectory, fetchUserFromCloudDirectory } from "../services/cloudSync";
@@ -125,6 +125,7 @@ export default function Login({
       try {
         await logoutUser();
         localStorage.removeItem('active_session_user');
+        removeCrossSubdomainCookie('tashteeb_session_user');
       } catch (e) {}
 
       const rawIdentifier = (email || '').trim();
@@ -221,7 +222,12 @@ export default function Login({
 
       if (authResult.success) {
         // قراءة الـ Custom Claims المشفرة من Google
-        const claims = await getUserClaims(authResult.user);
+        let claims = await getUserClaims(authResult.user);
+        if (!claims?.companyId && !claims?.role && !claims?.isSuperAdmin) {
+          try {
+            claims = await getUserClaims(authResult.user, true);
+          } catch (e) {}
+        }
 
         // 2. تحديد بيانات الشركة والمستخدم والصلاحيات مع إعادة المحاولة للمستخدمين المسجلين حديثاً
         // السبب: عند التسجيل الجديد، قد لا تكون البيانات السحابية انتشرت بعد
@@ -420,69 +426,6 @@ export default function Login({
         return;
       }
 
-      // 2. إنشاء الحساب في Firebase Auth الرسمي
-      const authRes = await registerWithEmail(cleanEmail, password);
-      let firebaseUser = authRes.user;
-
-      if (!authRes.success) {
-        if (authRes.code === 'auth/email-already-in-use') {
-          // البريد مسجل بالفعل في Firebase: محاولة تسجيل الدخول بالبيانات المدخلة
-          const loginAttempt = await loginWithEmail(cleanEmail, password);
-          if (loginAttempt.success && loginAttempt.user) {
-            firebaseUser = loginAttempt.user;
-          } else {
-            try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
-            setError('هذا البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول بحسابك أو استخدام بريد إلكتروني مختلف.');
-            setLoading(false);
-            return;
-          }
-        } else {
-          try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
-          setError(authRes.error || 'تعذر إنشاء الحساب في نظام المصادقة.');
-          setLoading(false);
-          return;
-        }
-      }
-
-      // 3. تعيين Custom Claims وتحديث توكن الأمان فوراً
-      if (!firebaseUser) {
-        firebaseUser = auth.currentUser;
-      }
-      if (firebaseUser?.uid && res.tenant?.id) {
-        try {
-          await callAssignUserClaims({
-            targetUid: firebaseUser.uid,
-            companyId: res.tenant.id,
-            role: 'owner',
-            companyName: res.tenant.name,
-            currency: res.tenant.currency || 'ج.م',
-            subdomain: cleanSubdomain,
-            logo: res.tenant?.logo || null,
-          });
-          if (firebaseUser.getIdToken) {
-            await firebaseUser.getIdToken(true);
-          }
-        } catch (e) {
-          console.warn('assignUserClaims non-blocking error:', e);
-        }
-      }
-
-      // حفظ بيانات الشركة في tenant_directory والكوكي المشترك ومزامنة السحابة
-      try {
-        const dirRef = doc(db, 'tenant_directory', cleanSubdomain);
-        await setDoc(dirRef, {
-          companyId: res.tenant.id,
-          name: res.tenant.name,
-          logo: res.tenant?.logo || null,
-          subdomain: cleanSubdomain,
-          adminEmail: cleanEmail,
-          createdAt: new Date().toISOString(),
-        }, { merge: true });
-        console.log('[handleRegister] ✅ tenant_directory written with auth:', cleanSubdomain);
-      } catch (dirErr) {
-        console.warn('[handleRegister] ⚠️ Post-auth tenant_directory write:', dirErr);
-      }
-
       try {
         const safeLastReg = {
           id: res.tenant?.id,
@@ -495,24 +438,7 @@ export default function Login({
         setCrossSubdomainCookie('tashteeb_last_registered_tenant', safeLastReg);
       } catch (e) {}
 
-      try {
-        const all = loadAllTenants();
-        syncTenantsListToCloud(all).catch(() => {});
-        syncCompanyDataToCloud(res.tenant.id, {
-          adminEmail: cleanEmail,
-          adminName: adminName?.trim() || 'مدير الشركة',
-          settings: {
-            companyName: res.tenant.name,
-            subdomain: cleanSubdomain,
-            phone: cleanPhone,
-            city: res.tenant.city || 'القاهرة',
-            currency: 'ج.م',
-          }
-        }).catch(() => {});
-      } catch (e) {}
-
-      // 4. توجيه فوري لرابط الشركة المخصص مع حفظ الجلسة مسبقاً للانتقال السلس
-      // في بيئة الإنتاج: subdomain.tashteebpro.com | في التطوير: localhost/?subdomain=xxx
+      // 2. توجيه فوري لرابط الشركة المخصص مع حفظ الجلسة مسبقاً للانتقال السلس
       const subUrl = getSubdomainUrl(cleanSubdomain);
       const targetUrl = `${subUrl}${subUrl.includes('?') ? '&' : '?'}email=${encodeURIComponent(cleanEmail)}&registered=1&tenant_id=${encodeURIComponent(res.tenant?.id || '')}&company_name=${encodeURIComponent(cleanCompany)}`;
 
@@ -527,6 +453,7 @@ export default function Login({
       // حفظ بيانات الجلسة مبكراً لتفادي شاشة Login عند الانتقال
       try {
         localStorage.setItem('active_session_user', JSON.stringify(res.user));
+        setCrossSubdomainCookie('tashteeb_session_user', res.user);
       } catch (e) {}
 
       // انتظار لحظة لتأكيد انتشار البيانات السحابية قبل الانتقال
@@ -544,7 +471,7 @@ export default function Login({
       const autoRedirectTimer = setTimeout(() => {
         try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
         window.location.href = targetUrl;
-      }, 4000);
+      }, 6000);
       // حفظ المؤقت لإمكانية إلغائه عند ضغط أزرار يدوية
       window._autoRedirectTimer = autoRedirectTimer;
 

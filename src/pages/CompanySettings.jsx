@@ -165,7 +165,11 @@ export default function CompanySettings({
   activeSubTab = 'branding',
   onSubTabChange,
 }) {
-  const effectiveCompanyId = activeCompanyId || currentUser?.companyId || (typeof localStorage !== 'undefined' ? (localStorage.getItem('platform-active-tenant-id') || localStorage.getItem('tashteeb_active_company_id')) : '') || 'comp_demo';
+  // ⚠️ لا نستخدم localStorage.getItem('platform-active-tenant-id') هنا كـ fallback أبداً:
+  // هذه القيمة مخزّنة محلياً لكل متصفح على حدة وقد تكون من جلسة/معاينة قديمة لشركة مختلفة
+  // على نفس الجهاز، وهو ما كان يسبب حفظ الإعدادات على شركة غلط.
+  // activeCompanyId (من App.jsx) و currentUser?.companyId مصدرهما الجلسة/الـ Claims الموثقة دائماً.
+  const effectiveCompanyId = activeCompanyId || currentUser?.companyId || 'comp_demo';
 
   const [settings, setSettings] = useState(() => {
     const loaded = loadCompanySettings(effectiveCompanyId);
@@ -180,6 +184,8 @@ export default function CompanySettings({
   });
 
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const [localSubTab, setLocalSubTab] = useState('branding');
   const activeTab = onSubTabChange ? (activeSubTab || 'branding') : localSubTab;
   const setActiveTab = onSubTabChange || setLocalSubTab;
@@ -244,6 +250,10 @@ export default function CompanySettings({
   }, [settings]);
 
   const handleSave = useCallback(async () => {
+    // فوراً عند الضغط — الزرار لازم يتغير على طول عشان المستخدم يعرف إن الضغطة اتسجلت
+    setSaving(true);
+    setSaveError(false);
+
     isDirtyRef.current = false;
     saveCompanySettings(settings, effectiveCompanyId);
     onCompanySettingsChange?.(settings);
@@ -278,8 +288,16 @@ export default function CompanySettings({
       console.warn("Error updating tenant_directory in handleSave:", e);
     }
 
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    setSaving(false);
+
+    if (cloudSyncSuccess) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } else {
+      // الحفظ السحابي فشل فعلياً — نوضح ده للمستخدم بدل ما نعرض "تم الحفظ" كذباً
+      setSaveError(true);
+      setTimeout(() => setSaveError(false), 4000);
+    }
   }, [settings, effectiveCompanyId, companySubdomain, onCompanySettingsChange]);
 
 
@@ -435,9 +453,13 @@ export default function CompanySettings({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#16A34A', fontWeight: 600, fontSize: 13 }}>
                   <CheckCircle2 size={16} /> تم الحفظ!
                 </div>
+              ) : saveError ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#DC2626', fontWeight: 600, fontSize: 13 }}>
+                  ⚠️ فشل الحفظ — حاول تاني
+                </div>
               ) : (
-                <button type="button" className="btn btn-primary" onClick={handleSave} style={{ gap: 6, padding: '7px 14px', fontSize: 12.5 }}>
-                  <Save size={14} /> حفظ
+                <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ gap: 6, padding: '7px 14px', fontSize: 12.5, opacity: saving ? 0.7 : 1 }}>
+                  <Save size={14} /> {saving ? 'جاري الحفظ...' : 'حفظ'}
                 </button>
               )}
             </div>
@@ -1017,8 +1039,16 @@ export default function CompanySettings({
             >
               <RefreshCw size={13} /> إعادة تعيين
             </button>
-            <button type="button" className="btn btn-primary cs-btn-save" onClick={handleSave} style={{ gap: 8, padding: '10px 24px', fontSize: 14 }}>
-              {saved ? <><CheckCircle2 size={16} /> تم الحفظ بنجاح!</> : <><Save size={16} /> حفظ جميع بيانات الشركة</>}
+            <button type="button" className="btn btn-primary cs-btn-save" onClick={handleSave} disabled={saving} style={{ gap: 8, padding: '10px 24px', fontSize: 14, opacity: saving ? 0.7 : 1 }}>
+              {saving ? (
+                <>جاري الحفظ...</>
+              ) : saved ? (
+                <><CheckCircle2 size={16} /> تم الحفظ بنجاح!</>
+              ) : saveError ? (
+                <>⚠️ فشل الحفظ — حاول تاني</>
+              ) : (
+                <><Save size={16} /> حفظ جميع بيانات الشركة</>
+              )}
             </button>
           </div>
         </div>

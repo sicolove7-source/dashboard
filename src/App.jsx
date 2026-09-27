@@ -38,7 +38,7 @@ import { isFirstLogin, markFirstLoginDone, seedDemoData } from './utils/seedDemo
 import { loadCompanySettings, saveCompanySettings, applyCompanyBranding, DEFAULT_COMPANY_SETTINGS } from './utils/branding';
 try { if (typeof localStorage !== 'undefined') localStorage.removeItem('company-settings-v1'); } catch (e) {}
 import { getActiveTenantId, setActiveTenantId, ACTIVE_TENANT_ID_KEY, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail, syncAllLocalUsersToCloud, loadAllTenants, loadAllTenantsAsync, saveAllTenants } from './services/tenantsManager';
-import { getSubdomain, isAdminSubdomain, isCompanySubdomain, clearActiveSubdomain, getSubdomainUrl, getCrossSubdomainCookie } from './services/subdomainResolver';
+import { getSubdomain, isAdminSubdomain, isCompanySubdomain, clearActiveSubdomain, getSubdomainUrl, getCrossSubdomainCookie, setCrossSubdomainCookie, removeCrossSubdomainCookie } from './services/subdomainResolver';
 import { onAuthChange, logoutUser } from './services/auth';
 import { db } from './firebase';
 import { doc, setDoc } from 'firebase/firestore';
@@ -254,6 +254,11 @@ export default function App() {
       if (cached) {
         return JSON.parse(cached);
       }
+      const cookieUser = getCrossSubdomainCookie('tashteeb_session_user');
+      if (cookieUser && typeof cookieUser === 'object') {
+        try { localStorage.setItem('active_session_user', JSON.stringify(cookieUser)); } catch (e) {}
+        return cookieUser;
+      }
       return null;
     } catch (e) {
       return null;
@@ -261,14 +266,16 @@ export default function App() {
   });
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     try {
-      return !!localStorage.getItem('active_session_user');
+      if (localStorage.getItem('active_session_user')) return true;
+      if (getCrossSubdomainCookie('tashteeb_session_user')) return true;
+      return false;
     } catch (e) {
       return false;
     }
   });
   const [authLoading, setAuthLoading] = useState(() => {
     try {
-      return !localStorage.getItem('active_session_user');
+      return !localStorage.getItem('active_session_user') && !getCrossSubdomainCookie('tashteeb_session_user');
     } catch (e) {
       return true;
     }
@@ -293,9 +300,13 @@ export default function App() {
   const activeCompanyId = useMemo(() => {
     const isPreviewing = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('admin_preview_mode') === 'true';
     if (currentUser?.isSuperAdmin || currentUser?.role === 'super_admin' || isPreviewing) {
+      // السوبر أدمن فقط: يُسمح له بالتبديل بين الشركات عبر getActiveTenantId() (وضع المعاينة المقصود)
       return getActiveTenantId() || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('tashteeb_preview_tenant_id')) || currentUser?.companyId || null;
     }
-    return currentUser?.companyId || getActiveTenantId() || null;
+    // المستخدم العادي: نعتمد حصرياً على companyId من الـ Claims/الجلسة الموثقة
+    // ⚠️ لا نستخدم getActiveTenantId() هنا أبداً؛ فهي قيمة مخزّنة محلياً لكل متصفح على حدة (localStorage)
+    // وممكن تكون من جلسة/معاينة قديمة لشركة مختلفة تماماً على نفس الجهاز، مما يسبب خلط الشركات.
+    return currentUser?.companyId || null;
   }, [currentUser]);
 
   // استخراج النطاق الفرعي الخاص بالشركة الحالية لعرضه وتسهيل نسخه
@@ -1187,7 +1198,7 @@ export default function App() {
   }
 
   function saveProject(data) {
-    const effectiveCompId = activeCompanyId || currentUser?.companyId || getActiveTenantId() || null;
+    const effectiveCompId = activeCompanyId || currentUser?.companyId || null;
     if (data.id) {
       updateProject(data.id, { ...data, companyId: data.companyId || effectiveCompId });
       setActiveId(data.id);
@@ -1234,7 +1245,7 @@ export default function App() {
   }
 
   function deleteProject(id) {
-    const effectiveCompId = activeCompanyId || currentUser?.companyId || getActiveTenantId() || null;
+    const effectiveCompId = activeCompanyId || currentUser?.companyId || null;
     setProjects(prev => {
       const updated = (prev || []).filter((p) => p.id !== id);
       if (effectiveCompId) {
@@ -1255,7 +1266,7 @@ export default function App() {
   }
 
   function updateProject(id, patch) {
-    const effectiveCompId = activeCompanyId || currentUser?.companyId || getActiveTenantId() || null;
+    const effectiveCompId = activeCompanyId || currentUser?.companyId || null;
     const now = new Date().toISOString();
     setProjects(prev => {
       const list = prev || [];
@@ -1315,8 +1326,13 @@ export default function App() {
           // قراءة الـ Custom Claims المشفرة من Google إن وُجدت
           let claims = {};
           try {
-            const idTokenResult = await firebaseUser.getIdTokenResult();
+            let idTokenResult = await firebaseUser.getIdTokenResult();
             claims = idTokenResult?.claims || {};
+            // إذا كان التوكن الأول فارغاً من companyId / role، نقوم بعمل forceRefresh مرة واحدة
+            if (!claims.companyId && !claims.role && !claims.isSuperAdmin) {
+              idTokenResult = await firebaseUser.getIdTokenResult(true);
+              claims = idTokenResult?.claims || {};
+            }
           } catch (e) {
             console.warn("Could not fetch claims:", e);
           }
@@ -1482,7 +1498,9 @@ export default function App() {
     const roleIsSuperAdmin = isSuperAdmin || userData?.role === 'super_admin' || userData?.isSuperAdmin;
     const defaultTab = roleIsSuperAdmin ? 'tenants' : (DEFAULT_TAB[userData?.role] || 'overview');
 
-    const compId = tenantData?.id || userData?.companyId || getActiveTenantId() || null;
+    // ⚠️ لا يوجد fallback لـ getActiveTenantId() هنا عمداً: لو فشل تحديد الشركة من بيانات
+    // تسجيل الدخول نفسها، الأصح نترك compId فارغاً بدل ما نخلط المستخدم مع شركة قديمة مخزّنة في هذا المتصفح.
+    const compId = tenantData?.id || userData?.companyId || (roleIsSuperAdmin ? getActiveTenantId() : null) || null;
 
     // ═══════════════════════════════════════════════════════════════════
     // 🔒 منطق الحماية والتوجيه للسب-دومين
@@ -1521,6 +1539,7 @@ export default function App() {
         try {
           // حفظ الجلسة أولاً قبل الانتقال
           localStorage.setItem('active_session_user', JSON.stringify(userData));
+          setCrossSubdomainCookie('tashteeb_session_user', userData);
           setActiveTenantId(compId);
         } catch (e) {}
         const subUrl = getSubdomainUrl(tenantSub);
@@ -1536,6 +1555,7 @@ export default function App() {
     setIsAuthenticated(true);
     try {
       localStorage.setItem('active_session_user', JSON.stringify(finalUserData));
+      setCrossSubdomainCookie('tashteeb_session_user', finalUserData);
     } catch (e) {}
     setTab(defaultTab);
     setView('list');
@@ -1575,6 +1595,7 @@ export default function App() {
     // مسح جلسة المستخدم الحالية والمفاتيح المؤقتة للجلسة فقط مع الحفاظ التام على الإعدادات وسجل المستخدمين
     try {
       localStorage.removeItem('active_session_user');
+      removeCrossSubdomainCookie('tashteeb_session_user');
       localStorage.removeItem(ACTIVE_TENANT_ID_KEY);
       localStorage.removeItem('platform-active-tenant-id');
       localStorage.removeItem('active_tenant_id');
@@ -2284,6 +2305,7 @@ export default function App() {
               {tab === "suppliers" && (
                 <SuppliersTab
                   projects={projects}
+                  onUpdateProject={updateProject}
                   companySettings={companySettings}
                   userRole={userRole}
                   currentUser={currentUser}
@@ -2315,7 +2337,7 @@ export default function App() {
                     if (updated?.companyName) {
                       setCurrentUser(prev => prev ? ({ ...prev, companyName: updated.companyName }) : prev);
                     }
-                    const targetCompId = activeCompanyId || currentUser?.companyId || getActiveTenantId();
+                    const targetCompId = activeCompanyId || currentUser?.companyId;
                     saveCompanySettings(updated, targetCompId);
                     syncSettingsToCloud(targetCompId, updated).catch(e => console.warn("Cloud sync error for company settings:", e));
                   }}

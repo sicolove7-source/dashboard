@@ -56,6 +56,15 @@ export async function callCreateCompanyUser({ email, name, role, companyId, pass
       if (!password && !cleanEmail.endsWith('@tashteeb.app')) {
         try { await sendPasswordResetEmail(auth, cleanEmail); } catch (e) {}
       }
+      // استدعاء صريح لـ callAssignUserClaims كطبقة أمان إضافية
+      if (result.data?.uid) {
+        callAssignUserClaims({
+          targetUid: result.data.uid,
+          companyId,
+          role: role || 'engineer',
+          companyName: '',
+        }).catch((err) => console.warn('[callCreateCompanyUser] Post-cloud claims notice:', err?.message));
+      }
       return result.data;
     }
   } catch (cloudErr) {
@@ -64,6 +73,7 @@ export async function callCreateCompanyUser({ email, name, role, companyId, pass
 
   // 2. البديل المباشر المضمون: إنشاء الحساب فورياً في Firebase Auth عبر تطبيق مستقل (Secondary App)
   // يضمن تمكين الموظف من تسجيل الدخول بكلمة المرور دون التأثير على جلسة المسؤول الحالية
+  let createdUid = null;
   if (password && password.length >= 6) {
     let tempApp = null;
     try {
@@ -71,8 +81,9 @@ export async function callCreateCompanyUser({ email, name, role, companyId, pass
       tempApp = initializeApp(firebaseConfig, tempAppName);
       const tempAuth = getAuth(tempApp);
       try {
-        await createUserWithEmailAndPassword(tempAuth, cleanEmail, password);
-        console.log('[callCreateCompanyUser] ✅ Successfully created user in Firebase Auth:', cleanEmail);
+        const cred = await createUserWithEmailAndPassword(tempAuth, cleanEmail, password);
+        createdUid = cred.user?.uid;
+        console.log('[callCreateCompanyUser] ✅ Successfully created user in Firebase Auth:', cleanEmail, 'UID:', createdUid);
       } catch (authCreateErr) {
         if (authCreateErr.code === 'auth/email-already-in-use') {
           console.log('[callCreateCompanyUser] User already exists in Firebase Auth:', cleanEmail);
@@ -86,6 +97,21 @@ export async function callCreateCompanyUser({ email, name, role, companyId, pass
       if (tempApp) {
         try { await deleteApp(tempApp); } catch (e) {}
       }
+    }
+  }
+
+  // 2.5. استدعاء صريح لـ callAssignUserClaims من جهة العميل كطبقة أمان إضافية
+  if (createdUid) {
+    try {
+      await callAssignUserClaims({
+        targetUid: createdUid,
+        companyId,
+        role: role || 'engineer',
+        companyName: '',
+      });
+      console.log('[callCreateCompanyUser] ✅ Custom Claims assigned explicitly for Secondary App user:', createdUid);
+    } catch (claimsErr) {
+      console.warn('[callCreateCompanyUser] Secondary app claims assignment notice:', claimsErr?.message);
     }
   }
 
@@ -113,45 +139,60 @@ export async function callCreateCompanyUser({ email, name, role, companyId, pass
 /**
  * تسجيل الدخول باستخدام البريد الإلكتروني وكلمة المرور
  */
-export async function loginWithEmail(email, password) {
+export async function loginWithEmail(email, password, retries = 3) {
   const cleanEmail = (email || '').trim().toLowerCase();
-  try {
-    const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
-    return {
-      success: true,
-      user: userCredential.user,
-    };
-  } catch (error) {
-    let message = 'فشل تسجيل الدخول. يرجى التحقق من البريد الإلكتروني وكلمة المرور.';
-    switch (error.code) {
-      case 'auth/configuration-not-found':
-        message = 'خدمة المصادقة لم تُفعّل بعد في Firebase Console! يرجى فتح Console والضغط على Get Started ثم تفعيل خيار Email/Password.';
-        break;
-      case 'auth/user-not-found':
-      case 'auth/wrong-password':
-      case 'auth/invalid-credential':
-        message = 'البريد الإلكتروني أو كلمة المرور غير صحيحة.';
-        break;
-      case 'auth/invalid-email':
-        message = 'صيغة البريد الإلكتروني غير صالحة.';
-        break;
-      case 'auth/user-disabled':
-        message = 'تم تعطيل هذا الحساب من قِبل إدارة النظام.';
-        break;
-      case 'auth/too-many-requests':
-        message = 'تم حظر الدخول مؤقتاً بسبب محاولات متكررة خاطئة. يرجى الانتظار قليلاً أو إعادة تعيين كلمة المرور.';
-        break;
-      case 'auth/network-request-failed':
-        message = 'تعذر الاتصال بالخادم. يرجى التحقق من اتصال الإنترنت.';
-        break;
-      default:
-        message = error.message || message;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      return {
+        success: true,
+        user: userCredential.user,
+      };
+    } catch (error) {
+      const errStr = String(error.message || '') + String(error.code || '');
+      const isDbClosing = errStr.includes('closing') || errStr.includes('hidden') || errStr.includes('Database is closing');
+
+      if (isDbClosing && attempt < retries) {
+        console.warn(`[loginWithEmail] Database is closing/hidden notice (attempt ${attempt}/${retries}). Waiting 500ms and retrying...`);
+        await new Promise(r => setTimeout(r, 500 * attempt));
+        continue;
+      }
+
+      let message = 'فشل تسجيل الدخول. يرجى التحقق من البريد الإلكتروني وكلمة المرور.';
+      switch (error.code) {
+        case 'auth/configuration-not-found':
+          message = 'خدمة المصادقة لم تُفعّل بعد في Firebase Console! يرجى فتح Console والضغط على Get Started ثم تفعيل خيار Email/Password.';
+          break;
+        case 'auth/user-not-found':
+        case 'auth/wrong-password':
+        case 'auth/invalid-credential':
+          message = 'البريد الإلكتروني أو كلمة المرور غير صحيحة.';
+          break;
+        case 'auth/invalid-email':
+          message = 'صيغة البريد الإلكتروني غير صالحة.';
+          break;
+        case 'auth/user-disabled':
+          message = 'تم تعطيل هذا الحساب من قِبل إدارة النظام.';
+          break;
+        case 'auth/too-many-requests':
+          message = 'تم حظر الدخول مؤقتاً بسبب محاولات متكررة خاطئة. يرجى الانتظار قليلاً أو إعادة تعيين كلمة المرور.';
+          break;
+        case 'auth/network-request-failed':
+          message = 'تعذر الاتصال بالخادم. يرجى التحقق من اتصال الإنترنت.';
+          break;
+        default:
+          if (isDbClosing) {
+            message = 'حدثت استجابة متأخرة أثناء حفظ الجلسة بالمتصفح. يرجى إعادة المحاولة.';
+          } else {
+            message = error.message || message;
+          }
+      }
+      return {
+        success: false,
+        error: message,
+        code: error.code,
+      };
     }
-    return {
-      success: false,
-      error: message,
-      code: error.code,
-    };
   }
 }
 
@@ -223,27 +264,50 @@ export async function sendPasswordReset(email) {
 /**
  * إنشاء حساب جديد في Firebase Auth (يُستخدم مع التسجيل)
  */
-export async function registerWithEmail(email, password) {
+export async function registerWithEmail(email, password, retries = 3) {
   const cleanEmail = (email || '').trim().toLowerCase();
-  try {
-    const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-    return { success: true, user: cred.user };
-  } catch (error) {
-    let message = 'تعذر إنشاء الحساب.';
-    switch (error.code) {
-      case 'auth/email-already-in-use':
-        message = 'هذا البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول.';
-        break;
-      case 'auth/weak-password':
-        message = 'كلمة المرور ضعيفة جداً. يجب أن تتكون من 6 أحرف على الأقل.';
-        break;
-      case 'auth/invalid-email':
-        message = 'صيغة البريد الإلكتروني غير صالحة.';
-        break;
-      default:
-        message = error.message || message;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+      return { success: true, user: cred.user };
+    } catch (error) {
+      const errStr = String(error.message || '') + String(error.code || '');
+      const isDbClosing = errStr.includes('closing') || errStr.includes('hidden') || errStr.includes('Database is closing');
+
+      if (isDbClosing && attempt < retries) {
+        console.warn(`[registerWithEmail] Database is closing/hidden notice (attempt ${attempt}/${retries}). Waiting 500ms and retrying...`);
+        await new Promise(r => setTimeout(r, 500 * attempt));
+        continue;
+      }
+
+      // في حال كان البريد مسجلاً مسبقاً على السيرفر بسبب تعثر الاتصال المحلي بقاعدة البيانات
+      if (error.code === 'auth/email-already-in-use') {
+        try {
+          const loginRes = await loginWithEmail(cleanEmail, password);
+          if (loginRes.success) return loginRes;
+        } catch (e) {}
+      }
+
+      let message = 'تعذر إنشاء الحساب.';
+      switch (error.code) {
+        case 'auth/email-already-in-use':
+          message = 'هذا البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول.';
+          break;
+        case 'auth/weak-password':
+          message = 'كلمة المرور ضعيفة جداً. يجب أن تتكون من 6 أحرف على الأقل.';
+          break;
+        case 'auth/invalid-email':
+          message = 'صيغة البريد الإلكتروني غير صالحة.';
+          break;
+        default:
+          if (isDbClosing) {
+            message = 'حدثت استجابة متأخرة أثناء حفظ بيانات الجلسة بالمتصفح. يرجى إعادة المحاولة أو تسجيل الدخول.';
+          } else {
+            message = error.message || message;
+          }
+      }
+      return { success: false, error: message, code: error.code };
     }
-    return { success: false, error: message, code: error.code };
   }
 }
 
@@ -372,4 +436,24 @@ export async function syncAndResetPhonePassword(phone, newPassword, knownEmail =
 
   return { success: true, phoneAuthEmail };
 }
+
+/**
+ * دالة مساعدة لتعيين Claims لمستخدم متأثر أو موجود مسبقاً يدوياً أو من الكونسول
+ */
+export async function assignClaimsToExistingUser(targetUid, companyId, role = 'engineer', companyName = '') {
+  const res = await callAssignUserClaims({
+    targetUid,
+    companyId,
+    role,
+    companyName,
+  });
+  console.log('[assignClaimsToExistingUser] Result:', res);
+  return res;
+}
+
+if (typeof window !== 'undefined') {
+  window.callAssignUserClaims = callAssignUserClaims;
+  window.assignClaimsToExistingUser = assignClaimsToExistingUser;
+}
+
 

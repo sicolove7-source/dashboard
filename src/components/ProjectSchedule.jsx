@@ -12,15 +12,20 @@ import { syncWorkersToCloud } from '../services/cloudSync';
 import { getActiveTenantId } from '../services/tenantsManager';
 
 /* ── Storage helpers ──────────────────────────────── */
-function getWorkers() {
-  try { return JSON.parse(localStorage.getItem('db-workers-v1') || '[]'); } catch { return []; }
+function getWorkers(companyId) {
+  const cId = companyId || getActiveTenantId() || null;
+  const key = cId ? `tenant_${cId}_workers` : 'db-workers-v1';
+  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
 }
-function getSuppliers() {
-  try { return JSON.parse(localStorage.getItem('db-suppliers-v1') || '[]'); } catch { return []; }
+function getSuppliers(companyId) {
+  const cId = companyId || getActiveTenantId() || null;
+  const key = cId ? `tenant_${cId}_suppliers` : 'db-suppliers-v1';
+  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
 }
 function saveWorkers(arr, companyId) {
-  try { localStorage.setItem('db-workers-v1', JSON.stringify(arr)); } catch {}
   const cId = companyId || getActiveTenantId() || null;
+  const key = cId ? `tenant_${cId}_workers` : 'db-workers-v1';
+  try { localStorage.setItem(key, JSON.stringify(arr)); } catch {}
   if (cId) syncWorkersToCloud(cId, arr);
 }
 
@@ -591,8 +596,8 @@ function TasksPanel({ project, onUpdate }) {
   const [tasks, setTasksLocal] = useState(() => initTasks(project));
   const [adding, setAdding]    = useState(false);
   const [newLabel, setNewLabel] = useState('');
-  const [workers, setWorkersState] = useState(getWorkers);
-  const suppliers = getSuppliers();
+  const [workers, setWorkersState] = useState(() => getWorkers(project.companyId));
+  const suppliers = getSuppliers(project.companyId);
 
   function saveTasks(next) {
     setTasksLocal(next);
@@ -938,7 +943,23 @@ export default function ProjectSchedule({ project, onUpdate }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-
+      {/* Sub-tabs switcher */}
+      <div className="subtabs" style={{ marginBottom: 0 }}>
+        {PANELS.map(p => {
+          const Icon = p.icon;
+          return (
+            <div
+              key={p.key}
+              className={`subtab ${panel === p.key ? 'active' : ''}`}
+              onClick={() => setPanel(p.key)}
+              style={{ cursor: 'pointer' }}
+            >
+              <Icon size={16} />
+              <span>{p.label}</span>
+            </div>
+          );
+        })}
+      </div>
 
       {/* Panel content */}
       <div className="tab-fade">

@@ -1459,8 +1459,11 @@ const TENANTS_META_KEY = 'tenants';
 export async function fetchTenantsListFromCloud() {
   try {
     const docRef = doc(db, TENANTS_META_DOC, TENANTS_META_KEY);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
+    const snap = await Promise.race([
+      getDoc(docRef),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 1500))
+    ]);
+    if (snap && snap.exists()) {
       const list = snap.data()?.tenants;
       if (Array.isArray(list) && list.length > 0) {
         return list;
@@ -1610,19 +1613,27 @@ export async function fetchTenantBySubdomain(subdomain) {
 /**
  * البحث عن حساب المستخدم في دليل المنصة السحابي المركزي (للتحقق الفوري عند الدخول)
  */
-export async function fetchUserFromCloudDirectory(email) {
+export async function fetchUserFromCloudDirectory(email, preferredSubdomain = null) {
   const cleanEmail = (email || '').toLowerCase().trim();
   if (!cleanEmail) return null;
 
   // 1. فحص وثيقة الدليل المركزي السحابي platform_metadata/users_directory
   try {
     const dirRef = doc(db, TENANTS_META_DOC, 'users_directory');
-    const snap = await getDoc(dirRef);
+    const snap = await Promise.race([
+      getDoc(dirRef),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 1000))
+    ]);
     if (snap.exists()) {
       const data = snap.data();
       const safeKey = cleanEmail.replace(/\./g, '_dot_');
       if (data && (data[safeKey] || data[cleanEmail])) {
-        return data[safeKey] || data[cleanEmail];
+        const u = data[safeKey] || data[cleanEmail];
+        // إذا كان هناك تفضيل لنطاق فرعي وكان هذا المستخدم يطابقه، نُرجعه فوراً
+        if (preferredSubdomain && u.companyId) {
+          return u;
+        }
+        if (!preferredSubdomain) return u;
       }
     }
   } catch (e) {
@@ -1633,6 +1644,56 @@ export async function fetchUserFromCloudDirectory(email) {
   try {
     const tenantsList = await fetchTenantsListFromCloud();
     if (Array.isArray(tenantsList)) {
+      // إذا كان هناك نطاق فرعي محدد، نفحصه هو أولاً
+      if (preferredSubdomain) {
+        const cleanSub = preferredSubdomain.toLowerCase().trim();
+        const preferredTenant = tenantsList.find(t =>
+          (t.subdomain || '').toLowerCase().trim() === cleanSub ||
+          (t.slug || '').toLowerCase().trim() === cleanSub ||
+          (t.id || '').toLowerCase().trim() === cleanSub ||
+          (t.id || '').toLowerCase().trim() === `comp_${cleanSub}`
+        );
+        if (preferredTenant) {
+          if (preferredTenant.adminEmail && preferredTenant.adminEmail.toLowerCase().trim() === cleanEmail) {
+            return {
+              id: `u_${preferredTenant.id}_admin`,
+              email: preferredTenant.adminEmail,
+              name: preferredTenant.adminName || 'مدير الشركة',
+              role: 'owner',
+              companyId: preferredTenant.id,
+              companyName: preferredTenant.name,
+              currency: preferredTenant.currency || 'ج.م',
+            };
+          }
+          if (Array.isArray(preferredTenant.users)) {
+            const m = preferredTenant.users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
+            if (m) {
+              return {
+                ...m,
+                companyId: preferredTenant.id,
+                companyName: preferredTenant.name,
+                currency: preferredTenant.currency || 'ج.م',
+              };
+            }
+          }
+        }
+      }
+
+      // أولوية عامة: هل المستخدم مالك (Owner / adminEmail) لأي شركة في المنصة؟
+      for (const t of tenantsList) {
+        if (t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail) {
+          return {
+            id: `u_${t.id}_admin`,
+            email: t.adminEmail,
+            name: t.adminName || 'مدير الشركة',
+            role: 'owner',
+            companyId: t.id,
+            companyName: t.name,
+            currency: t.currency || 'ج.م',
+          };
+        }
+      }
+      // إذا لم يكن مالكاً، نبحث كعضو فريق أو موظف
       for (const t of tenantsList) {
         if (Array.isArray(t.users)) {
           const match = t.users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
@@ -1644,17 +1705,6 @@ export async function fetchUserFromCloudDirectory(email) {
               currency: t.currency || 'ج.م',
             };
           }
-        }
-        if (t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail) {
-          return {
-            id: `u_${t.id}_admin`,
-            email: t.adminEmail,
-            name: t.adminName || 'مدير الشركة',
-            role: 'owner',
-            companyId: t.id,
-            companyName: t.name,
-            currency: t.currency || 'ج.م',
-          };
         }
       }
     }

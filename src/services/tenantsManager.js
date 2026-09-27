@@ -342,16 +342,18 @@ export function createTenant(data) {
       name: newTenant.adminName,
       engineerName: null,
       companyId: id,
-    },
-    {
-      id: `u_${id}_eng1`,
-      email: `eng@${newTenant.adminEmail.split('@')[1] || 'site.ae'}`,
-      role: 'engineer',
-      name: 'م. مهندس الموقع',
-      engineerName: 'م. مهندس الموقع',
-      companyId: id,
     }
   ];
+  if (id === 'comp_demo') {
+    companyUsers.push({
+      id: `u_${id}_eng1`,
+      email: 'site.eng@tashteebpro.com',
+      role: 'engineer',
+      name: 'مهندس الموقع (تجريبي)',
+      engineerName: 'مهندس الموقع (تجريبي)',
+      companyId: id,
+    });
+  }
   localStorage.setItem(`tenant_${id}_users`, JSON.stringify(companyUsers));
 
   // إعدادات الشركة
@@ -443,12 +445,10 @@ export async function registerNewTenant(formData) {
     return { success: false, error: 'كلمة المرور مطلوبة ويجب أن تتكون من 6 أحرف أو أرقام على الأقل.' };
   }
 
-  // التحقق الإلزامي من رقم الهاتف للتواصل
   if (!phone || phone.length < 8) {
     return { success: false, error: 'يرجى إدخال رقم هاتف وواتساب صالح للتواصل (8 أرقام على الأقل).' };
   }
 
-  // التحقق الإلزامي من امتداد النطاق الفرعي (Subdomain) والتأكد من شروطه
   const RESERVED_SUBS = [
     'www', 'app', 'api', 'static', 'assets', 'cdn', 'mail', 'portal',
     'admin', 'superadmin', 'platform', 'root', 'dashboard', 'control', 'billing'
@@ -470,19 +470,69 @@ export async function registerNewTenant(formData) {
     return { success: false, error: `امتداد النطاق (${rawSubdomain}) محجوز لخدمات المنصة. يرجى اختيار امتداد آخر لشركتك.` };
   }
 
-  // التأكد من عدم تكرار البريد الإلكتروني
-  const allTenants = await loadAllTenantsAsync();
+  let allTenants = [];
+  try {
+    allTenants = await Promise.race([
+      loadAllTenantsAsync(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2500))
+    ]);
+  } catch (e) {
+    allTenants = loadAllTenants();
+  }
+
   const exists = allTenants.some(t => t.adminEmail?.toLowerCase().trim() === cleanEmail);
   if (exists) {
     return { success: false, error: 'هذا البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول بدلاً من ذلك.' };
   }
 
-  const subExists = allTenants.some(t => 
-    (t.subdomain || '').toLowerCase().trim() === rawSubdomain || 
+  const subExists = allTenants.some(t =>
+    (t.subdomain || '').toLowerCase().trim() === rawSubdomain ||
     (t.slug || '').toLowerCase().trim() === rawSubdomain
   );
   if (subExists) {
     return { success: false, error: `النطاق الفرعي (${rawSubdomain}.tashteebpro.com) محجوز لشركة أخرى بالفعل. يرجى اختيار امتداد مختلف.` };
+  }
+
+  // =========================================================
+  // Step 0: Create real Firebase Auth account
+  // Ensures user can log in with email/password from any browser
+  // =========================================================
+  let firebaseUid = null;
+  try {
+    const { registerWithEmail, loginWithEmail } = await import('./auth');
+    const authResult = await registerWithEmail(cleanEmail, password);
+    if (authResult.success && authResult.user) {
+      firebaseUid = authResult.user.uid;
+      console.log('[registerNewTenant] Firebase Auth account created, UID:', firebaseUid);
+    } else if (authResult.code === 'auth/email-already-in-use') {
+      console.log('[registerNewTenant] Firebase Auth account already exists, verifying credentials...');
+      const loginAttempt = await loginWithEmail(cleanEmail, password);
+      if (loginAttempt.success && loginAttempt.user) {
+        firebaseUid = loginAttempt.user.uid;
+      } else {
+        return { success: false, error: 'هذا البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول بدلاً من ذلك.' };
+      }
+    } else {
+      console.warn('[registerNewTenant] Firebase Auth error:', authResult.error);
+      const isDbClosing = String(authResult.error || '').includes('closing') || String(authResult.error || '').includes('hidden');
+      if (isDbClosing) {
+        try {
+          const fallback = await loginWithEmail(cleanEmail, password);
+          if (fallback.success && fallback.user) {
+            firebaseUid = fallback.user.uid;
+            console.log('[registerNewTenant] Fallback login succeeded after transient DB notice, UID:', firebaseUid);
+          } else {
+            return { success: false, error: 'حدثت استجابة متأخرة أثناء حفظ بيانات الجلسة بالمتصفح. يرجى إعادة المحاولة.' };
+          }
+        } catch (e) {
+          return { success: false, error: 'حدثت استجابة متأخرة أثناء حفظ بيانات الجلسة بالمتصفح. يرجى إعادة المحاولة.' };
+        }
+      } else {
+        return { success: false, error: authResult.error || 'تعذر إنشاء الحساب في نظام المصادقة.' };
+      }
+    }
+  } catch (authErr) {
+    console.warn('[registerNewTenant] Firebase Auth exception:', authErr?.message);
   }
 
   const newTenant = createTenant({
@@ -497,74 +547,42 @@ export async function registerNewTenant(formData) {
     adminEmail: cleanEmail,
     adminName,
     plan: 'trial',
-    seedDemoProject: true, // لتوفير مشروع عينة واقعي يبدأ به
+    seedDemoProject: true,
   });
 
   const user = {
-    id: `u_${newTenant.id}_admin`,
+    id: firebaseUid || `u_${newTenant.id}_admin`,
     email: newTenant.adminEmail,
     name: newTenant.adminName,
+    phone: phone || null,
     role: 'owner',
     companyId: newTenant.id,
     companyName: newTenant.name,
     currency: newTenant.currency || 'ج.م',
   };
 
-  // ═══════════════════════════════════════════════════════════
-  // ⚠️ CRITICAL: ننتظر اكتمال المزامنة السحابية الكاملة قبل الإرجاع
-  // لأن المستخدم سيُوجَّه فوراً للسب-دومين ويحاول الدخول فيه
-  // ═══════════════════════════════════════════════════════════
-
-  // الخطوة 1: رفع قائمة الشركات المركزية بما فيها الشركة الجديدة مع بيانات المستخدم
-  // هذا هو مسار البحث الأساسي الذي يستخدمه fetchUserFromCloudDirectory
+  // Step 1: Write immediately to tenant_directory/{subdomain} in Firestore (Guaranteed Cross-Browser Discovery)
   try {
-    const allTenants = loadAllTenants(); // تشمل الشركة الجديدة بعد createTenant
-    const tenantWithUsers = allTenants.map(t => {
-      if (t.id === newTenant.id) {
-        return {
-          ...t,
-          users: [{ ...user, phone: phone || null }],
-          authorizedEmails: [user.email],
-          adminEmail: user.email,
-        };
-      }
-      return t;
-    });
-    await syncTenantsListToCloud(tenantWithUsers);
-    console.log('[registerNewTenant] ✅ Tenants list synced to cloud with new company');
-  } catch (e) {
-    console.warn('[registerNewTenant] ⚠️ syncTenantsListToCloud failed:', e);
+    const tenantDirRef = doc(db, 'tenant_directory', rawSubdomain);
+    await Promise.race([
+      setDoc(tenantDirRef, {
+        companyId: newTenant.id,
+        name: newTenant.name,
+        logo: newTenant.logo || null,
+        subdomain: rawSubdomain,
+        adminEmail: cleanEmail,
+        adminName: adminName,
+        phone: phone || null,
+        currency: newTenant.currency || 'ج.م',
+        createdAt: new Date().toISOString(),
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+    ]);
+    console.log('[registerNewTenant] ✅ tenant_directory created successfully for:', rawSubdomain);
+  } catch (dirErr) {
+    console.warn('[registerNewTenant] tenant_directory write notice:', dirErr?.message);
   }
 
-  // الخطوة 2: كتابة المستخدم مباشرة في users_directory للبحث الفوري بالإيميل
-  try {
-    await syncTenantUsersToCloud(newTenant.id, [{ ...user, phone: phone || null }]);
-    console.log('[registerNewTenant] ✅ Users directory synced successfully');
-  } catch (e) {
-    // محاولة ثانية بعد ثانية
-    try {
-      await new Promise(r => setTimeout(r, 1500));
-      await syncTenantUsersToCloud(newTenant.id, [{ ...user, phone: phone || null }]);
-    } catch (e2) {
-      console.warn('[registerNewTenant] ⚠️ syncTenantUsersToCloud retry failed:', e2);
-    }
-  }
-  // الخطوة 3: تسجيل فوري في tenant_directory/{subdomain} لتمكين الزوار من فتح الرابط بدون تسجيل دخول
-  try {
-    const dirRef = doc(db, 'tenant_directory', rawSubdomain);
-    await setDoc(dirRef, {
-      companyId: newTenant.id,
-      name: newTenant.name,
-      logo: newTenant.logo || null,
-      subdomain: rawSubdomain,
-      createdAt: new Date().toISOString(),
-    }, { merge: true });
-    console.log('[registerNewTenant] ✅ tenant_directory synced successfully for:', rawSubdomain);
-  } catch (e) {
-    console.warn('[registerNewTenant] ⚠️ tenant_directory sync non-blocking fallback:', e);
-  }
-
-  // تعيين الشركة كشركة نشطة وحفظها في الكوكي المشترك لكافة النطاقات الفرعية
   setActiveTenantId(newTenant.id);
   try {
     const safeLastReg = {
@@ -574,9 +592,53 @@ export async function registerNewTenant(formData) {
       slug: newTenant.slug,
       logo: newTenant.logo || null,
       primaryColor: newTenant.primaryColor || null,
+      adminEmail: cleanEmail,
+      adminName: adminName,
     };
     setCrossSubdomainCookie('tashteeb_last_registered_tenant', safeLastReg);
   } catch (e) {}
+
+  try {
+    const reg = JSON.parse(localStorage.getItem('platform-all-users-registry') || '{}');
+    reg[cleanEmail] = { ...user, companyId: newTenant.id };
+    if (phone) {
+      const cPhone = cleanPhoneNumber(phone);
+      if (cPhone) reg['phone_' + cPhone] = { ...user, companyId: newTenant.id };
+    }
+    localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
+  } catch (e) {}
+
+  // Non-blocking background syncs - completely independent from UI response
+  setTimeout(() => {
+    try {
+      const allTenantsFresh = loadAllTenants();
+      const tenantWithUsers = allTenantsFresh.map(t => {
+        if (t.id === newTenant.id) {
+          return {
+            ...t,
+            users: [{ ...user, phone: phone || null }],
+            authorizedEmails: [user.email],
+            adminEmail: user.email,
+          };
+        }
+        return t;
+      });
+      syncTenantsListToCloud(tenantWithUsers).catch(() => {});
+      syncTenantUsersToCloud(newTenant.id, [{ ...user, phone: phone || null }]).catch(() => {});
+    } catch (e) {}
+
+    if (firebaseUid) {
+      import('./auth').then(({ callAssignUserClaims }) => {
+        callAssignUserClaims({
+          targetUid: firebaseUid,
+          companyId: newTenant.id,
+          role: 'owner',
+          companyName: newTenant.name,
+          currency: newTenant.currency || 'ج.م',
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+  }, 50);
 
   return {
     success: true,
@@ -585,8 +647,6 @@ export async function registerNewTenant(formData) {
     isSuperAdmin: false,
   };
 }
-
-
 
 export function updateTenant(id, updates) {
   const tenants = loadAllTenants();
@@ -1182,17 +1242,225 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     };
   }
 
-  // 4. فحص دليل المستخدمين السحابي المركزي أولاً (Direct Cloud Directory Lookup)
+  // 3.5. أولوية مطلقة لسياق النطاق الفرعي للشركة (Subdomain Context Priority)
+  // إذا كان المستخدم داخل رابط شركة مخصص (مثل amlak.tashteebpro.com أو ?subdomain=amlak)
+  // نتحقق أولاً مما إذا كان ينتمي لهذه الشركة المحددة لمنع أي تداخل مع شركات أخرى على المنصة
+  const currentSub = getSubdomain();
+  if (currentSub && currentSub !== 'admin') {
+    let subTenant = tenants.find(t =>
+      (t.subdomain || '').toLowerCase().trim() === currentSub ||
+      (t.slug || '').toLowerCase().trim() === currentSub ||
+      (t.id || '').toLowerCase().trim() === currentSub ||
+      (t.id || '').toLowerCase().trim() === `comp_${currentSub}` ||
+      (t.id || '').toLowerCase().trim() === `comp_c_${currentSub}`
+    );
+
+    if (!subTenant) {
+      try {
+        const { doc: fDoc, getDoc: fGetDoc } = await import('firebase/firestore');
+        const sSnap = await Promise.race([
+          fGetDoc(fDoc(db, 'tenant_directory', currentSub)),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2500))
+        ]);
+        if (sSnap && sSnap.exists()) {
+          const sData = sSnap.data();
+          subTenant = {
+            id: sData.companyId || `comp_${currentSub}`,
+            name: sData.name || currentSub,
+            subdomain: currentSub,
+            slug: currentSub,
+            logo: sData.logo || null,
+            adminEmail: sData.adminEmail || '',
+            adminName: sData.adminName || cleanEmail.split('@')[0],
+            currency: sData.currency || 'ج.م',
+            phone: sData.phone || null,
+            status: 'active',
+          };
+        }
+      } catch (e) {}
+    }
+
+    if (subTenant) {
+      // أ) هل هو مالك هذه الشركة؟
+      if (isTenantAdminMatch(subTenant) || (subTenant.adminEmail && subTenant.adminEmail.toLowerCase().trim() === cleanEmail)) {
+        const compName = getTenantCurrentName(subTenant);
+        const compLogo = getTenantCurrentLogo(subTenant);
+        return {
+          success: true,
+          user: {
+            id: firebaseUid || `u_${subTenant.id}_admin`,
+            email: cleanEmail,
+            phone: subTenant.phone || phoneFromEmail,
+            name: subTenant.adminName || 'مدير الشركة',
+            role: 'owner',
+            companyId: subTenant.id,
+            companyName: compName,
+            currency: subTenant.currency || 'ج.م',
+          },
+          tenant: {
+            ...subTenant,
+            name: compName,
+            logo: compLogo,
+          },
+          isSuperAdmin: false,
+        };
+      }
+
+      // ب) هل هو موظف مسجل في هذه الشركة؟
+      let subUsers = Array.isArray(subTenant.users) ? [...subTenant.users] : [];
+      try {
+        const rawU = localStorage.getItem(`tenant_${subTenant.id}_users`);
+        if (rawU) {
+          const parsed = JSON.parse(rawU);
+          if (Array.isArray(parsed)) subUsers = mergeUsersPreservingLocal(parsed, subUsers);
+        }
+      } catch (e) {}
+      const subUserMatch = subUsers.find(isUserMatch);
+      if (subUserMatch) {
+        const compName = getTenantCurrentName(subTenant);
+        const compLogo = getTenantCurrentLogo(subTenant);
+        return {
+          success: true,
+          user: {
+            ...subUserMatch,
+            id: firebaseUid || subUserMatch.id,
+            companyId: subTenant.id,
+            companyName: compName,
+            currency: subTenant.currency || 'ج.م',
+            role: subUserMatch.role || 'engineer',
+          },
+          tenant: {
+            ...subTenant,
+            name: compName,
+            logo: compLogo,
+          },
+          isSuperAdmin: false,
+        };
+      }
+    }
+  }
+
+  // 4. أولوية مطلقة: هل هذا المستخدم مالك (Owner / Admin) لأي شركة مسجلة محلياً؟
+  for (const t of tenants) {
+    if (isTenantAdminMatch(t)) {
+      const compName = getTenantCurrentName(t);
+      const compLogo = getTenantCurrentLogo(t);
+      return {
+        success: true,
+        user: {
+          id: firebaseUid || `u_${t.id}_admin`,
+          email: t.adminEmail,
+          phone: t.phone,
+          name: t.adminName || 'مدير الشركة',
+          role: 'owner',
+          companyId: t.id,
+          companyName: compName,
+          currency: t.currency || 'ج.م',
+        },
+        tenant: {
+          ...t,
+          name: compName,
+          logo: compLogo,
+        },
+        isSuperAdmin: false,
+      };
+    }
+  }
+
+  // 4.5. فحص دليل الشركات السحابي tenant_directory بالبريد كمالك (Cross-Browser Discovery)
+  // يضمن التعرف الفوري على حساب مالك الشركة على أي متصفح جديد كلياً قبل فحص قوائم الموظفين
+  try {
+    const { collection, query, where, getDocs } = await import('firebase/firestore');
+    const q = query(collection(db, 'tenant_directory'), where('adminEmail', '==', cleanEmail));
+    const qSnap = await Promise.race([
+      getDocs(q),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+    ]);
+
+    if (qSnap && !qSnap.empty) {
+      const tDoc = qSnap.docs[0].data();
+      if (tDoc && tDoc.companyId) {
+        console.log('[resolveTenantUserByEmail] ✅ Found company in tenant_directory:', tDoc.companyId, cleanEmail);
+        const resolvedTenant = {
+          id: tDoc.companyId,
+          name: tDoc.name || tDoc.subdomain,
+          subdomain: tDoc.subdomain,
+          slug: tDoc.subdomain,
+          logo: tDoc.logo || null,
+          adminEmail: cleanEmail,
+          adminName: tDoc.adminName || cleanEmail.split('@')[0],
+          currency: tDoc.currency || 'ج.م',
+          phone: tDoc.phone || null,
+          status: 'active',
+          plan: 'trial',
+        };
+
+        try {
+          const currentList = loadAllTenants();
+          if (!currentList.some(t => t.id === resolvedTenant.id)) {
+            saveAllTenants([resolvedTenant, ...currentList]);
+          }
+        } catch (e) {}
+
+        try {
+          if (!localStorage.getItem(`tenant_${resolvedTenant.id}_settings`)) {
+            localStorage.setItem(`tenant_${resolvedTenant.id}_settings`, JSON.stringify({
+              companyName: resolvedTenant.name,
+              subdomain: resolvedTenant.subdomain,
+              adminEmail: cleanEmail,
+              adminName: resolvedTenant.adminName,
+              currency: resolvedTenant.currency,
+              phone: resolvedTenant.phone,
+              city: 'القاهرة',
+            }));
+          }
+          if (!localStorage.getItem(`tenant_${resolvedTenant.id}_users`)) {
+            localStorage.setItem(`tenant_${resolvedTenant.id}_users`, JSON.stringify([{
+              id: firebaseUid || `u_${resolvedTenant.id}_admin`,
+              email: cleanEmail,
+              name: resolvedTenant.adminName,
+              role: 'owner',
+              companyId: resolvedTenant.id,
+            }]));
+          }
+          if (!localStorage.getItem(`tenant_${resolvedTenant.id}_projects`)) {
+            localStorage.setItem(`tenant_${resolvedTenant.id}_projects`, JSON.stringify([]));
+          }
+        } catch (e) {}
+
+        setActiveTenantId(resolvedTenant.id);
+
+        return {
+          success: true,
+          user: {
+            id: firebaseUid || `u_${resolvedTenant.id}_admin`,
+            email: cleanEmail,
+            name: resolvedTenant.adminName,
+            role: 'owner',
+            companyId: resolvedTenant.id,
+            companyName: resolvedTenant.name,
+            currency: resolvedTenant.currency,
+          },
+          tenant: resolvedTenant,
+          isSuperAdmin: false,
+        };
+      }
+    }
+  } catch (dirErr) {
+    console.warn('[resolveTenantUserByEmail] tenant_directory search notice:', dirErr?.message);
+  }
+
+  // 5. فحص دليل المستخدمين السحابي المركزي أولاً (Direct Cloud Directory Lookup)
   try {
     let cloudUser = null;
     if (cleanEmail.includes('@') && !cleanEmail.endsWith('@tashteeb.app')) {
-      cloudUser = await fetchUserFromCloudDirectory(cleanEmail);
+      cloudUser = await fetchUserFromCloudDirectory(cleanEmail, currentSub);
     }
     if (!cloudUser && phoneFromEmail) {
       cloudUser = await fetchUserByPhoneFromCloudDirectory(phoneFromEmail);
     }
     if (!cloudUser && cleanEmail.endsWith('@tashteeb.app')) {
-      cloudUser = await fetchUserFromCloudDirectory(cleanEmail);
+      cloudUser = await fetchUserFromCloudDirectory(cleanEmail, currentSub);
     }
 
     if (cloudUser && cloudUser.companyId) {
@@ -1281,9 +1549,34 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     }
   } catch(e) {}
 
-  // 6. فحص كافة الشركات المسجلة: دمج أعضاء الفريق في t.users مع المحلي، والتحقق السحابي الفعال إذا لم يتطابق محلياً
+  // 6. فحص كافة الشركات المسجلة: التحقق من المالك أولاً ثم أعضاء الفريق
   for (const t of tenants) {
-    // أ) التحقق من قائمة المستخدمين
+    // أ) هل هو مالك الشركة (Owner / Admin) — فحص ذاكرة فوري فائق السرعة
+    if (isTenantAdminMatch(t)) {
+      const compName = getTenantCurrentName(t);
+      const compLogo = getTenantCurrentLogo(t);
+      return {
+        success: true,
+        user: {
+          id: firebaseUid || `u_${t.id}_admin`,
+          email: t.adminEmail,
+          phone: t.phone,
+          name: t.adminName || 'مدير الشركة',
+          role: 'owner',
+          companyId: t.id,
+          companyName: compName,
+          currency: t.currency || 'ج.م',
+        },
+        tenant: {
+          ...t,
+          name: compName,
+          logo: compLogo,
+        },
+        isSuperAdmin: false,
+      };
+    }
+
+    // ب) التحقق من قائمة المستخدمين والموظفين
     let users = Array.isArray(t.users) ? [...t.users] : [];
 
     // دمج المستخدمين من التخزين المحلي للشركة إن وجدوا
@@ -1314,21 +1607,9 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
       }
     }
 
-    // إذا لم يتطابق محلياً، نفحص سحابة الشركة فوراً للتأكد تماماً من عدم وجود الموظف
-    if (!match) {
-      try {
-        const cloudData = await fetchCompanyDataFromCloud(t.id);
-        if (cloudData && Array.isArray(cloudData.users)) {
-          users = mergeUsersPreservingLocal(users, cloudData.users);
-          match = users.find(isUserMatch);
-        }
-      } catch (e) {}
-    }
-
     if (match) {
       console.log('[resolveTenantUserByEmail] ✅ Found employee in company users:', cleanEmail, 'company:', t.id, 'role:', match.role);
 
-      // حفظ وفهرسة فورية لتسريع الجلسة القادمة
       try {
         localStorage.setItem(`tenant_${t.id}_users`, JSON.stringify(users));
         const reg = JSON.parse(localStorage.getItem('platform-all-users-registry') || '{}');
@@ -1350,31 +1631,6 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
           companyName: compName,
           currency: t.currency || 'ج.م',
           role: match.role || 'engineer',
-        },
-        tenant: {
-          ...t,
-          name: compName,
-          logo: compLogo,
-        },
-        isSuperAdmin: false,
-      };
-    }
-
-    // ب) هل هو مالك الشركة (Owner / Admin)
-    if (isTenantAdminMatch(t)) {
-      const compName = getTenantCurrentName(t);
-      const compLogo = getTenantCurrentLogo(t);
-      return {
-        success: true,
-        user: {
-          id: firebaseUid || `u_${t.id}_admin`,
-          email: t.adminEmail,
-          phone: t.phone,
-          name: t.adminName || 'مدير الشركة',
-          role: 'owner',
-          companyId: t.id,
-          companyName: compName,
-          currency: t.currency || 'ج.م',
         },
         tenant: {
           ...t,
@@ -1506,14 +1762,37 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     // ج) إذا كان المستخدم على رابط شركة مخصص (مثل ddss.tashteebpro.com) وسجّل دخوله بنجاح بحساب Firebase الموثق
     if (currentSub && currentSub !== 'admin') {
       console.log('[resolveTenantUserByEmail] ⚡ Auto-associating authenticated user with current company subdomain:', currentSub);
-      const companyId = paramTenantId || `comp_${currentSub}`;
-      const companyName = (paramCompName ? decodeURIComponent(paramCompName) : null) || currentSub;
+      let companyId = paramTenantId || `comp_${currentSub}`;
+      let companyName = (paramCompName ? decodeURIComponent(paramCompName) : null) || currentSub;
+      let companyLogo = null;
+      let companyCurrency = 'ج.م';
+      let adminName = cleanEmail.split('@')[0];
+
+      // محاولة استرجاع بيانات الشركة الحقيقية من tenant_directory
+      try {
+        const { doc: fDoc, getDoc: fGetDoc } = await import('firebase/firestore');
+        const sSnap = await Promise.race([
+          fGetDoc(fDoc(db, 'tenant_directory', currentSub)),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3000))
+        ]);
+        if (sSnap && sSnap.exists()) {
+          const sData = sSnap.data();
+          if (sData.companyId) companyId = sData.companyId;
+          if (sData.name) companyName = sData.name;
+          if (sData.logo) companyLogo = sData.logo;
+          if (sData.currency) companyCurrency = sData.currency;
+          if (sData.adminName) adminName = sData.adminName;
+        }
+      } catch (e) {}
+
       const subTenant = {
         id: companyId,
         name: companyName,
         subdomain: currentSub,
+        slug: currentSub,
+        logo: companyLogo,
         adminEmail: cleanEmail,
-        currency: 'ج.م',
+        currency: companyCurrency,
         status: 'active',
         plan: 'trial',
       };
@@ -1521,6 +1800,19 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
         const currentList = loadAllTenants();
         if (!currentList.some(t => t.id === companyId)) {
           saveAllTenants([subTenant, ...currentList]);
+        }
+      } catch (e) {}
+
+      try {
+        if (!localStorage.getItem(`tenant_${companyId}_settings`)) {
+          localStorage.setItem(`tenant_${companyId}_settings`, JSON.stringify({
+            companyName: companyName,
+            subdomain: currentSub,
+            adminEmail: cleanEmail,
+            adminName: adminName,
+            currency: companyCurrency,
+            city: 'القاهرة',
+          }));
         }
       } catch (e) {}
 
@@ -1532,11 +1824,11 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
         user: {
           id: firebaseUid || `u_${companyId}_admin`,
           email: cleanEmail,
-          name: cleanEmail.split('@')[0],
+          name: adminName,
           role: 'owner',
           companyId: companyId,
           companyName: compName || companyName,
-          currency: 'ج.م',
+          currency: companyCurrency,
         },
         tenant: {
           ...subTenant,

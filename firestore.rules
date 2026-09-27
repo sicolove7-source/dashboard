@@ -18,6 +18,7 @@ service cloud.firestore {
 
     function companyBelongsToUser(companyId) {
       let tokenCompId = request.auth.token.companyId;
+      let userEmail = request.auth.token.email;
       return isSuperAdmin() || (
         tokenCompId != null &&
         (
@@ -25,12 +26,43 @@ service cloud.firestore {
           ('comp_' + companyId) == tokenCompId ||
           companyId == ('comp_' + tokenCompId)
         )
+      ) || (
+        resource != null && (
+          resource.data.adminEmail == userEmail ||
+          resource.data.adminUid == request.auth.uid ||
+          ('authorizedEmails' in resource.data && resource.data.authorizedEmails.hasAny([userEmail]))
+        )
+      ) || (
+        request.resource != null && (
+          request.resource.data.adminEmail == userEmail ||
+          request.resource.data.adminUid == request.auth.uid ||
+          ('authorizedEmails' in request.resource.data && request.resource.data.authorizedEmails.hasAny([userEmail]))
+        )
+      );
+    }
+
+    function companySubcollectionBelongsToUser(companyId) {
+      let tokenCompId = request.auth.token.companyId;
+      let userEmail = request.auth.token.email;
+      return isSuperAdmin() || (
+        tokenCompId != null &&
+        (
+          tokenCompId == companyId ||
+          ('comp_' + companyId) == tokenCompId ||
+          companyId == ('comp_' + tokenCompId)
+        )
+      ) || (
+        exists(/databases/$(database)/documents/companies/$(companyId)) && (
+          get(/databases/$(database)/documents/companies/$(companyId)).data.adminEmail == userEmail ||
+          get(/databases/$(database)/documents/companies/$(companyId)).data.adminUid == request.auth.uid ||
+          ('authorizedEmails' in get(/databases/$(database)/documents/companies/$(companyId)).data &&
+           get(/databases/$(database)/documents/companies/$(companyId)).data.authorizedEmails.hasAny([userEmail]))
+        )
       );
     }
 
     match /companies/{companyId} {
       allow read, write: if isAuthenticated() &&
-                            companyId != null &&
                             companyId != '' &&
                             companyId != 'undefined' &&
                             companyId != 'null' &&
@@ -43,10 +75,9 @@ service cloud.firestore {
 
       match /{subcollection}/{docId} {
         allow read, write: if isAuthenticated() &&
-                              companyId != null &&
                               companyId != '' &&
                               companyId != 'undefined' &&
-                              companyBelongsToUser(companyId);
+                              companySubcollectionBelongsToUser(companyId);
       }
     }
 
@@ -75,18 +106,26 @@ service cloud.firestore {
 
     match /platform_metadata/tenants {
       allow read: if true;
-      allow write: if isSuperAdmin();
+      allow write: if isAuthenticated();
     }
 
     match /tenant_directory/{subdomain} {
       allow read: if true;
       allow create: if isSuperAdmin() || (isAuthenticated() && resource == null);
-      allow update, delete: if isSuperAdmin();
+      allow update: if isSuperAdmin() || (
+        isAuthenticated() && (
+          resource.data.adminEmail == request.auth.token.email ||
+          resource.data.adminUid == request.auth.uid ||
+          resource.data.companyId == request.auth.token.companyId ||
+          ('comp_' + resource.data.companyId) == request.auth.token.companyId
+        )
+      );
+      allow delete: if isSuperAdmin();
     }
 
     match /platform_metadata/users_directory {
       allow read: if true;
-      allow write: if isSuperAdmin();
+      allow write: if isAuthenticated();
     }
 
     match /platform_metadata/{docId} {

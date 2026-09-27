@@ -13,8 +13,10 @@ import {
 } from '../services/cloudSync';
 import { getActiveTenantId } from '../services/tenantsManager';
 
-const STORE_SUPPLIERS = 'db-suppliers-v1';
-const STORE_WORKERS   = 'db-workers-v1';
+const getSuppliersKey = (cId) => (cId ? `tenant_${cId}_suppliers` : 'db-suppliers-v1');
+const getWorkersKey   = (cId) => (cId ? `tenant_${cId}_workers` : 'db-workers-v1');
+const getInitialSuppliersSeed = (cId) => (cId && cId !== 'comp_demo' ? [] : SEED_SUPPLIERS);
+const getInitialWorkersSeed   = (cId) => (cId && cId !== 'comp_demo' ? [] : SEED_WORKERS);
 
 const SEED_SUPPLIERS = [
   { id:'s1', name:'شركة الدلتا للسيراميك', category:'أرضيات وتكسيات', phone:'010-11223344', address:'المنطقة الصناعية', rating:5, status:'موثوق', notes:'سعر جيد، توريد منتظم', materials:['سيراميك أرضيات','بورسلين حوائط'] },
@@ -81,7 +83,7 @@ function EmptyState({ icon: Icon, title, sub }) {
 
 /* ── Suppliers ─────────────────────────────────────── */
 function SuppliersSection({ activeCompanyId }) {
-  const [items, setItems] = useState(() => loadOrSeed(STORE_SUPPLIERS, SEED_SUPPLIERS));
+  const [items, setItems] = useState(() => loadOrSeed(getSuppliersKey(activeCompanyId), getInitialSuppliersSeed(activeCompanyId)));
   const [search, setSearch]         = useState('');
   const [filterCat, setFilterCat]   = useState('');
   const [filterSt, setFilterSt]     = useState('');
@@ -91,6 +93,12 @@ function SuppliersSection({ activeCompanyId }) {
   const blank = { name:'', category:CATEGORIES[0], phone:'', address:'', rating:3, status:'عادي', notes:'', materials:[] };
   const [form, setForm]             = useState(blank);
   const [matInput, setMatInput]     = useState('');
+
+  // Re-sync on activeCompanyId change
+  React.useEffect(() => {
+    const key = getSuppliersKey(activeCompanyId);
+    setItems(loadOrSeed(key, getInitialSuppliersSeed(activeCompanyId)));
+  }, [activeCompanyId]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -103,7 +111,7 @@ function SuppliersSection({ activeCompanyId }) {
 
   const commit = (next) => {
     setItems(next);
-    saveLS(STORE_SUPPLIERS, next);
+    saveLS(getSuppliersKey(activeCompanyId), next);
     const cId = activeCompanyId || getActiveTenantId() || null;
     if (cId) syncSuppliersToCloud(cId, next);
   };
@@ -114,7 +122,7 @@ function SuppliersSection({ activeCompanyId }) {
     const unsub = subscribeToCloudCompanyField(cId, 'suppliers', (cloudSuppliers) => {
       if (Array.isArray(cloudSuppliers)) {
         setItems(cloudSuppliers);
-        saveLS(STORE_SUPPLIERS, cloudSuppliers);
+        saveLS(getSuppliersKey(cId), cloudSuppliers);
       }
     });
     return () => unsub();
@@ -392,8 +400,8 @@ function SuppliersSection({ activeCompanyId }) {
 }
 
 /* ── Workers ───────────────────────────────────────── */
-function WorkersSection({ activeCompanyId }) {
-  const [items, setItems]             = useState(() => loadOrSeed(STORE_WORKERS, SEED_WORKERS));
+function WorkersSection({ activeCompanyId, projects = [], onUpdateProject, companySettings }) {
+  const [items, setItems]             = useState(() => loadOrSeed(getWorkersKey(activeCompanyId), getInitialWorkersSeed(activeCompanyId)));
   const [search, setSearch]           = useState('');
   const [filterTrade, setFilterTrade] = useState('');
   const [filterSt, setFilterSt]       = useState('');
@@ -401,6 +409,12 @@ function WorkersSection({ activeCompanyId }) {
   const [editing, setEditing]         = useState(null);
   const [confirmDel, setConfirmDel]   = useState(null);
   const [contractWorker, setContractWorker] = useState(null);
+
+  // Re-sync on activeCompanyId change
+  React.useEffect(() => {
+    const key = getWorkersKey(activeCompanyId);
+    setItems(loadOrSeed(key, getInitialWorkersSeed(activeCompanyId)));
+  }, [activeCompanyId]);
 
   const blank = {
     name: '', trade: TRADES[0], phone: '', rating: 3,
@@ -421,7 +435,7 @@ function WorkersSection({ activeCompanyId }) {
 
   const commit = (next) => {
     setItems(next);
-    saveLS(STORE_WORKERS, next);
+    saveLS(getWorkersKey(activeCompanyId), next);
     const cId = activeCompanyId || getActiveTenantId() || null;
     if (cId) syncWorkersToCloud(cId, next);
   };
@@ -432,7 +446,7 @@ function WorkersSection({ activeCompanyId }) {
     const unsub = subscribeToCloudCompanyField(cId, 'workers', (cloudWorkers) => {
       if (Array.isArray(cloudWorkers)) {
         setItems(cloudWorkers);
-        saveLS(STORE_WORKERS, cloudWorkers);
+        saveLS(getWorkersKey(cId), cloudWorkers);
       }
     });
     return () => unsub();
@@ -651,7 +665,14 @@ function WorkersSection({ activeCompanyId }) {
       {/* ── Craftsman Contract Modal ── */}
       {contractWorker && (
         <CraftsmanContractModal 
-          initialWorker={contractWorker} 
+          initialWorker={contractWorker}
+          projects={projects}
+          companySettings={companySettings}
+          onUpdate={(patch, projId) => {
+            if (onUpdateProject && projId) {
+              onUpdateProject(projId, patch);
+            }
+          }}
           onClose={() => setContractWorker(null)} 
         />
       )}
@@ -752,7 +773,7 @@ function WorkersSection({ activeCompanyId }) {
 }
 
 /* ── Main Page ─────────────────────────────────────── */
-export default function SuppliersTab({ projects = [], companySettings, userRole, currentUser, activeCompanyId }) {
+export default function SuppliersTab({ projects = [], onUpdateProject, companySettings, userRole, currentUser, activeCompanyId }) {
   const [activeTab, setActiveTab] = useState(() => {
     try {
       const p = new URLSearchParams(window.location.search);
@@ -793,7 +814,14 @@ export default function SuppliersTab({ projects = [], companySettings, userRole,
 
       <div className="tab-fade" style={{ width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
         {activeTab==='suppliers' && <SuppliersSection activeCompanyId={activeCompanyId}/>}
-        {activeTab==='workers'   && <WorkersSection activeCompanyId={activeCompanyId}/>}
+        {activeTab==='workers'   && (
+          <WorkersSection 
+            activeCompanyId={activeCompanyId}
+            projects={projects}
+            onUpdateProject={onUpdateProject}
+            companySettings={companySettings}
+          />
+        )}
       </div>
     </div>
   );
