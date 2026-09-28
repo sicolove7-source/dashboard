@@ -18,6 +18,7 @@ if ('serviceWorker' in navigator) {
   if (import.meta.env.PROD) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js').then((registration) => {
+        registration.update().catch(() => {});
         console.log('Tashteeb Pro PWA SW registered successfully:', registration.scope);
       }).catch((err) => {
         console.log('PWA SW registration failed:', err);

@@ -213,7 +213,14 @@ export default function ContractsHubPanel({
           </div>
 
           <button
-            onClick={() => onOpenCraftsmanContract(null)}
+            type="button"
+            id="btn-open-craftsman-contract"
+            onClick={(e) => {
+              e.preventDefault();
+              if (typeof onOpenCraftsmanContract === 'function') {
+                onOpenCraftsmanContract(null);
+              }
+            }}
             style={{
               width: '100%',
               display: 'inline-flex',
@@ -283,7 +290,14 @@ export default function ContractsHubPanel({
           </div>
 
           <button
-            onClick={onOpenClientContract}
+            type="button"
+            id="btn-open-client-contract"
+            onClick={(e) => {
+              e.preventDefault();
+              if (typeof onOpenClientContract === 'function') {
+                onOpenClientContract();
+              }
+            }}
             style={{
               width: '100%',
               display: 'inline-flex',
@@ -492,7 +506,14 @@ export default function ContractsHubPanel({
           </div>
 
           <button
-            onClick={onOpenClientReport}
+            type="button"
+            id="btn-open-client-report"
+            onClick={(e) => {
+              e.preventDefault();
+              if (typeof onOpenClientReport === 'function') {
+                onOpenClientReport();
+              }
+            }}
             style={{
               width: '100%',
               display: 'inline-flex',

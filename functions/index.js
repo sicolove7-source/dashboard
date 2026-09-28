@@ -39,7 +39,7 @@ exports.assignUserClaims = onCall(async (request) => {
   const callerEmail = (request.auth?.token?.email || '').toLowerCase().trim();
   const isCallerSuperAdmin = callerClaims.role === 'super_admin' || 
                              callerClaims.isSuperAdmin === true || 
-                             callerEmail === 'sicolove7@gmail.com';
+                             (callerEmail === 'sicolove7@gmail.com' && callerClaims.email_verified === true);
   const targetRole = role || 'owner';
 
   // 2. التحقق من صلاحيات منح دور super_admin
@@ -210,7 +210,7 @@ exports.createCompanyUser = onCall(async (request) => {
   const callerEmail = (request.auth?.token?.email || '').toLowerCase().trim();
   let isSuperAdmin = callerClaims.role === 'super_admin' || 
                      callerClaims.isSuperAdmin === true || 
-                     callerEmail === 'sicolove7@gmail.com';
+                     (callerEmail === 'sicolove7@gmail.com' && callerClaims.email_verified === true);
   if (!isSuperAdmin) {
     try {
       const saDoc = await db.doc('platform_metadata/superadmin').get();
@@ -317,7 +317,7 @@ exports.resetUserPassword = onCall(async (request) => {
   const callerEmail = (request.auth?.token?.email || '').toLowerCase().trim();
   let isSuperAdmin = callerClaims.role === 'super_admin' || 
                      callerClaims.isSuperAdmin === true || 
-                     callerEmail === 'sicolove7@gmail.com';
+                     (callerEmail === 'sicolove7@gmail.com' && callerClaims.email_verified === true);
   if (!isSuperAdmin) {
     try {
       const saDoc = await db.doc('platform_metadata/superadmin').get();
@@ -390,7 +390,7 @@ exports.updateOwnTenantEntry = onCall(async (request) => {
   const callerEmail = (request.auth?.token?.email || '').toLowerCase().trim();
   const isSuperAdmin = callerClaims.role === 'super_admin' || 
                        callerClaims.isSuperAdmin === true || 
-                       callerEmail === 'sicolove7@gmail.com';
+                       (callerEmail === 'sicolove7@gmail.com' && callerClaims.email_verified === true);
   const targetCompanyId = companyId || callerClaims.companyId;
 
   if (!targetCompanyId || !patch) {
@@ -481,7 +481,7 @@ exports.syncOwnCompanyUsersDirectory = onCall(async (request) => {
   const callerEmail = (request.auth?.token?.email || '').toLowerCase().trim();
   const isSuperAdmin = callerClaims.role === 'super_admin' || 
                        callerClaims.isSuperAdmin === true || 
-                       callerEmail === 'sicolove7@gmail.com';
+                       (callerEmail === 'sicolove7@gmail.com' && callerClaims.email_verified === true);
   const targetCompanyId = companyId || callerClaims.companyId;
 
   if (!targetCompanyId || !Array.isArray(users)) {
@@ -767,6 +767,46 @@ exports.createPortalShare = onCall(async (request) => {
   const { companyId, projectId } = request.data || {};
   if (!companyId || !projectId) {
     throw new HttpsError("invalid-argument", "معرف الشركة ومعرف المشروع مطلوبان.");
+  }
+
+  // التحقق الأمني: التأكد من أن المستخدم ينتمي لنفس الشركة أو سوبر أدمن
+  const callerClaims = request.auth?.token || {};
+  const callerEmail = (callerClaims.email || '').toLowerCase().trim();
+  let isSuperAdmin = callerClaims.role === 'super_admin' || 
+                     callerClaims.isSuperAdmin === true || 
+                     (callerEmail === 'sicolove7@gmail.com' && callerClaims.email_verified === true);
+  if (!isSuperAdmin) {
+    try {
+      const saDoc = await db.doc('platform_metadata/superadmin').get();
+      if (saDoc.exists && saDoc.data()?.uid === callerUid) {
+        isSuperAdmin = true;
+      }
+    } catch (e) {}
+  }
+
+  const belongsByClaims = callerClaims.companyId === companyId || 
+                          ('comp_' + callerClaims.companyId) === companyId ||
+                          callerClaims.companyId === ('comp_' + companyId);
+
+  let isAuthorized = isSuperAdmin || belongsByClaims;
+  if (!isAuthorized) {
+    try {
+      const compDoc = await db.doc(`companies/${companyId}`).get();
+      if (compDoc.exists) {
+        const compData = compDoc.data() || {};
+        if (compData.adminUid === callerUid ||
+            (compData.adminEmail && compData.adminEmail.toLowerCase() === callerEmail) ||
+            (Array.isArray(compData.authorizedEmails) && compData.authorizedEmails.map(e => (e || '').toLowerCase()).includes(callerEmail))) {
+          isAuthorized = true;
+        }
+      }
+    } catch (authErr) {
+      console.warn('[createPortalShare] Auth check error:', authErr.message);
+    }
+  }
+
+  if (!isAuthorized) {
+    throw new HttpsError("permission-denied", "مرفوض: لا تملك الصلاحية لإنشاء أو مشاركة بوابة هذا المشروع.");
   }
 
   // 1. جلب المشروع من السحابة

@@ -3,22 +3,21 @@
  * الإصدار الأول المطور لتطبيقات الهواتف والويب التقدمية
  */
 
-const CACHE_NAME = 'tashteeb-pro-v2.0';
+const CACHE_NAME = 'tashteeb-pro-v2.1';
 const PRECACHE_ASSETS = [
-  './',
-  './index.html',
   './favicon.svg',
   './manifest.json'
 ];
 
 // 1. التثبيت والتخزين المؤقت لملفات الهيكل الأساسي
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(PRECACHE_ASSETS).catch((err) => {
         console.warn('SW Precache non-blocking error:', err);
       });
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
@@ -29,7 +28,10 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames
           .filter((name) => name !== CACHE_NAME)
-          .map((name) => caches.delete(name))
+          .map((name) => {
+            console.log('[SW] Deleting obsolete cache:', name);
+            return caches.delete(name);
+          })
       );
     }).then(() => self.clients.claim())
   );
@@ -51,14 +53,22 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // معالجة صفحات التصفح (HTML navigation)
-  if (request.mode === 'navigate') {
+  // معالجة صفحات التصفح (HTML navigation) - دائماً Network-First لضمان استلام أحدث أكواد النظام فوراً
+  if (request.mode === 'navigate' || request.url.endsWith('index.html') || request.url.endsWith('/')) {
     event.respondWith(
-      fetch(request).catch(async () => {
-        const cache = await caches.open(CACHE_NAME);
-        const cachedIndex = await cache.match('./index.html');
-        return cachedIndex || new Response('Offline', { status: 503, statusText: 'Offline' });
-      })
+      fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
+          }
+          return networkResponse;
+        })
+        .catch(async () => {
+          const cache = await caches.open(CACHE_NAME);
+          const cachedIndex = await cache.match('./index.html') || await cache.match('/');
+          return cachedIndex || new Response('Offline', { status: 503, statusText: 'Offline' });
+        })
     );
     return;
   }

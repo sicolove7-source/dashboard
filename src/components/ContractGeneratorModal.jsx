@@ -22,21 +22,21 @@ export default function ContractGeneratorModal({ project, onUpdate, onClose, com
     
     // First Party (Contractor)
     companyName: savedContract.companyName || activeCompanySettings.companyName || 'شركة المقاولات والتشطيبات',
-    companyRep: savedContract.companyRep || project.engineer || activeCompanySettings.adminName || 'مدير المشروعات',
+    companyRep: savedContract.companyRep || (typeof project.engineer === 'object' ? (project.engineer?.name || '') : (project.engineer || '')) || activeCompanySettings.adminName || 'مدير المشروعات',
     companyCR: savedContract.companyCR || (activeCompanySettings.commercialRegister ? `س.ت: ${activeCompanySettings.commercialRegister}${activeCompanySettings.taxNumber ? ` - ب.ض: ${activeCompanySettings.taxNumber}` : ''}` : 'س.ت: 482910 - ب.ض: 593-201'),
     companyPhone: savedContract.companyPhone || activeCompanySettings.phone || '',
     companyAddress: savedContract.companyAddress || activeCompanySettings.address || '',
 
     // Second Party (Client)
-    clientName: savedContract.clientName || project.client || '',
+    clientName: savedContract.clientName || (typeof project.client === 'object' ? (project.client?.name || '') : (project.client || '')) || '',
     clientNationalId: savedContract.clientNationalId || '',
-    clientPhone: savedContract.clientPhone || '',
-    clientAddress: savedContract.clientAddress || project.area || '',
+    clientPhone: savedContract.clientPhone || project.clientPhone || project.phone || (typeof project.client === 'object' ? (project.client?.phone || '') : '') || '',
+    clientAddress: savedContract.clientAddress || (typeof project.area === 'object' ? (project.area?.name || '') : (project.area || '')) || '',
 
     // Project Details
     projectName: savedContract.projectName || project.name || '',
     unitType: savedContract.unitType || project.type || 'شقة سكنية',
-    unitLocation: savedContract.unitLocation || project.area || '',
+    unitLocation: savedContract.unitLocation || (typeof project.area === 'object' ? (project.area?.name || '') : (project.area || '')) || '',
     plotNumber: savedContract.plotNumber || project.plotNumber || '',
     apartmentNumber: savedContract.apartmentNumber || project.apartmentNumber || '',
     approxArea: savedContract.approxArea || '160',

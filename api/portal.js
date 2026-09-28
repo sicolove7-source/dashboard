@@ -20,17 +20,18 @@ const memoryCache = new Map();
 const CACHE_TTL_MS = 60 * 1000; // دقيقة واحدة
 
 async function ensureSuperAdminAuth() {
-  if (auth.currentUser && auth.currentUser.email === 'sicolove7@gmail.com') {
+  const adminEmail = process.env.FIREBASE_ADMIN_AUTH_EMAIL;
+  const adminPassword = process.env.FIREBASE_ADMIN_AUTH_PASSWORD;
+  if (!adminEmail || !adminPassword) {
+    return;
+  }
+  if (auth.currentUser && auth.currentUser.email === adminEmail) {
     return;
   }
   try {
-    await signInWithEmailAndPassword(auth, 'sicolove7@gmail.com', '123456');
+    await signInWithEmailAndPassword(auth, adminEmail, adminPassword);
   } catch (e) {
-    try {
-      await signInWithEmailAndPassword(auth, 'sicolove7@gmail.com', '12345678');
-    } catch (e2) {
-      console.error('[api/portal] Auth failed:', e2.message);
-    }
+    console.warn('[api/portal] Admin auth notice:', e.message);
   }
 }
 

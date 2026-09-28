@@ -10,9 +10,7 @@ service firebase.storage {
       return isAuthenticated() && (
         request.auth.token.role == 'super_admin' ||
         request.auth.token.isSuperAdmin == true ||
-        request.auth.token.email == 'sicolove7@gmail.com' ||
-        request.auth.token.email == 'admin@platform.com' ||
-        request.auth.token.email == 'admin@tashteebpro.com'
+        (request.auth.token.email == 'sicolove7@gmail.com' && request.auth.token.email_verified == true)
       );
     }
 
@@ -33,18 +31,30 @@ service firebase.storage {
              request.resource.contentType.matches('image/.*|application/pdf|video/.*');
     }
 
-    match /companies/{companyId}/{allPaths=**} {
+    // شعارات وهوية الشركة العامة للعرض
+    match /companies/{companyId}/branding/{allPaths=**} {
       allow read: if true;
       allow write: if isValidMedia() && companyBelongsToUser(companyId);
     }
 
+    // ملفات وعقود ومستندات الشركة الخاصة
+    match /companies/{companyId}/{allPaths=**} {
+      allow read: if isAuthenticated() && companyBelongsToUser(companyId);
+      allow write: if isValidMedia() && companyBelongsToUser(companyId);
+    }
+
+    match /site_media/{companyId}/{allPaths=**} {
+      allow read: if isAuthenticated() && companyBelongsToUser(companyId);
+      allow write: if isValidMedia() && isAuthenticated() && companyBelongsToUser(companyId);
+    }
+
     match /site_media/{allPaths=**} {
-      allow read: if true;
-      allow write: if isValidMedia() && isAuthenticated();
+      allow read: if isAuthenticated() && isSuperAdmin();
+      allow write: if isValidMedia() && isAuthenticated() && isSuperAdmin();
     }
 
     match /{allPaths=**} {
-      allow read: if true;
+      allow read: if false;
       allow write: if false;
     }
   }

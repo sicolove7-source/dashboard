@@ -133,6 +133,15 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
         {(can(currentUser || userRole, 'projects_edit') || can(currentUser || userRole, 'projects_delete')) && (
           <div className="project-action-toolbar" style={{ justifyContent: 'flex-end' }}>
             <div className="secondary-action-group">
+              <button
+                type="button"
+                className="btn btn-outline btn-report-top"
+                onClick={() => setShowClientReport(true)}
+                title="توليد تقرير العميل وإرساله عبر واتساب"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderColor: '#10B981', color: '#10B981', background: 'rgba(16, 185, 129, 0.06)' }}
+              >
+                <MessageCircle size={15} /> <span>تقرير واتساب 📱</span>
+              </button>
               {can(currentUser || userRole, 'projects_edit') && (
                 <button className="btn btn-edit-proj" onClick={onEdit}>
                   <Pencil size={15} /> <span>تعديل</span>
@@ -250,6 +259,12 @@ export default function ProjectDetail({ project, team, userRole, onBack, onEdit,
                 onOpenCraftsmanContract={(worker = null) => {
                   setSelectedWorkerForContract(worker);
                   setActiveContractView('craftsman');
+                }}
+                onOpenClientContract={() => {
+                  setActiveContractView('client');
+                }}
+                onOpenClientReport={() => {
+                  setShowClientReport(true);
                 }}
                 onOpenClientPortal={(token) => {
                   if (!onOpenClientPortal) return;

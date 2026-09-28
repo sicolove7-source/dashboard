@@ -298,14 +298,13 @@ export default function App() {
   // للمستخدم العادي: نعتمد حصرياً على companyId من الـ Claims السحابية
   // للسوبر أدمن فقط: نسمح بالتبديل بين الشركات عبر getActiveTenantId() أو sessionStorage
   const activeCompanyId = useMemo(() => {
-    const isPreviewing = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('admin_preview_mode') === 'true';
-    if (currentUser?.isSuperAdmin || currentUser?.role === 'super_admin' || isPreviewing) {
-      // السوبر أدمن فقط: يُسمح له بالتبديل بين الشركات عبر getActiveTenantId() (وضع المعاينة المقصود)
-      return getActiveTenantId() || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('tashteeb_preview_tenant_id')) || currentUser?.companyId || null;
+    const isSuper = Boolean(currentUser?.isSuperAdmin || currentUser?.role === 'super_admin');
+    const isPreviewing = isSuper && typeof sessionStorage !== 'undefined' && sessionStorage.getItem('admin_preview_mode') === 'true';
+    if (isSuper) {
+      // السوبر أدمن الموثق فقط: يُسمح له بالتبديل بين الشركات عبر getActiveTenantId() أو وضع المعاينة
+      return (isPreviewing && typeof sessionStorage !== 'undefined' && sessionStorage.getItem('tashteeb_preview_tenant_id')) || getActiveTenantId() || currentUser?.companyId || null;
     }
-    // المستخدم العادي: نعتمد حصرياً على companyId من الـ Claims/الجلسة الموثقة
-    // ⚠️ لا نستخدم getActiveTenantId() هنا أبداً؛ فهي قيمة مخزّنة محلياً لكل متصفح على حدة (localStorage)
-    // وممكن تكون من جلسة/معاينة قديمة لشركة مختلفة تماماً على نفس الجهاز، مما يسبب خلط الشركات.
+    // المستخدم العادي: نعتمد حصرياً على companyId من الـ Claims/الجلسة الموثقة سحابياً
     return currentUser?.companyId || null;
   }, [currentUser]);
 
@@ -2029,7 +2028,7 @@ export default function App() {
 
 
       {/* ─── Super Admin Impersonation Top Bar (Calm & Professional) ─── */}
-      {(currentUser?.role === 'super_admin' || currentUser?.isSuperAdmin || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('admin_preview_mode') === 'true')) && tab !== 'tenants' && (
+      {(currentUser?.role === 'super_admin' || currentUser?.isSuperAdmin) && (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('admin_preview_mode') === 'true') && tab !== 'tenants' && (
         <div
           className="impersonation-top-bar"
           style={{

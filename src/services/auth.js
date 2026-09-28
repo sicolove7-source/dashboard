@@ -451,9 +451,6 @@ export async function assignClaimsToExistingUser(targetUid, companyId, role = 'e
   return res;
 }
 
-if (typeof window !== 'undefined') {
-  window.callAssignUserClaims = callAssignUserClaims;
-  window.assignClaimsToExistingUser = assignClaimsToExistingUser;
-}
+// Privileged functions are kept modular and unexposed to window object
 
 

@@ -121,6 +121,16 @@ class WebServer
             rawPath = rawPath.Replace('/', Path.DirectorySeparatorChar);
             string fullPath = Path.Combine(distPath, rawPath);
 
+            // Path Traversal Security Protection
+            string canonicalDist = Path.GetFullPath(distPath);
+            string canonicalTarget = Path.GetFullPath(fullPath);
+            if (!canonicalTarget.StartsWith(canonicalDist, StringComparison.OrdinalIgnoreCase))
+            {
+                response.StatusCode = 403;
+                response.Close();
+                return;
+            }
+
             // SPA fallback: If file doesn't exist, serve index.html
             if (!File.Exists(fullPath))
             {

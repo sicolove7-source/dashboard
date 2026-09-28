@@ -51,6 +51,11 @@ export default function ClientReportModal({ project, onClose, companySettings: p
   // Completed Quality Gates
   const passedGates = QUALITY_GATES.filter(g => qualityData[g.id]?.status === 'passed');
 
+  const safeClientName = typeof project.client === 'object' ? (project.client?.name || '') : (project.client || '');
+  const safeClientPhone = project.clientPhone || project.phone || (typeof project.client === 'object' ? (project.client?.phone || '') : '') || '';
+  const safeEngineerName = typeof project.engineer === 'object' ? (project.engineer?.name || 'الإدارة الهندسية') : (project.engineer || 'الإدارة الهندسية');
+  const safeProjectArea = typeof project.area === 'object' ? (project.area?.name || '') : (project.area || '');
+
   // Editable Parties & Report Data State
   const [reportData, setReportData] = useState({
     // الطرف الأول: المقاول / الشركة
@@ -59,17 +64,17 @@ export default function ClientReportModal({ project, onClose, companySettings: p
     companyPhone: activeCompanySettings?.phone || '',
 
     // الطرف الثاني: العميل / المالك
-    clientName: project.client || '',
-    clientPhone: project.clientPhone || project.phone || '',
+    clientName: safeClientName,
+    clientPhone: safeClientPhone,
     clientRole: 'المالك / صاحب المشروع',
 
     // الطرف المشرف: المهندس المسؤول
-    engineerName: project.engineer || 'الإدارة الهندسية',
+    engineerName: safeEngineerName,
     engineerRole: 'مهندس التنفيذ المسؤول',
 
     // بيانات الموقع والإنجاز
     projectName: project.name || 'الموقع',
-    projectArea: project.area || '',
+    projectArea: safeProjectArea,
     progressPct: project.progress !== undefined ? project.progress : overallPhasePct,
     dueDate: project.dueDate || '',
 

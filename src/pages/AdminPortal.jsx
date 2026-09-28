@@ -26,7 +26,7 @@ export default function AdminPortal({
     currentUser?.claims?.isSuperAdmin === true ||
     currentUser?.role === 'super_admin' ||
     currentUser?.isSuperAdmin === true ||
-    (currentUser?.email && currentUser.email.toLowerCase().trim() === 'sicolove7@gmail.com')
+    (currentUser?.email && currentUser.email.toLowerCase().trim() === 'sicolove7@gmail.com' && (currentUser?.emailVerified === true || currentUser?.claims?.email_verified === true))
   );
 
   // خروج من بوابة الإدارة والعودة للموقع الرئيسي
