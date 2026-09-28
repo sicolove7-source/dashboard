@@ -925,11 +925,7 @@ export default function App() {
           };
 
           const hasChanged =
-            prev?.companyName !== merged.companyName ||
-            prev?.companyLogo !== merged.companyLogo ||
-            prev?.currency !== merged.currency ||
-            prev?.primaryColor !== merged.primaryColor ||
-            prev?.accentColor !== merged.accentColor;
+            JSON.stringify(prev) !== JSON.stringify(merged);
 
           if (hasChanged) {
             try {

@@ -289,14 +289,7 @@ export function saveCompanySettings(settings, companyId) {
     }
   } catch (e) {}
 
-  // المزامنة الفورية مع سحابة Firestore في الخلفية لضمان عدم ضياع الشعار أو الإعدادات
-  if (cId) {
-    try {
-      syncSettingsToCloud(cId, stampedSettings).catch((err) => {
-        console.warn("Cloud sync error for company settings:", err);
-      });
-    } catch (e) {}
-  }
+  // ملاحظة: المزامنة السحابية تتم بشكل صريح عبر handleSave أو عبر المكونات المسؤولة لتفادي استنزاف اتصالات Firestore
 }
 
 export function applyCompanyBranding(settings) {

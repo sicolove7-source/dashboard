@@ -227,20 +227,13 @@ export default function CompanySettings({
       return;
     }
 
-    // إذا لم يقم المستخدم بتعديل الحقول محلياً (غير محفوظة)، يمكن تحديث الحالة فقط إذا كانت هناك بيانات مخصصة حقيقية
+    // إذا لم يقم المستخدم بتعديل الحقول محلياً (غير محفوظة)، نحدث الحالة فوراً من أي تغيير سحابي قادم
     if (!isDirtyRef.current && companySettings && Object.keys(companySettings).length > 0) {
-      const hasCustomProp = companySettings.companyLogo || (
-        companySettings.companyName &&
-        companySettings.companyName !== 'شركة المقاولات' &&
-        companySettings.companyName !== 'شركة المقاولات والتشطيبات'
-      );
-      if (hasCustomProp) {
-        setSettings(prev => ({
-          ...prev,
-          ...companySettings,
-          companyLogo: companySettings.companyLogo || prev.companyLogo || null,
-        }));
-      }
+      setSettings(prev => ({
+        ...prev,
+        ...companySettings,
+        companyLogo: companySettings.companyLogo !== undefined ? companySettings.companyLogo : (prev.companyLogo || null),
+      }));
     }
   }, [companySettings, effectiveCompanyId]);
 
@@ -320,14 +313,6 @@ export default function CompanySettings({
     const next = { ...settingsRef.current, [key]: val };
     settingsRef.current = next;
     setSettings(next);
-
-    if (key === 'companyLogo' || key === 'companyName' || key === 'currency') {
-      saveCompanySettings(next, effectiveCompanyId);
-      onCompanySettingsChange?.(next);
-      try {
-        syncSettingsToCloud(effectiveCompanyId, next);
-      } catch (e) {}
-    }
   }
 
   // ── Team Management ──
