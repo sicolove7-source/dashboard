@@ -83,6 +83,118 @@ function PageLoadingFallback() {
   );
 }
 
+function CompanySuspendedScreen({ companyName, onLogout }) {
+  const companyDisplayName = companyName || 'هذه الشركة';
+  return (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#0F172A',
+      backgroundImage: 'radial-gradient(ellipse at 50% 30%, rgba(239, 68, 68, 0.15), transparent 70%)',
+      color: '#F8FAFC',
+      fontFamily: 'Cairo, system-ui, -apple-system, sans-serif',
+      direction: 'rtl',
+      padding: '24px',
+      textAlign: 'center'
+    }}>
+      <div style={{
+        maxWidth: 520,
+        width: '100%',
+        background: 'rgba(30, 41, 59, 0.85)',
+        border: '1px solid rgba(239, 68, 68, 0.35)',
+        borderRadius: 24,
+        padding: '44px 32px',
+        boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 40px rgba(239, 68, 68, 0.15)',
+        backdropFilter: 'blur(20px)',
+        position: 'relative'
+      }}>
+        <div style={{
+          width: 80,
+          height: 80,
+          margin: '0 auto 24px',
+          borderRadius: '50%',
+          background: 'rgba(239, 68, 68, 0.15)',
+          border: '2px solid rgba(239, 68, 68, 0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 38,
+          boxShadow: '0 0 30px rgba(239, 68, 68, 0.25)'
+        }}>
+          🔒
+        </div>
+
+        <div style={{
+          display: 'inline-block',
+          background: 'rgba(239, 68, 68, 0.15)',
+          color: '#F87171',
+          border: '1px solid rgba(239, 68, 68, 0.3)',
+          borderRadius: 20,
+          padding: '4px 14px',
+          fontSize: 12,
+          fontWeight: 700,
+          marginBottom: 16
+        }}>
+          تم إيقاف الحساب مؤقتاً
+        </div>
+
+        <h2 style={{ fontSize: '1.6rem', fontWeight: 800, margin: '0 0 12px 0', color: '#FFFFFF' }}>
+          حساب {companyDisplayName} معلّق
+        </h2>
+
+        <p style={{ fontSize: '0.95rem', color: '#94A3B8', lineHeight: 1.7, margin: '0 0 28px 0' }}>
+          تم تعليق هذا الحساب من قِبل إدارة منصة تشطيب برو. للتحقق من سبب الإيقاف أو تجديد الاشتراك وإعادة التفعيل الفوري، يُرجى التواصل مباشرةً مع فريق الدعم الفني.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <a
+            href="https://wa.me/201021008688?text=%D9%85%D8%B1%D8%AD%D8%A8%D8%A7%D9%8B%D8%8C%20%D8%A3%D8%B1%D8%BA%D8%A8%20%D9%81%D9%8A%20%D8%A5%D8%B9%D8%A7%D8%AF%D8%A9%20%D8%AA%D9%81%D8%B9%D9%8A%D9%84%20%D8%AD%D8%B3%D8%A7%D8%A8%20%D8%B4%D8%B1%D9%83%D8%AA%D9%8A%20%D8%B9%D9%84%D9%89%20%D9%85%D9%86%D8%B5%D8%A9%20%D8%AA%D8%B4%D8%B7%D9%8A%D8%A8%20%D8%A8%D8%B1%D9%88"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              background: '#25D366',
+              color: '#FFFFFF',
+              textDecoration: 'none',
+              borderRadius: 14,
+              padding: '14px 20px',
+              fontSize: '0.95rem',
+              fontWeight: 700,
+              boxShadow: '0 6px 20px rgba(37, 211, 102, 0.3)',
+              transition: 'transform 0.2s'
+            }}
+          >
+            <span>💬 التواصل الفوري مع الدعم عبر واتساب</span>
+          </a>
+
+          <button
+            onClick={onLogout}
+            style={{
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              color: '#CBD5E1',
+              borderRadius: 14,
+              padding: '12px 20px',
+              fontSize: '0.9rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'background 0.2s'
+            }}
+          >
+            تسجيل الخروج والعودة
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // Utils
 import { NAV } from './utils/constants';
 import { todayISO, setGlobalCurrency } from './utils/helpers';
@@ -318,6 +430,20 @@ export default function App() {
       return null;
     }
   }, [activeCompanyId]);
+
+  const isSuperAdminUser = Boolean(currentUser?.isSuperAdmin || currentUser?.role === 'super_admin');
+
+  // فحص ما إذا كانت الشركة الحالية موقوفة من قِبل إدارة المنصة
+  const isCompanySuspended = useMemo(() => {
+    if (isSuperAdminUser) return false;
+    if (companySettings?.status === 'suspended') return true;
+    try {
+      const all = loadAllTenants();
+      const currentTenant = all.find(t => t.id === activeCompanyId);
+      if (currentTenant?.status === 'suspended') return true;
+    } catch (e) {}
+    return false;
+  }, [isSuperAdminUser, companySettings?.status, activeCompanyId]);
 
   // Multi-Tenant Subdomain Cloud Resolution States
   const [subdomainResolving, setSubdomainResolving] = useState(() => isCompanySubdomain());
@@ -627,10 +753,85 @@ export default function App() {
           setGlobalCurrency(updated.currency);
         }
       }
+      if (e.key === 'platform-tenants-master-v1' || e.key === 'platform-all-tenants') {
+        try {
+          const all = loadAllTenants();
+          const currentTenant = all.find(t => t.id === activeCompanyId);
+          if (currentTenant?.status) {
+            setCompanySettings(prev => ({ ...prev, status: currentTenant.status }));
+          }
+        } catch (e) {}
+      }
     }
     window.addEventListener('storage', onStorageChange);
     return () => window.removeEventListener('storage', onStorageChange);
   }, [activeCompanyId]);
+
+  // فحص استمرارية وصلاحية حساب المستخدم والموظف (إلغاء الجلسة فوراً عند الحذف أو التعليق)
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser?.email || isSuperAdminUser) return;
+
+    const verifyUserSessionLiveness = () => {
+      try {
+        const email = (currentUser.email || '').trim().toLowerCase();
+        // 1. فحص السجل المركزي للمنصة
+        const regRaw = localStorage.getItem('platform-all-users-registry');
+        if (regRaw) {
+          const registry = JSON.parse(regRaw);
+          const regUser = registry[email];
+          if (regUser) {
+            if (regUser.isDeleted) {
+              console.warn('[Security] User marked as deleted, terminating session immediately');
+              handleLogout();
+              return;
+            }
+            if (regUser.status === 'suspended' || regUser.status === 'inactive') {
+              console.warn('[Security] User status suspended, terminating session immediately');
+              handleLogout();
+              return;
+            }
+          }
+        }
+
+        // 2. إذا كان المستخدم موظفاً (مهندس، محاسب، مكتب فني، خدمة عملاء)
+        const isEmployee = currentUser.role !== 'admin' && currentUser.role !== 'owner';
+        if (isEmployee && activeCompanyId) {
+          const compUsersRaw = localStorage.getItem(`tenant_${activeCompanyId}_users`);
+          if (compUsersRaw) {
+            const compUsers = JSON.parse(compUsersRaw);
+            const userInComp = compUsers.find(u => (u.email || '').trim().toLowerCase() === email);
+            if (!userInComp) {
+              console.warn('[Security] Employee was removed/deleted from company, terminating session');
+              handleLogout();
+              return;
+            }
+            if (userInComp.status === 'suspended' || userInComp.status === 'inactive') {
+              console.warn('[Security] Employee was suspended by company admin, terminating session');
+              handleLogout();
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Session verification error:', err);
+      }
+    };
+
+    verifyUserSessionLiveness();
+
+    const handleStorageChange = (e) => {
+      if (e.key === 'platform-all-users-registry' || e.key === `tenant_${activeCompanyId}_users`) {
+        verifyUserSessionLiveness();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    const timer = setInterval(verifyUserSessionLiveness, 4000);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(timer);
+    };
+  }, [isAuthenticated, currentUser?.email, currentUser?.role, isSuperAdminUser, activeCompanyId]);
 
   // Update theme when toggled by user
   useEffect(() => {
@@ -2006,6 +2207,16 @@ export default function App() {
           />
         </React.Suspense>
       </AdminProvider>
+    );
+  }
+
+  // ─── فحص تعليق حساب الشركة للمستخدمين العاديين ───
+  if (isCompanySuspended) {
+    return (
+      <CompanySuspendedScreen
+        companyName={companySettings?.companyName || subdomainCompanyName}
+        onLogout={handleLogout}
+      />
     );
   }
 

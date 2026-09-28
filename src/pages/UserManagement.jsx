@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   UserPlus, Trash2, KeyRound, Eye, EyeOff, CheckCircle2,
   AlertTriangle, X, Pencil, Shield, Users, Copy, Check,
-  ChevronDown, Sliders, CheckSquare, Square, Mail, Phone
+  ChevronDown, Sliders, CheckSquare, Square, Mail, Phone, Power
 } from 'lucide-react';
 import {
   ROLES, NAV_PERMISSIONS, PERMISSIONS,
@@ -1003,6 +1003,32 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
     setModal(null);
   }
 
+  function toggleUserStatus(targetUser) {
+    if (!targetUser || targetUser.id === currentUser?.id || targetUser.email === currentUser?.email) {
+      alert('لا يمكن إيقاف حسابك الخاص!');
+      return;
+    }
+    const nextStatus = targetUser.status === 'suspended' ? 'active' : 'suspended';
+    const nextUsers = users.map(u => u.id === targetUser.id ? { ...u, status: nextStatus } : u);
+    persist(nextUsers);
+
+    // تحديث فوري للسجل المركزي platform-all-users-registry
+    try {
+      const regRaw = localStorage.getItem('platform-all-users-registry');
+      if (regRaw) {
+        const reg = JSON.parse(regRaw);
+        const cleanE = (targetUser.email || '').toLowerCase().trim();
+        if (cleanE && reg[cleanE]) {
+          reg[cleanE].status = nextStatus;
+        }
+        const cp = cleanPhoneNumber(targetUser.phone || targetUser.cleanPhone);
+        if (cp && reg[cp]) reg[cp].status = nextStatus;
+        if (cp && reg['phone_' + cp]) reg['phone_' + cp].status = nextStatus;
+        localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
+      }
+    } catch (e) {}
+  }
+
   function handleDelete(id) {
     const target = users.find(u => u.id === id);
     if (id === currentUser?.id || target?.email === currentUser?.email) {
@@ -1012,7 +1038,42 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
     const nextUsers = users.filter(u => u.id !== id);
     persist(nextUsers);
 
-    // أيضاً مزامنة الحذف من فريق العمل إذا وجد
+    // 1. تطهير فوري وشامل من السجل المركزي platform-all-users-registry
+    try {
+      const regRaw = localStorage.getItem('platform-all-users-registry');
+      if (regRaw) {
+        const reg = JSON.parse(regRaw);
+        if (target?.email) {
+          delete reg[target.email.toLowerCase().trim()];
+        }
+        if (target?.phone || target?.cleanPhone) {
+          const cp = cleanPhoneNumber(target.phone || target.cleanPhone);
+          if (cp) {
+            delete reg[cp];
+            delete reg['phone_' + cp];
+          }
+        }
+        localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
+      }
+    } catch (e) {}
+
+    // 2. تطهير من قائمة الإيميلات المصرح بها authorizedEmails في بيانات الشركة
+    try {
+      const rawTenants = localStorage.getItem('platform-tenants-master-v1');
+      if (rawTenants) {
+        const tList = JSON.parse(rawTenants);
+        const idx = tList.findIndex(t => t.id === activeCompId);
+        if (idx !== -1) {
+          const tEmail = (target?.email || '').toLowerCase().trim();
+          tList[idx].authorizedEmails = (tList[idx].authorizedEmails || []).filter(e => (e || '').toLowerCase().trim() !== tEmail);
+          tList[idx].users = nextUsers;
+          localStorage.setItem('platform-tenants-master-v1', JSON.stringify(tList));
+          syncTenantsListToCloud(tList).catch(() => {});
+        }
+      }
+    } catch (e) {}
+
+    // 3. أيضاً مزامنة الحذف من فريق العمل إذا وجد
     if (target) {
       try {
         const roleToGroup = {
@@ -1255,20 +1316,37 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
                       {/* Security Status */}
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
-                            padding: '3px 9px',
-                            borderRadius: 12,
-                            background: '#10B98115',
-                            color: '#059669',
-                            fontSize: 11,
-                            fontWeight: 700,
-                            border: '1px solid #10B98130',
-                          }}>
-                            <Shield size={12} /> موثق سحابياً
-                          </span>
+                          {u.status === 'suspended' ? (
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              padding: '3px 9px',
+                              borderRadius: 12,
+                              background: '#EF444418',
+                              color: '#EF4444',
+                              fontSize: 11,
+                              fontWeight: 800,
+                              border: '1px solid #EF444430',
+                            }}>
+                              🔴 موقوف
+                            </span>
+                          ) : (
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              padding: '3px 9px',
+                              borderRadius: 12,
+                              background: '#10B98115',
+                              color: '#059669',
+                              fontSize: 11,
+                              fontWeight: 700,
+                              border: '1px solid #10B98130',
+                            }}>
+                              <Shield size={12} /> نشط • موثق
+                            </span>
+                          )}
                         </div>
                       </td>
 
@@ -1344,6 +1422,23 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
                             <Pencil size={14} />
                           </button>
 
+                          {/* Toggle Suspend / Activate */}
+                          {!isCurrent && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              style={{
+                                padding: '6px 8px',
+                                fontSize: 12,
+                                color: u.status === 'suspended' ? '#10B981' : '#D97706',
+                              }}
+                              onClick={() => toggleUserStatus(u)}
+                              title={u.status === 'suspended' ? 'تفعيل الحساب' : 'إيقاف/تجميد الحساب'}
+                            >
+                              <Power size={14} />
+                            </button>
+                          )}
+
                           {/* Delete */}
                           {!isCurrent && (
                             <button
@@ -1351,7 +1446,7 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
                               className="btn btn-ghost"
                               style={{ padding: '6px 8px', color: '#EF4444', fontSize: 12 }}
                               onClick={() => setDeleteId(u.id)}
-                              title="حذف الحساب"
+                              title="حذف الحساب نهائياً"
                             >
                               <Trash2 size={14} />
                             </button>

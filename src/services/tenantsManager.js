@@ -655,6 +655,9 @@ export function updateTenant(id, updates) {
     tenants[idx] = { ...tenants[idx], ...updates };
     saveAllTenants(tenants);
     try {
+      syncTenantsListToCloud(tenants).catch(() => {});
+    } catch (e) {}
+    try {
       syncCompanyDataToCloud(id, {
         settings: {
           companyName: tenants[idx].name,
@@ -665,6 +668,7 @@ export function updateTenant(id, updates) {
           phone: tenants[idx].phone,
           primaryColor: tenants[idx].primaryColor,
           accentColor: tenants[idx].accentColor,
+          status: tenants[idx].status || 'active',
         }
       });
     } catch (e) {}
@@ -679,11 +683,30 @@ export function deleteTenant(id) {
   const tenants = loadAllTenants().filter(t => t.id !== id);
   saveAllTenants(tenants);
   try {
+    syncTenantsListToCloud(tenants).catch(() => {});
+  } catch (e) {}
+  try {
     localStorage.removeItem(`tenant_${id}_projects`);
     localStorage.removeItem(`tenant_${id}_settings`);
     localStorage.removeItem(`tenant_${id}_users`);
     localStorage.removeItem(`tenant_${id}_team`);
     localStorage.removeItem(`tenant_${id}_leads`);
+
+    // تطهير كامل لمستخدمي هذه الشركة من السجل المركزي platform-all-users-registry
+    const regRaw = localStorage.getItem('platform-all-users-registry');
+    if (regRaw) {
+      const reg = JSON.parse(regRaw);
+      let changed = false;
+      Object.keys(reg).forEach(k => {
+        if (reg[k]?.companyId === id) {
+          delete reg[k];
+          changed = true;
+        }
+      });
+      if (changed) {
+        localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
+      }
+    }
   } catch (e) {}
   try {
     deleteCompanyFromCloud(id);
@@ -1464,42 +1487,68 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     }
 
     if (cloudUser && cloudUser.companyId) {
-      const matchTenant = tenants.find(t => t.id === cloudUser.companyId) || {
-        id: cloudUser.companyId,
-        name: cloudUser.companyName || 'الشركة',
-        currency: cloudUser.currency || 'ج.م',
-      };
-      const compName = getTenantCurrentName(matchTenant);
-      const compLogo = getTenantCurrentLogo(matchTenant);
-      console.log('[resolveTenantUserByEmail] ✅ Found user in cloud directory:', cleanEmail, 'company:', matchTenant.id);
+      if (cloudUser.isDeleted === true || cloudUser.status === 'deleted') {
+        return {
+          success: false,
+          isDeleted: true,
+          user: null,
+          tenant: null,
+          error: '❌ هذا الحساب غير موجود أو تم حذفه من قِبل إدارة الشركة.'
+        };
+      } else if (cloudUser.status === 'suspended' || cloudUser.status === 'inactive') {
+        return {
+          success: false,
+          isUserSuspended: true,
+          error: '❌ تم إيقاف هذا الحساب من قِبل إدارة الشركة. يرجى مراجعة مسؤول المؤسسة.'
+        };
+      } else {
+        const matchTenant = tenants.find(t => t.id === cloudUser.companyId) || {
+          id: cloudUser.companyId,
+          name: cloudUser.companyName || 'الشركة',
+          currency: cloudUser.currency || 'ج.م',
+        };
 
-      // حفظ محلي فوري لتسريع عمليات الدخول التالية على هذا المتصفح
-      try {
-        const reg = JSON.parse(localStorage.getItem('platform-all-users-registry') || '{}');
-        reg[cleanEmail] = { ...cloudUser, companyId: matchTenant.id };
-        if (phoneFromEmail) {
-          reg['phone_' + phoneFromEmail] = { ...cloudUser, companyId: matchTenant.id };
+        if (matchTenant.status === 'suspended') {
+          return {
+            success: false,
+            isTenantSuspended: true,
+            error: '❌ تم تعليق حساب هذه المؤسسة. يرجى التواصل مع إدارة منصة تشطيب برو لتسوية الاشتراك.',
+            tenant: matchTenant,
+          };
         }
-        localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
-      } catch (e) {}
 
-      return {
-        success: true,
-        user: {
-          ...cloudUser,
-          id: firebaseUid || cloudUser.id,
-          role: cloudUser.role || 'engineer',
-          companyId: matchTenant.id,
-          companyName: compName || matchTenant.name || cloudUser.companyName,
-          currency: matchTenant.currency || cloudUser.currency || 'ج.م',
-        },
-        tenant: {
-          ...matchTenant,
-          name: compName,
-          logo: compLogo,
-        },
-        isSuperAdmin: false,
-      };
+        const compName = getTenantCurrentName(matchTenant);
+        const compLogo = getTenantCurrentLogo(matchTenant);
+        console.log('[resolveTenantUserByEmail] ✅ Found user in cloud directory:', cleanEmail, 'company:', matchTenant.id);
+
+        // حفظ محلي فوري لتسريع عمليات الدخول التالية على هذا المتصفح
+        try {
+          const reg = JSON.parse(localStorage.getItem('platform-all-users-registry') || '{}');
+          reg[cleanEmail] = { ...cloudUser, companyId: matchTenant.id };
+          if (phoneFromEmail) {
+            reg['phone_' + phoneFromEmail] = { ...cloudUser, companyId: matchTenant.id };
+          }
+          localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
+        } catch (e) {}
+
+        return {
+          success: true,
+          user: {
+            ...cloudUser,
+            id: firebaseUid || cloudUser.id,
+            role: cloudUser.role || 'engineer',
+            companyId: matchTenant.id,
+            companyName: compName || matchTenant.name || cloudUser.companyName,
+            currency: matchTenant.currency || cloudUser.currency || 'ج.م',
+          },
+          tenant: {
+            ...matchTenant,
+            name: compName,
+            logo: compLogo,
+          },
+          isSuperAdmin: false,
+        };
+      }
     }
   } catch(e) {
     console.warn('[resolveTenantUserByEmail] Cloud directory check warning:', e);
@@ -1519,31 +1568,51 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
           }
         }
         if (u && u.companyId) {
-          const matchTenant = tenants.find(t => t.id === u.companyId) || {
-            id: u.companyId,
-            name: u.companyName || 'الشركة',
-            currency: u.currency || 'ج.م',
-          };
-          const compName = getTenantCurrentName(matchTenant);
-          const compLogo = getTenantCurrentLogo(matchTenant);
-          console.log('[resolveTenantUserByEmail] Found user in platform-all-users-registry:', cleanEmail, 'role:', u.role, 'company:', matchTenant.id);
-          return {
-            success: true,
-            user: {
-              ...u,
-              id: firebaseUid || u.id,
-              role: u.role || 'engineer',
-              companyId: matchTenant.id,
-              companyName: compName || matchTenant.name || u.companyName,
-              currency: matchTenant.currency || u.currency || 'ج.م',
-            },
-            tenant: {
-              ...matchTenant,
-              name: compName,
-              logo: compLogo,
-            },
-            isSuperAdmin: false,
-          };
+          if (u.isDeleted === true) {
+            // حساب محذوف
+          } else if (u.status === 'suspended' || u.status === 'inactive') {
+            return {
+              success: false,
+              isUserSuspended: true,
+              error: '❌ تم إيقاف هذا الحساب من قِبل إدارة الشركة. يرجى مراجعة مسؤول المؤسسة.'
+            };
+          } else {
+            const matchTenant = tenants.find(t => t.id === u.companyId) || {
+              id: u.companyId,
+              name: u.companyName || 'الشركة',
+              currency: u.currency || 'ج.م',
+            };
+
+            if (matchTenant.status === 'suspended') {
+              return {
+                success: false,
+                isTenantSuspended: true,
+                error: '❌ تم تعليق حساب هذه المؤسسة. يرجى التواصل مع إدارة منصة تشطيب برو لتسوية الاشتراك.',
+                tenant: matchTenant,
+              };
+            }
+
+            const compName = getTenantCurrentName(matchTenant);
+            const compLogo = getTenantCurrentLogo(matchTenant);
+            console.log('[resolveTenantUserByEmail] Found user in platform-all-users-registry:', cleanEmail, 'role:', u.role, 'company:', matchTenant.id);
+            return {
+              success: true,
+              user: {
+                ...u,
+                id: firebaseUid || u.id,
+                role: u.role || 'engineer',
+                companyId: matchTenant.id,
+                companyName: compName || matchTenant.name || u.companyName,
+                currency: matchTenant.currency || u.currency || 'ج.م',
+              },
+              tenant: {
+                ...matchTenant,
+                name: compName,
+                logo: compLogo,
+              },
+              isSuperAdmin: false,
+            };
+          }
         }
       }
     }
@@ -1553,6 +1622,14 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
   for (const t of tenants) {
     // أ) هل هو مالك الشركة (Owner / Admin) — فحص ذاكرة فوري فائق السرعة
     if (isTenantAdminMatch(t)) {
+      if (t.status === 'suspended') {
+        return {
+          success: false,
+          isTenantSuspended: true,
+          error: '❌ تم تعليق حساب هذه المؤسسة. يرجى التواصل مع إدارة منصة تشطيب برو لتسوية الاشتراك.',
+          tenant: t
+        };
+      }
       const compName = getTenantCurrentName(t);
       const compLogo = getTenantCurrentLogo(t);
       return {
@@ -1608,6 +1685,25 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     }
 
     if (match) {
+      if (match.isDeleted === true) {
+        continue;
+      }
+      if (match.status === 'suspended' || match.status === 'inactive') {
+        return {
+          success: false,
+          isUserSuspended: true,
+          error: '❌ تم إيقاف هذا الحساب من قِبل إدارة الشركة. يرجى مراجعة مسؤول المؤسسة.'
+        };
+      }
+      if (t.status === 'suspended') {
+        return {
+          success: false,
+          isTenantSuspended: true,
+          error: '❌ تم تعليق حساب هذه المؤسسة. يرجى التواصل مع إدارة منصة تشطيب برو لتسوية الاشتراك.',
+          tenant: t
+        };
+      }
+
       console.log('[resolveTenantUserByEmail] ✅ Found employee in company users:', cleanEmail, 'company:', t.id, 'role:', match.role);
 
       try {
@@ -1846,6 +1942,8 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
   console.warn('[resolveTenantUserByEmail] No matching company found for user:', cleanEmail);
   return {
     success: false,
+    user: null,
+    tenant: null,
     error: 'لم يتم ربط هذا الحساب بأي شركة مسجلة في المنصة. يرجى التواصل مع مدير الشركة أو المنصة لإضافة حسابك.',
   };
 }

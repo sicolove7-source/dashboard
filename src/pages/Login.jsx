@@ -261,6 +261,38 @@ export default function Login({
           const userTenant = tenantResult.tenant;
           const roleIsSuperAdmin = tenantResult.isSuperAdmin || tenantResult.user?.role === 'super_admin';
 
+          // 🔒 فحص تعليق المؤسسة
+          if (!roleIsSuperAdmin && userTenant?.status === 'suspended') {
+            setError(
+              <div style={{ textAlign: 'right', lineHeight: 1.6, padding: '12px 14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 10 }}>
+                <div style={{ fontWeight: 800, color: '#EF4444', fontSize: 14, marginBottom: 4 }}>
+                  🚫 حساب المؤسسة معلق
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--ink)' }}>
+                  تم تعليق أو إيقاف حساب شركة <strong>{userTenant.name || 'المؤسسة'}</strong> من قِبل إدارة منصة تشطيب برو. يُرجى مراجعة إدارة المنصة لإعادة التفعيل.
+                </div>
+              </div>
+            );
+            setLoading(false);
+            return;
+          }
+
+          // 🔒 فحص تعليق حساب الموظف
+          if (!roleIsSuperAdmin && (tenantResult.user?.status === 'suspended' || tenantResult.user?.status === 'inactive')) {
+            setError(
+              <div style={{ textAlign: 'right', lineHeight: 1.6, padding: '12px 14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 10 }}>
+                <div style={{ fontWeight: 800, color: '#EF4444', fontSize: 14, marginBottom: 4 }}>
+                  🚫 الحساب موقوف
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--ink)' }}>
+                  تم إيقاف أو تجميد هذا الحساب من قِبل إدارة الشركة. يُرجى مراجعة مدير المؤسسة.
+                </div>
+              </div>
+            );
+            setLoading(false);
+            return;
+          }
+
           if (currentSub && !roleIsSuperAdmin && userTenant) {
             const userSub = (userTenant.subdomain || userTenant.slug || '').toLowerCase().trim();
             const userId = (userTenant.id || '').toLowerCase().trim();
@@ -287,8 +319,30 @@ export default function Login({
 
           onLogin(tenantResult.user, tenantResult.tenant, tenantResult.isSuperAdmin);
         } else {
-          // فحص إضافي: هل المستخدم على السب-دومين الخاص بشركته وفشل البحث السحابي؟
-          if (isCompanySubdomain()) {
+          // فحص تعليق الشركة أو الموظف في نتيجة المصادقة
+          if (tenantResult?.isTenantSuspended) {
+            setError(
+              <div style={{ textAlign: 'right', lineHeight: 1.6, padding: '12px 14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 10 }}>
+                <div style={{ fontWeight: 800, color: '#EF4444', fontSize: 14, marginBottom: 4 }}>
+                  🚫 حساب المؤسسة معلق
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--ink)' }}>
+                  {tenantResult.error || 'تم تعليق حساب هذه المؤسسة. يُرجى التواصل مع إدارة منصة تشطيب برو.'}
+                </div>
+              </div>
+            );
+          } else if (tenantResult?.isUserSuspended) {
+            setError(
+              <div style={{ textAlign: 'right', lineHeight: 1.6, padding: '12px 14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 10 }}>
+                <div style={{ fontWeight: 800, color: '#EF4444', fontSize: 14, marginBottom: 4 }}>
+                  🚫 الحساب موقوف
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--ink)' }}>
+                  {tenantResult.error || 'تم إيقاف هذا الحساب من قِبل إدارة الشركة. يرجى مراجعة مسؤول المؤسسة.'}
+                </div>
+              </div>
+            );
+          } else if (isCompanySubdomain()) {
             setError(
               <span>
                 تعذر التحقق من بيانات الشركة. إذا سجّلت للتو، يرجى الانتظار 30 ثانية وإعادة المحاولة.
@@ -304,7 +358,7 @@ export default function Login({
               </span>
             );
           } else {
-            setError(tenantResult?.error || "تعذر تحديد بيانات الشركة المرتبطة بهذا الحساب.");
+            setError(tenantResult?.error || "تعذر تحديد بيانات الشركة المرتبطة بهذا الحساب أو تم حذفه.");
           }
         }
       } else {
