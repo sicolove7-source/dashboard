@@ -1018,7 +1018,20 @@ export default function App() {
           });
         }
         if (cloudData.team) {
-          setTeam(prev => mergeTeamsPreservingLocal(prev || localData.team, cloudData.team, cloudData.users || localData.users));
+          setTeam(prev => {
+            const merged = mergeTeamsPreservingLocal(prev || localData.team, cloudData.team, cloudData.users || localData.users);
+            try {
+              localStorage.setItem(`tenant_${companyId}_team`, JSON.stringify(merged));
+            } catch (e) {}
+            return merged;
+          });
+        }
+        if (Array.isArray(cloudData.users) && cloudData.users.length > 0) {
+          try {
+            const localU = getTenantData(companyId).users || [];
+            const mergedU = mergeUsersPreservingLocal(localU, cloudData.users);
+            localStorage.setItem(`tenant_${companyId}_users`, JSON.stringify(mergedU));
+          } catch (e) {}
         }
         if (Array.isArray(cloudData.leads)) setLeads(cloudData.leads);
 

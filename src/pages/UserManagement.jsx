@@ -9,7 +9,7 @@ import {
   CUSTOMIZABLE_NAV_TABS, CUSTOMIZABLE_ACTIONS
 } from '../utils/permissions';
 import { getActiveTenantId, loadAllTenants } from '../services/tenantsManager';
-import { syncCompanyUsersToCloud, syncTenantUsersToCloud, syncTenantsListToCloud, syncTeamToCloud, sanitizeCompanyUsersForCloud, cleanPhoneNumber } from '../services/cloudSync';
+import { syncCompanyUsersToCloud, syncTenantUsersToCloud, syncTenantsListToCloud, syncTeamToCloud, sanitizeCompanyUsersForCloud, cleanPhoneNumber, mergeUsersPreservingLocal } from '../services/cloudSync';
 import { sendPasswordReset, callCreateCompanyUser, syncAndResetPhonePassword } from '../services/auth';
 
 // أدوار الشركة المشتركة فقط (استبعاد Super Admin الخاص بالمنصة)
@@ -25,34 +25,147 @@ export function getCompanyUsersKey(companyId) {
   return cId ? `tenant_${cId}_users` : null;
 }
 
-export function loadUsers(companyId) {
+export function mergeUsersWithTeam(companyUsers, teamObj, companyId) {
+  const users = Array.isArray(companyUsers) ? [...companyUsers] : [];
+  if (!teamObj || typeof teamObj !== 'object') return users;
+
+  const cId = companyId || getActiveTenantId() || '';
+  const cleanComp = cId.replace(/^comp_/, '');
+
+  // 1. المهندسين
+  (teamObj.engineers || []).forEach(eng => {
+    const rawName = typeof eng === 'string' ? eng : eng?.name;
+    const name = String(rawName || '').trim();
+    if (!name || name === 'مهندس الموقع') return;
+
+    const exists = users.some(u => {
+      const uName = (u.name || '').trim();
+      const uEng = (u.engineerName || '').trim();
+      return uName === name || uEng === name;
+    });
+
+    if (!exists) {
+      users.push({
+        id: `u_${cId}_eng_${name.replace(/\s+/g, '_')}`,
+        name: name,
+        engineerName: name,
+        role: 'engineer',
+        email: `${name.replace(/\s+/g, '_').toLowerCase()}@${cleanComp || 'tashteeb'}.app`,
+        companyId: cId,
+        status: 'active',
+        isTeamMember: true,
+        createdAt: new Date().toISOString()
+      });
+    }
+  });
+
+  // 2. المحاسبين
+  (teamObj.accountants || []).forEach(acc => {
+    const rawName = typeof acc === 'string' ? acc : acc?.name;
+    const name = String(rawName || '').trim();
+    if (!name || name === 'أ. المحاسب المالي' || name === 'أ. سامح فتحي') return;
+
+    const exists = users.some(u => (u.name || '').trim() === name);
+    if (!exists) {
+      users.push({
+        id: `u_${cId}_acc_${name.replace(/\s+/g, '_')}`,
+        name: name,
+        role: 'accountant',
+        email: `${name.replace(/\s+/g, '_').toLowerCase()}@${cleanComp || 'tashteeb'}.app`,
+        companyId: cId,
+        status: 'active',
+        isTeamMember: true,
+        createdAt: new Date().toISOString()
+      });
+    }
+  });
+
+  // 3. المكتب الفني
+  (teamObj.techOffice || []).forEach(tech => {
+    const rawName = typeof tech === 'string' ? tech : tech?.name;
+    const name = String(rawName || '').trim();
+    if (!name || name === 'م. المكتب الفني' || name === 'م. علياء رمضان') return;
+
+    const exists = users.some(u => (u.name || '').trim() === name);
+    if (!exists) {
+      users.push({
+        id: `u_${cId}_tech_${name.replace(/\s+/g, '_')}`,
+        name: name,
+        role: 'tech_office',
+        email: `${name.replace(/\s+/g, '_').toLowerCase()}@${cleanComp || 'tashteeb'}.app`,
+        companyId: cId,
+        status: 'active',
+        isTeamMember: true,
+        createdAt: new Date().toISOString()
+      });
+    }
+  });
+
+  // 4. خدمة العملاء
+  (teamObj.customerService || []).forEach(cs => {
+    const rawName = typeof cs === 'string' ? cs : cs?.name;
+    const name = String(rawName || '').trim();
+    if (!name || name === 'أ. نورا حسن') return;
+
+    const exists = users.some(u => (u.name || '').trim() === name);
+    if (!exists) {
+      users.push({
+        id: `u_${cId}_cs_${name.replace(/\s+/g, '_')}`,
+        name: name,
+        role: 'customer_service',
+        email: `${name.replace(/\s+/g, '_').toLowerCase()}@${cleanComp || 'tashteeb'}.app`,
+        companyId: cId,
+        status: 'active',
+        isTeamMember: true,
+        createdAt: new Date().toISOString()
+      });
+    }
+  });
+
+  return users;
+}
+
+export function loadUsers(companyId, teamObj = null) {
   const cId = companyId || getActiveTenantId() || null;
   if (!cId) return [];
   const key = getCompanyUsersKey(cId);
+  let users = null;
   try {
     const raw = localStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return sanitizeCompanyUsersForCloud(parsed);
+      if (Array.isArray(parsed) && parsed.length > 0) users = sanitizeCompanyUsersForCloud(parsed);
     }
   } catch (e) {}
   
   // إذا لم توجد مستخدمين للشركة في التخزين المحلي، نحاول جلبهم من بيانات الشركة المعرّفة
-  const allTenants = loadAllTenants();
-  const tenant = allTenants.find(t => t.id === cId);
-  if (tenant && Array.isArray(tenant.users) && tenant.users.length > 0) {
-    if (key) try { localStorage.setItem(key, JSON.stringify(tenant.users)); } catch (e) {}
-    return sanitizeCompanyUsersForCloud(tenant.users);
+  if (!users) {
+    const allTenants = loadAllTenants();
+    const tenant = allTenants.find(t => t.id === cId);
+    if (tenant && Array.isArray(tenant.users) && tenant.users.length > 0) {
+      users = sanitizeCompanyUsersForCloud(tenant.users);
+    } else {
+      const cleanComp = cId.replace(/^comp_/, '');
+      users = [
+        { id: `u_${cId}_admin`, email: tenant?.adminEmail || `admin@${cleanComp}.com`, role: 'owner', name: tenant?.adminName || 'مدير الشركة', engineerName: null, companyId: cId },
+      ];
+    }
   }
 
-  const cleanComp = cId.replace(/^comp_/, '');
-  const defaults = [
-    { id: `u_${cId}_admin`, email: tenant?.adminEmail || `admin@${cleanComp}.com`, role: 'owner', name: tenant?.adminName || 'مدير الشركة', engineerName: null, companyId: cId },
-    { id: `u_${cId}_eng1`, email: `eng@${cleanComp}.com`, role: 'engineer', name: 'مهندس الموقع', engineerName: 'مهندس الموقع', companyId: cId },
-    { id: `u_${cId}_supply`, email: `supply@${cleanComp}.com`, role: 'procurement', name: 'مسؤول التوريدات', engineerName: null, companyId: cId },
-  ];
-  if (key) try { localStorage.setItem(key, JSON.stringify(defaults)); } catch (e) {}
-  return defaults;
+  // محاولة قراءة الفريق إما من الوسيط teamObj أو من localStorage
+  let tData = teamObj;
+  if (!tData && cId) {
+    try {
+      const tRaw = localStorage.getItem(`tenant_${cId}_team`);
+      if (tRaw) tData = JSON.parse(tRaw);
+    } catch (e) {}
+  }
+  if (tData) {
+    users = mergeUsersWithTeam(users, tData, cId);
+  }
+
+  if (key && users.length > 0) try { localStorage.setItem(key, JSON.stringify(users)); } catch (e) {}
+  return users;
 }
 
 export function saveUsers(users, companyId) {
@@ -769,7 +882,7 @@ function UserModal({ user, onSave, onClose, existingEmails }) {
 ──────────────────────────────────────────────────────────── */
 export default function UserManagement({ currentUser, companyId, team, onTeamChange }) {
   const activeCompId = companyId || currentUser?.companyId || getActiveTenantId() || null;
-  const [users, setUsers] = useState(() => loadUsers(activeCompId));
+  const [users, setUsers] = useState(() => loadUsers(activeCompId, team));
   const [modal, setModal] = useState(null); // null | 'add' | user object for edit
   const [deleteId, setDeleteId] = useState(null);
   const [saved, setSaved] = useState(false);
@@ -850,10 +963,48 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
     }
   }
 
-  // تحديث المستخدمين عند تغيير الشركة
+  // تحديث المستخدمين عند تغيير الشركة مع جلب سحابي فوري ومزامنة مع الفريق
   useEffect(() => {
-    setUsers(loadUsers(activeCompId));
-  }, [activeCompId]);
+    let isMounted = true;
+    const initial = loadUsers(activeCompId, team);
+    setUsers(initial);
+
+    if (!activeCompId) return;
+
+    (async () => {
+      try {
+        const { fetchCompanyDataFromCloud } = await import('../services/cloudSync');
+        const cloudData = await fetchCompanyDataFromCloud(activeCompId);
+        if (!isMounted || !cloudData) return;
+
+        const cloudUsers = Array.isArray(cloudData.users) ? cloudData.users : [];
+        const cloudTeam = cloudData.team || {};
+
+        let merged = mergeUsersPreservingLocal(initial, cloudUsers);
+        merged = mergeUsersWithTeam(merged, team || cloudTeam, activeCompId);
+        merged = mergeUsersWithTeam(merged, cloudTeam, activeCompId);
+
+        if (isMounted) {
+          setUsers(merged);
+          saveUsers(merged, activeCompId);
+
+          // مزامنة فورية في السجل المركزي
+          try {
+            const regRaw = localStorage.getItem('platform-all-users-registry');
+            const reg = regRaw ? JSON.parse(regRaw) : {};
+            merged.forEach(u => {
+              if (u.email) reg[u.email.toLowerCase().trim()] = { ...u, companyId: activeCompId };
+            });
+            localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
+          } catch (e) {}
+        }
+      } catch (err) {
+        console.warn('[UserManagement] Cloud sync notice:', err?.message);
+      }
+    })();
+
+    return () => { isMounted = false; };
+  }, [activeCompId, team]);
 
   function persist(next) {
     const cleanNext = (next || []).map(u => {

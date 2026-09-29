@@ -1461,7 +1461,7 @@ export async function fetchTenantsListFromCloud() {
     const docRef = doc(db, TENANTS_META_DOC, TENANTS_META_KEY);
     const snap = await Promise.race([
       getDoc(docRef),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 1500))
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 6000))
     ]);
     if (snap && snap.exists()) {
       const list = snap.data()?.tenants;

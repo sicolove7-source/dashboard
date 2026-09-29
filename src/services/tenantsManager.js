@@ -232,11 +232,56 @@ export async function loadAllTenantsAsync() {
   const local = loadAllTenants();
   try {
     const cloudTenants = await fetchTenantsListFromCloud();
+    const mergedMap = new Map();
     if (Array.isArray(cloudTenants) && cloudTenants.length > 0) {
-      const mergedMap = new Map();
       cloudTenants.forEach(t => {
         if (t?.id) mergedMap.set(t.id, t);
       });
+    }
+
+    // استكشاف دليل النطاقات والشركات المسجلة حديثاً من السحابة لضمان ظهور أي شركة سُجلت من الموبايل
+    try {
+      const { db } = await import('../firebase');
+      const { collection, getDocs } = await import('firebase/firestore');
+      const dirSnap = await Promise.race([
+        getDocs(collection(db, 'tenant_directory')),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3000))
+      ]);
+      if (dirSnap && !dirSnap.empty) {
+        dirSnap.forEach(d => {
+          const td = d.data();
+          const cId = td.companyId || `comp_${d.id}`;
+          if (!mergedMap.has(cId)) {
+            mergedMap.set(cId, {
+              id: cId,
+              name: td.name || d.id,
+              subdomain: td.subdomain || d.id,
+              slug: td.subdomain || d.id,
+              logo: td.logo || null,
+              adminEmail: td.adminEmail || '',
+              adminName: td.adminName || 'المدير العام',
+              phone: td.phone || '',
+              currency: td.currency || 'ج.م',
+              status: 'active',
+              plan: 'trial',
+              users: [{
+                id: `u_${cId}_admin`,
+                email: td.adminEmail || '',
+                name: td.adminName || 'المدير العام',
+                role: 'owner',
+                companyId: cId
+              }],
+              authorizedEmails: td.adminEmail ? [td.adminEmail] : [],
+              createdAt: td.createdAt || new Date().toISOString()
+            });
+          }
+        });
+      }
+    } catch (dirErr) {
+      // non-blocking
+    }
+
+    if (mergedMap.size > 0) {
       local.forEach(t => {
         if (t?.id) {
           if (!mergedMap.has(t.id)) {
@@ -276,7 +321,6 @@ export async function loadAllTenantsAsync() {
   } catch (e) {
     console.warn("Could not load tenants from cloud, falling back to local:", e);
   }
-  try { syncTenantsListToCloud(local); } catch (e) {}
   return local;
 }
 
@@ -871,13 +915,17 @@ export function getTenantData(companyId) {
     if (raw) team = JSON.parse(raw);
   } catch (e) {}
   if (!team) {
-    const engineerNames = (users && users.filter(u => u.role === 'engineer').map(u => u.name).filter(Boolean)) || [];
-    team = {
-      engineers: engineerNames.length > 0 ? engineerNames : (tenant?.adminName ? [tenant.adminName] : ['مهندس الموقع']),
-      accountants: ['أ. سامح فتحي'],
-      techOffice: ['م. علياء رمضان'],
-      customerService: ['أ. نورا حسن']
-    };
+    if (tenant?.team && (tenant.team.engineers?.length > 0 || tenant.team.accountants?.length > 0 || tenant.team.techOffice?.length > 0)) {
+      team = tenant.team;
+    } else {
+      const engineerNames = (users && users.filter(u => u.role === 'engineer').map(u => u.name).filter(Boolean)) || [];
+      team = {
+        engineers: engineerNames.length > 0 ? engineerNames : (tenant?.adminName ? [tenant.adminName] : ['مهندس الموقع']),
+        accountants: ['أ. سامح فتحي'],
+        techOffice: ['م. علياء رمضان'],
+        customerService: ['أ. نورا حسن']
+      };
+    }
     try { localStorage.setItem(`tenant_${companyId}_team`, JSON.stringify(team)); } catch (e) {}
   }
   // مزامنة ودمج حسابات المستخدمين مع فريق العمل تلقائياً
@@ -1092,17 +1140,8 @@ export async function getTenantDataAsync(companyId) {
     console.warn("getTenantDataAsync error, using local:", e);
   }
 
-  // في حال تعذر السحابة، نعتمد على الكاش المحلي
-  const localData = getTenantData(companyId);
-  try {
-    syncCompanyDataToCloud(companyId, {
-      settings: localData.settings,
-      users: localData.users,
-      team: localData.team,
-      leads: localData.leads,
-    });
-  } catch (e) {}
-  return localData;
+  // في حال تعذر السحابة، نعتمد على الكاش المحلي فقط دون الكتابة فوق السحابة ببيانات قديمة
+  return getTenantData(companyId);
 }
 
 /**
