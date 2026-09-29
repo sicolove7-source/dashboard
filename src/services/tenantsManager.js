@@ -839,6 +839,31 @@ export function getTenantData(companyId) {
     }
   }
 
+  // الحفاظ على مستخدم الجلسة النشط دائماً داخل قائمة المستخدمين لتفادي مسحه أو فقده بالكاش
+  try {
+    const sessUserRaw = localStorage.getItem('active_session_user');
+    if (sessUserRaw) {
+      const sessUser = JSON.parse(sessUserRaw);
+      const sessComp = sessUser?.companyId || '';
+      const cleanComp = (companyId || '').replace(/^comp_/, '');
+      if (sessUser && (sessComp === companyId || sessComp.replace(/^comp_/, '') === cleanComp)) {
+        if (!Array.isArray(users)) users = [];
+        const cleanP = (sessUser.cleanPhone || sessUser.phone || sessUser.email || '').replace(/\D/g, '');
+        const exists = users.some(u => {
+          if (!u) return false;
+          if (u.email && sessUser.email && u.email.toLowerCase().trim() === sessUser.email.toLowerCase().trim()) return true;
+          const uP = (u.cleanPhone || u.phone || '').replace(/\D/g, '');
+          if (uP && cleanP && (uP === cleanP || uP.endsWith(cleanP) || cleanP.endsWith(uP))) return true;
+          return false;
+        });
+        if (!exists) {
+          users.push(sessUser);
+          try { localStorage.setItem(`tenant_${companyId}_users`, JSON.stringify(users)); } catch (e) {}
+        }
+      }
+    }
+  } catch (e) {}
+
   // 3. الفريق
   let team = null;
   try {
@@ -1529,6 +1554,18 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
             reg['phone_' + phoneFromEmail] = { ...cloudUser, companyId: matchTenant.id };
           }
           localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
+
+          const cKey = `tenant_${matchTenant.id}_users`;
+          const raw = localStorage.getItem(cKey);
+          let uList = raw ? JSON.parse(raw) : [];
+          if (!Array.isArray(uList)) uList = [];
+          const idx = uList.findIndex(isUserMatch);
+          if (idx !== -1) {
+            uList[idx] = { ...uList[idx], ...cloudUser };
+          } else {
+            uList.push(cloudUser);
+          }
+          localStorage.setItem(cKey, JSON.stringify(uList));
         } catch (e) {}
 
         return {

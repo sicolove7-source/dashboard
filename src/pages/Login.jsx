@@ -317,6 +317,36 @@ export default function Login({
             }
           }
 
+          try {
+            const compId = tenantResult.tenant?.id || tenantResult.user?.companyId;
+            if (compId && !roleIsSuperAdmin) {
+              const cKey = `tenant_${compId}_users`;
+              const raw = localStorage.getItem(cKey);
+              let uList = raw ? JSON.parse(raw) : [];
+              if (!Array.isArray(uList)) uList = [];
+              const cleanP = (tenantResult.user.cleanPhone || tenantResult.user.phone || tenantResult.user.email || '').replace(/\D/g, '');
+              const exists = uList.some(u => {
+                if (!u) return false;
+                if (u.email && tenantResult.user.email && u.email.toLowerCase().trim() === tenantResult.user.email.toLowerCase().trim()) return true;
+                const uP = (u.cleanPhone || u.phone || '').replace(/\D/g, '');
+                if (uP && cleanP && (uP === cleanP || uP.endsWith(cleanP) || cleanP.endsWith(uP))) return true;
+                return false;
+              });
+              if (!exists) {
+                uList.push(tenantResult.user);
+                localStorage.setItem(cKey, JSON.stringify(uList));
+              }
+              const regRaw = localStorage.getItem('platform-all-users-registry');
+              const reg = regRaw ? JSON.parse(regRaw) : {};
+              if (tenantResult.user.email) reg[tenantResult.user.email.toLowerCase().trim()] = { ...tenantResult.user, companyId: compId };
+              if (cleanP) {
+                reg[cleanP] = { ...tenantResult.user, companyId: compId };
+                reg['phone_' + cleanP] = { ...tenantResult.user, companyId: compId };
+              }
+              localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
+            }
+          } catch (e) {}
+
           onLogin(tenantResult.user, tenantResult.tenant, tenantResult.isSuperAdmin);
         } else {
           // فحص تعليق الشركة أو الموظف في نتيجة المصادقة

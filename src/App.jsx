@@ -774,19 +774,24 @@ export default function App() {
     const verifyUserSessionLiveness = () => {
       try {
         const email = (currentUser.email || '').trim().toLowerCase();
-        // 1. فحص السجل المركزي للمنصة
+        const currentPhone = (currentUser.cleanPhone || currentUser.phone || email.replace(/\D/g, '') || '').replace(/\D/g, '');
+
+        // 1. فحص السجل المركزي للمنصة platform-all-users-registry
         const regRaw = localStorage.getItem('platform-all-users-registry');
         if (regRaw) {
           const registry = JSON.parse(regRaw);
-          const regUser = registry[email];
+          let regUser = registry[email];
+          if (!regUser && currentPhone) {
+            regUser = registry[currentPhone] || registry['phone_' + currentPhone];
+          }
           if (regUser) {
             if (regUser.isDeleted) {
-              console.warn('[Security] User marked as deleted, terminating session immediately');
+              console.warn('[Security] User marked as deleted in platform registry, terminating session');
               handleLogout();
               return;
             }
             if (regUser.status === 'suspended' || regUser.status === 'inactive') {
-              console.warn('[Security] User status suspended, terminating session immediately');
+              console.warn('[Security] User status suspended in platform registry, terminating session');
               handleLogout();
               return;
             }
@@ -799,16 +804,34 @@ export default function App() {
           const compUsersRaw = localStorage.getItem(`tenant_${activeCompanyId}_users`);
           if (compUsersRaw) {
             const compUsers = JSON.parse(compUsersRaw);
-            const userInComp = compUsers.find(u => (u.email || '').trim().toLowerCase() === email);
-            if (!userInComp) {
-              console.warn('[Security] Employee was removed/deleted from company, terminating session');
-              handleLogout();
-              return;
-            }
-            if (userInComp.status === 'suspended' || userInComp.status === 'inactive') {
-              console.warn('[Security] Employee was suspended by company admin, terminating session');
-              handleLogout();
-              return;
+            const userInComp = Array.isArray(compUsers) ? compUsers.find(u => {
+              if (!u) return false;
+              const uEmail = (u.email || '').trim().toLowerCase();
+              if (uEmail && uEmail === email) return true;
+              const uPhone = (u.cleanPhone || u.phone || '').replace(/\D/g, '');
+              if (uPhone && currentPhone && (uPhone === currentPhone || uPhone.endsWith(currentPhone) || currentPhone.endsWith(uPhone))) return true;
+              if (email.startsWith('phone_') && uPhone && email.includes(uPhone)) return true;
+              return false;
+            }) : null;
+
+            if (userInComp) {
+              if (userInComp.isDeleted === true) {
+                console.warn('[Security] Employee was removed/deleted from company, terminating session');
+                handleLogout();
+                return;
+              }
+              if (userInComp.status === 'suspended' || userInComp.status === 'inactive') {
+                console.warn('[Security] Employee was suspended by company admin, terminating session');
+                handleLogout();
+                return;
+              }
+            } else {
+              // المستخدم موثق وجلسته صالحة ولكنه غير موجود بالكاش المحلي الحالي (مثلاً جهاز جديد أو كاش قديم)
+              // نضيفه تلقائياً للكاش المحلي لمنع التعارض وطرده الخاطئ
+              try {
+                const updatedList = Array.isArray(compUsers) ? [...compUsers, currentUser] : [currentUser];
+                localStorage.setItem(`tenant_${activeCompanyId}_users`, JSON.stringify(updatedList));
+              } catch (e) {}
             }
           }
         }
@@ -1620,6 +1643,32 @@ export default function App() {
           setIsAuthenticated(true);
           try {
             localStorage.setItem('active_session_user', JSON.stringify(finalUser));
+            if (companyId && !isSuperAdmin) {
+              const cKey = `tenant_${companyId}_users`;
+              const raw = localStorage.getItem(cKey);
+              let uList = raw ? JSON.parse(raw) : [];
+              if (!Array.isArray(uList)) uList = [];
+              const cleanP = (finalUser.cleanPhone || finalUser.phone || finalUser.email || '').replace(/\D/g, '');
+              const exists = uList.some(u => {
+                if (!u) return false;
+                if (u.email && finalUser.email && u.email.toLowerCase().trim() === finalUser.email.toLowerCase().trim()) return true;
+                const uP = (u.cleanPhone || u.phone || '').replace(/\D/g, '');
+                if (uP && cleanP && (uP === cleanP || uP.endsWith(cleanP) || cleanP.endsWith(uP))) return true;
+                return false;
+              });
+              if (!exists) {
+                uList.push(finalUser);
+                localStorage.setItem(cKey, JSON.stringify(uList));
+              }
+              const regRaw = localStorage.getItem('platform-all-users-registry');
+              const reg = regRaw ? JSON.parse(regRaw) : {};
+              if (finalUser.email) reg[finalUser.email.toLowerCase().trim()] = { ...finalUser, companyId };
+              if (cleanP) {
+                reg[cleanP] = { ...finalUser, companyId };
+                reg['phone_' + cleanP] = { ...finalUser, companyId };
+              }
+              localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
+            }
           } catch (e) {}
           if (companyId) {
             setActiveTenantId(companyId);
@@ -1737,6 +1786,24 @@ export default function App() {
           localStorage.setItem('active_session_user', JSON.stringify(userData));
           setCrossSubdomainCookie('tashteeb_session_user', userData);
           setActiveTenantId(compId);
+          if (compId && !roleIsSuperAdmin) {
+            const cKey = `tenant_${compId}_users`;
+            const raw = localStorage.getItem(cKey);
+            let uList = raw ? JSON.parse(raw) : [];
+            if (!Array.isArray(uList)) uList = [];
+            const cleanP = (userData.cleanPhone || userData.phone || userData.email || '').replace(/\D/g, '');
+            const exists = uList.some(u => {
+              if (!u) return false;
+              if (u.email && userData.email && u.email.toLowerCase().trim() === userData.email.toLowerCase().trim()) return true;
+              const uP = (u.cleanPhone || u.phone || '').replace(/\D/g, '');
+              if (uP && cleanP && (uP === cleanP || uP.endsWith(cleanP) || cleanP.endsWith(uP))) return true;
+              return false;
+            });
+            if (!exists) {
+              uList.push(userData);
+              localStorage.setItem(cKey, JSON.stringify(uList));
+            }
+          }
         } catch (e) {}
         const subUrl = getSubdomainUrl(tenantSub);
         console.log(`[handleLogin] Redirecting to company subdomain: ${subUrl}`);
@@ -1752,6 +1819,24 @@ export default function App() {
     try {
       localStorage.setItem('active_session_user', JSON.stringify(finalUserData));
       setCrossSubdomainCookie('tashteeb_session_user', finalUserData);
+      if (compId && !roleIsSuperAdmin) {
+        const cKey = `tenant_${compId}_users`;
+        const raw = localStorage.getItem(cKey);
+        let uList = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(uList)) uList = [];
+        const cleanP = (finalUserData.cleanPhone || finalUserData.phone || finalUserData.email || '').replace(/\D/g, '');
+        const exists = uList.some(u => {
+          if (!u) return false;
+          if (u.email && finalUserData.email && u.email.toLowerCase().trim() === finalUserData.email.toLowerCase().trim()) return true;
+          const uP = (u.cleanPhone || u.phone || '').replace(/\D/g, '');
+          if (uP && cleanP && (uP === cleanP || uP.endsWith(cleanP) || cleanP.endsWith(uP))) return true;
+          return false;
+        });
+        if (!exists) {
+          uList.push(finalUserData);
+          localStorage.setItem(cKey, JSON.stringify(uList));
+        }
+      }
     } catch (e) {}
     setTab(defaultTab);
     setView('list');
