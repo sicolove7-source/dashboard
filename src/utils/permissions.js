@@ -12,6 +12,8 @@
  *   customer_service → خدمة العملاء         (عرض المشاريع فقط)
  */
 
+import { isCompanySubdomain } from '../services/subdomainResolver';
+
 // ─── بيانات كل دور ───────────────────────────────────
 export const ROLES = {
   super_admin: {
@@ -237,7 +239,11 @@ export function canSeeNav(roleOrUser, navKey) {
 
   // 1. حماية حاسمة: تبويب إدارة الشركات (Hub) مخصص حصرياً لمالك المنصة الرئيسي (super_admin)
   // لا يمكن لأي حساب فرعي أو صاحب شركة أو أي دور آخر رؤيته نهائياً
+  // كما يُحجب تماماً داخل النطاقات الفرعية للشركات لتركيز مساحة العمل على الشركة الحالية فقط
   if (navKey === 'tenants') {
+    if (typeof window !== 'undefined' && isCompanySubdomain()) {
+      return false;
+    }
     return role === 'super_admin';
   }
 

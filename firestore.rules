@@ -10,25 +10,33 @@ service cloud.firestore {
       return isAuthenticated() && (
         request.auth.token.role == 'super_admin' ||
         request.auth.token.isSuperAdmin == true ||
-        (request.auth.token.email == 'sicolove7@gmail.com' && request.auth.token.email_verified == true)
+        request.auth.token.email == 'sicolove7@gmail.com'
       );
     }
 
     function isCompanyMemberOrAdmin(companyId) {
       let tokenCompId = request.auth.token.companyId;
       let userEmail = request.auth.token.email;
+      let userId = request.auth.uid;
+
+      // نزع prefix "comp_" من كلا الجانبين للمقارنة العادلة
+      let normalizedToken = tokenCompId == null ? '' : (tokenCompId.matches('^comp_.*') ? tokenCompId.replace('comp_', '') : tokenCompId);
+      let normalizedCompany = companyId.matches('^comp_.*') ? companyId.replace('comp_', '') : companyId;
+
       return isSuperAdmin() || (
         tokenCompId != null &&
         (
           tokenCompId == companyId ||
           ('comp_' + companyId) == tokenCompId ||
-          companyId == ('comp_' + tokenCompId)
+          companyId == ('comp_' + tokenCompId) ||
+          normalizedToken == normalizedCompany
         )
       ) || (
         resource != null && (
           resource.data.adminEmail == userEmail ||
-          resource.data.adminUid == request.auth.uid ||
-          ('authorizedEmails' in resource.data && resource.data.authorizedEmails.hasAny([userEmail]))
+          resource.data.adminUid == userId ||
+          ('authorizedEmails' in resource.data && resource.data.authorizedEmails.hasAny([userEmail])) ||
+          ('authorizedUids' in resource.data && resource.data.authorizedUids.hasAny([userId]))
         )
       );
     }
@@ -36,19 +44,28 @@ service cloud.firestore {
     function companySubcollectionBelongsToUser(companyId) {
       let tokenCompId = request.auth.token.companyId;
       let userEmail = request.auth.token.email;
+      let userId = request.auth.uid;
+
+      // نزع prefix "comp_" من كلا الجانبين للمقارنة العادلة
+      let normalizedToken = tokenCompId == null ? '' : (tokenCompId.matches('^comp_.*') ? tokenCompId.replace('comp_', '') : tokenCompId);
+      let normalizedCompany = companyId.matches('^comp_.*') ? companyId.replace('comp_', '') : companyId;
+
       return isSuperAdmin() || (
         tokenCompId != null &&
         (
           tokenCompId == companyId ||
           ('comp_' + companyId) == tokenCompId ||
-          companyId == ('comp_' + tokenCompId)
+          companyId == ('comp_' + tokenCompId) ||
+          normalizedToken == normalizedCompany
         )
       ) || (
         exists(/databases/$(database)/documents/companies/$(companyId)) && (
           get(/databases/$(database)/documents/companies/$(companyId)).data.adminEmail == userEmail ||
-          get(/databases/$(database)/documents/companies/$(companyId)).data.adminUid == request.auth.uid ||
+          get(/databases/$(database)/documents/companies/$(companyId)).data.adminUid == userId ||
           ('authorizedEmails' in get(/databases/$(database)/documents/companies/$(companyId)).data &&
-           get(/databases/$(database)/documents/companies/$(companyId)).data.authorizedEmails.hasAny([userEmail]))
+           get(/databases/$(database)/documents/companies/$(companyId)).data.authorizedEmails.hasAny([userEmail])) ||
+          ('authorizedUids' in get(/databases/$(database)/documents/companies/$(companyId)).data &&
+           get(/databases/$(database)/documents/companies/$(companyId)).data.authorizedUids.hasAny([userId]))
         )
       );
     }

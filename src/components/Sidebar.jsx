@@ -23,6 +23,7 @@ import {
   X,
   Globe,
 } from 'lucide-react';
+import { getSubdomainUrl, isCompanySubdomain } from '../services/subdomainResolver';
 import { NAV } from '../utils/constants';
 import { canSeeNav, ROLES, can } from '../utils/permissions';
 
@@ -324,11 +325,36 @@ export default function Sidebar({
           <div className="title" style={{ fontSize: 14, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{companyName}</div>
           <div className="sub" style={{ fontSize: 11.5, marginTop: 2 }}>{isPlatformHubTab ? 'لوحة المالك والاشتراكات' : (isSuperAdmin ? 'إشراف المالك • ' + (companySettings?.companySubtitle || `المشاريع: ${projectCount}`) : `المشاريع: ${projectCount}`)}</div>
           
+          {/* رابط المنصة المركزية للسوبر أدمن عند تصفح سب-دومين شركة */}
+          {isSuperAdmin && typeof window !== 'undefined' && isCompanySubdomain() && (
+            <div style={{ marginTop: 6 }}>
+              <a
+                href="https://tashteebpro.com/tenants"
+                title="الانتقال إلى لوحة تحكم المنصة الرئيسية"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '3px 8px',
+                  background: isDarkMode ? 'rgba(245,158,11,0.18)' : '#FEF3C7',
+                  border: '1px solid rgba(245,158,11,0.3)',
+                  borderRadius: 6,
+                  color: '#D97706',
+                  fontSize: 11,
+                  fontWeight: 800,
+                  textDecoration: 'none',
+                }}
+              >
+                <span>👑 لوحة المنصة الرئيسية</span>
+              </a>
+            </div>
+          )}
+
           {/* رابط النطاق الفرعي الخاص بالشركة */}
           {!isPlatformHubTab && !isSuperAdmin && companySubdomain && (
             <div style={{ marginTop: 5 }}>
               <a
-                href={`https://${companySubdomain}.tashteebpro.com`}
+                href={getSubdomainUrl(companySubdomain)}
                 target="_blank"
                 rel="noopener noreferrer"
                 title="رابط مساحة عمل شركتك المباشر — اضغط لفتحه"

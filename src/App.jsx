@@ -55,6 +55,7 @@ import {
   sanitizeProjectForCloud,
   mergeProjectsPreservingLocal,
   mergeTeamsPreservingLocal,
+  mergeUsersPreservingLocal,
   syncSettingsToCloud,
   subscribeToCloudCompanyField,
   fetchCompanyDataFromCloud,
@@ -200,8 +201,7 @@ import { NAV } from './utils/constants';
 import { todayISO, setGlobalCurrency } from './utils/helpers';
 import { DEFAULT_TAB, can, NAV_PERMISSIONS } from './utils/permissions';
 
-// Styles
-import './styles/index.css';
+// Styles — already imported in main.jsx, no duplicate needed
 
 /* ---------------------------------------------------------------
    التطبيق الرئيسي
@@ -278,9 +278,13 @@ function getInitialCompanyId() {
   try {
     const sub = getSubdomain();
     if (sub && sub !== 'admin' && sub !== 'superadmin' && sub !== 'platform') {
+      const activeTenant = getActiveTenantId();
+      if (activeTenant) return activeTenant;
+
       const allTenants = loadAllTenants();
       const match = allTenants.find(t =>
         t.subdomain?.toLowerCase() === sub ||
+        t.slug?.toLowerCase() === sub ||
         t.id?.toLowerCase() === sub ||
         t.id?.toLowerCase() === `comp_${sub}` ||
         t.id?.toLowerCase() === `comp_c_${sub}`
@@ -289,7 +293,7 @@ function getInitialCompanyId() {
 
       // فحص الكوكي المشترك لآخر شركة مسجلة
       const lastReg = getCrossSubdomainCookie('tashteeb_last_registered_tenant');
-      if (lastReg && (lastReg.subdomain?.toLowerCase() === sub || lastReg.id === `comp_${sub}`)) {
+      if (lastReg && (lastReg.subdomain?.toLowerCase() === sub || lastReg.id === `comp_${sub}` || lastReg.slug?.toLowerCase() === sub)) {
         return lastReg.id;
       }
 
@@ -362,14 +366,11 @@ export default function App() {
   const [saveState, setSaveState] = useState(null); // null | 'saved' | 'offline'
   const [currentUser, setCurrentUser] = useState(() => {
     try {
+      // ✅ نستخدم فقط localStorage (per-origin/subdomain) لعزل الجلسات
+      // الكوكيز المشتركة لا تُستخدم للجلسة لمنع تداخل الحسابات بين النطاقات
       const cached = localStorage.getItem('active_session_user');
       if (cached) {
         return JSON.parse(cached);
-      }
-      const cookieUser = getCrossSubdomainCookie('tashteeb_session_user');
-      if (cookieUser && typeof cookieUser === 'object') {
-        try { localStorage.setItem('active_session_user', JSON.stringify(cookieUser)); } catch (e) {}
-        return cookieUser;
       }
       return null;
     } catch (e) {
@@ -378,16 +379,14 @@ export default function App() {
   });
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     try {
-      if (localStorage.getItem('active_session_user')) return true;
-      if (getCrossSubdomainCookie('tashteeb_session_user')) return true;
-      return false;
+      return !!localStorage.getItem('active_session_user');
     } catch (e) {
       return false;
     }
   });
   const [authLoading, setAuthLoading] = useState(() => {
     try {
-      return !localStorage.getItem('active_session_user') && !getCrossSubdomainCookie('tashteeb_session_user');
+      return !localStorage.getItem('active_session_user');
     } catch (e) {
       return true;
     }
@@ -407,9 +406,26 @@ export default function App() {
     return p === 'register' || p === 'signup' ? 'register' : 'login';
   });
   // Company Tenant Scoped ID:
-  // للمستخدم العادي: نعتمد حصرياً على companyId من الـ Claims السحابية
-  // للسوبر أدمن فقط: نسمح بالتبديل بين الشركات عبر getActiveTenantId() أو sessionStorage
+  // إذا كان المستخدم على سب-دومين مخصص لشركة، فالشركة الحتمية هي دائماً شركة هذا السب-دومين
+  // للسوبر أدمن في الدومين الرئيسي: نسمح بالتبديل بين الشركات عبر getActiveTenantId() أو sessionStorage
   const activeCompanyId = useMemo(() => {
+    if (isCompanySubdomain()) {
+      const activeTenant = getActiveTenantId();
+      if (activeTenant) return activeTenant;
+      const sub = getSubdomain();
+      if (sub && sub !== 'admin' && sub !== 'superadmin' && sub !== 'platform') {
+        const allTenants = loadAllTenants();
+        const match = allTenants.find(t =>
+          (t.subdomain || '').toLowerCase() === sub ||
+          (t.slug || '').toLowerCase() === sub ||
+          t.id === sub ||
+          t.id === `comp_${sub}` ||
+          t.id === `comp_c_${sub}`
+        );
+        if (match) return match.id;
+      }
+    }
+
     const isSuper = Boolean(currentUser?.isSuperAdmin || currentUser?.role === 'super_admin');
     const isPreviewing = isSuper && typeof sessionStorage !== 'undefined' && sessionStorage.getItem('admin_preview_mode') === 'true';
     if (isSuper) {
@@ -417,7 +433,7 @@ export default function App() {
       return (isPreviewing && typeof sessionStorage !== 'undefined' && sessionStorage.getItem('tashteeb_preview_tenant_id')) || getActiveTenantId() || currentUser?.companyId || null;
     }
     // المستخدم العادي: نعتمد حصرياً على companyId من الـ Claims/الجلسة الموثقة سحابياً
-    return currentUser?.companyId || null;
+    return currentUser?.companyId || getActiveTenantId() || null;
   }, [currentUser]);
 
   // استخراج النطاق الفرعي الخاص بالشركة الحالية لعرضه وتسهيل نسخه
@@ -627,15 +643,19 @@ export default function App() {
           setSubdomainCompanyName(resolvedSettings.companyName || result.name || null);
           setSubdomainNotFound(false);
 
-          // مزامنة علاجية تلقائية لـ tenant_directory في السحابة لضمان حفظ الاسم المحدث دائماً
+          // مزامنة علاجية لـ tenant_directory في السحابة فقط عند توفر صلاحيات المدير أو السوبر أدمن لمنع أخطاء الصلاحيات
           try {
-            setDoc(doc(db, 'tenant_directory', sub), {
-              companyId: result.id,
-              name: resolvedSettings.companyName || result.name || sub,
-              logo: resolvedSettings.companyLogo || result.logo || null,
-              subdomain: sub,
-              updatedAt: new Date().toISOString(),
-            }, { merge: true }).catch(() => {});
+            const rawUser = typeof localStorage !== 'undefined' ? localStorage.getItem('active_session_user') : null;
+            const parsedUser = rawUser ? JSON.parse(rawUser) : null;
+            if (parsedUser && (parsedUser.role === 'owner' || parsedUser.role === 'super_admin' || parsedUser.isSuperAdmin)) {
+              setDoc(doc(db, 'tenant_directory', sub), {
+                companyId: result.id,
+                name: resolvedSettings.companyName || result.name || sub,
+                logo: resolvedSettings.companyLogo || result.logo || null,
+                subdomain: sub,
+                updatedAt: new Date().toISOString(),
+              }, { merge: true }).catch(() => {});
+            }
           } catch (e) {}
         } else {
           setSubdomainNotFound(true);
@@ -849,7 +869,8 @@ export default function App() {
     };
 
     window.addEventListener('storage', handleStorageChange);
-    const timer = setInterval(verifyUserSessionLiveness, 4000);
+    // ✅ 12 ثانية بدل 4 لتقليل الضغط على CPU مع الحفاظ على الأمان
+    const timer = setInterval(verifyUserSessionLiveness, 12000);
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       clearInterval(timer);
@@ -1381,12 +1402,14 @@ export default function App() {
 
     if (oldName !== trimmedNew) {
       const pKey = role === 'engineers' ? 'engineer' : role === 'accountants' ? 'accountant' : 'techOffice';
+      // ✅ إصلاح: استدعاء persist() خارج الـ setter لمنع double-render
       setProjects(prev => {
         const list = prev || [];
-        const updatedProjects = list.map(p => p[pKey] === oldName ? { ...p, [pKey]: trimmedNew } : p);
-        persist(updatedProjects);
-        return updatedProjects;
+        return list.map(p => p[pKey] === oldName ? { ...p, [pKey]: trimmedNew } : p);
       });
+      // استدعاء persist بعد setState بشكل مستقل
+      const updatedProjects = (projects || []).map(p => p[pKey] === oldName ? { ...p, [pKey]: trimmedNew } : p);
+      persist(updatedProjects);
     }
 
     try {
@@ -1690,6 +1713,10 @@ export default function App() {
           const requestedTab = getTabFromPath();
           if (role === 'engineer') {
             setTab('projects');
+          } else if (isCompanySubdomain()) {
+            // 🔒 داخل سب-دومين شركة، التبويب دائماً للشركة الحالية (overview أو الرابط المطلوب، وليس tenants أبداً)
+            const allowedTabs = NAV_PERMISSIONS[role] || ['overview'];
+            setTab(requestedTab && allowedTabs.includes(requestedTab) && requestedTab !== 'tenants' ? requestedTab : 'overview');
           } else if (role === 'super_admin' || isSuperAdmin) {
             const isPreviewing = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('admin_preview_mode') === 'true';
             setTab(isPreviewing ? 'overview' : 'tenants');
@@ -1752,9 +1779,18 @@ export default function App() {
     }
   }, [currentUser, tab]);
 
+  // Subdomain Guard: Prevent viewing tenants hub on company subdomains
+  useEffect(() => {
+    if (tab === 'tenants' && isCompanySubdomain()) {
+      setTab('overview');
+    }
+  }, [tab]);
+
   const handleLogin = (userData, tenantData, isSuperAdmin) => {
     const roleIsSuperAdmin = isSuperAdmin || userData?.role === 'super_admin' || userData?.isSuperAdmin;
-    const defaultTab = roleIsSuperAdmin ? 'tenants' : (DEFAULT_TAB[userData?.role] || 'overview');
+    const defaultTab = isCompanySubdomain()
+      ? (userData?.role === 'engineer' ? 'projects' : 'overview')
+      : (roleIsSuperAdmin ? 'tenants' : (DEFAULT_TAB[userData?.role] || 'overview'));
 
     // ⚠️ لا يوجد fallback لـ getActiveTenantId() هنا عمداً: لو فشل تحديد الشركة من بيانات
     // تسجيل الدخول نفسها، الأصح نترك compId فارغاً بدل ما نخلط المستخدم مع شركة قديمة مخزّنة في هذا المتصفح.
@@ -1795,9 +1831,8 @@ export default function App() {
       const tenantSub = tenantData.subdomain || tenantData.slug || null;
       if (tenantSub) {
         try {
-          // حفظ الجلسة أولاً قبل الانتقال
+          // حفظ الجلسة أولاً قبل الانتقال — localStorage فقط (per-origin، لا كوكيز مشتركة)
           localStorage.setItem('active_session_user', JSON.stringify(userData));
-          setCrossSubdomainCookie('tashteeb_session_user', userData);
           setActiveTenantId(compId);
           if (compId && !roleIsSuperAdmin) {
             const cKey = `tenant_${compId}_users`;
@@ -1830,8 +1865,8 @@ export default function App() {
     setCurrentUser(finalUserData);
     setIsAuthenticated(true);
     try {
+      // ✅ localStorage فقط (per-origin) لعزل الجلسات — لا كوكيز مشتركة للجلسة
       localStorage.setItem('active_session_user', JSON.stringify(finalUserData));
-      setCrossSubdomainCookie('tashteeb_session_user', finalUserData);
       if (compId && !roleIsSuperAdmin) {
         const cKey = `tenant_${compId}_users`;
         const raw = localStorage.getItem(cKey);
@@ -1888,8 +1923,8 @@ export default function App() {
     }
     // مسح جلسة المستخدم الحالية والمفاتيح المؤقتة للجلسة فقط مع الحفاظ التام على الإعدادات وسجل المستخدمين
     try {
+      // ✅ نمسح فقط localStorage الخاص بهذا النطاق — لا نمس كوكيز النطاقات الأخرى
       localStorage.removeItem('active_session_user');
-      removeCrossSubdomainCookie('tashteeb_session_user');
       localStorage.removeItem(ACTIVE_TENANT_ID_KEY);
       localStorage.removeItem('platform-active-tenant-id');
       localStorage.removeItem('active_tenant_id');
@@ -2203,7 +2238,7 @@ export default function App() {
                 color: '#FCA5A5',
                 fontFamily: 'monospace',
               }}>
-                🔗 {triedSub}.tashteebpro.com
+                🔗 {getSubdomainUrl(triedSub)}
               </div>
             )}
             <p style={{ fontSize: '0.9rem', color: '#94A3B8', maxWidth: '400px', lineHeight: 1.7, marginBottom: '28px' }}>

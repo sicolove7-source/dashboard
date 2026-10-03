@@ -5,8 +5,8 @@
  * عزل كامل للبيانات، المشاريع، المهندسين، والمالية لكل شركة ومشترك.
  */
 
-import { setGlobalCurrency } from '../utils/helpers';
-import { DEMO_ACCOUNTS } from '../utils/permissions';
+import { setGlobalCurrency } from '../utils/helpers.js';
+import { DEMO_ACCOUNTS } from '../utils/permissions.js';
 import {
   fetchCompanyDataFromCloud,
   fetchProjectsFromCloud,
@@ -29,11 +29,11 @@ import {
   sanitizeProjectForCloud,
   sanitizeCompanyUsersForCloud,
   isDemoProject,
-} from './cloudSync';
-import { db } from '../firebase';
+} from './cloudSync.js';
+import { db, auth } from '../firebase.js';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import defaultTenantsData from './defaultTenantsData.json';
-import { getCrossSubdomainCookie, setCrossSubdomainCookie, isCompanySubdomain, getSubdomain } from './subdomainResolver';
+import defaultTenantsData from './defaultTenantsData.json' with { type: 'json' };
+import { getCrossSubdomainCookie, setCrossSubdomainCookie, isCompanySubdomain, getSubdomain } from './subdomainResolver.js';
 
 export const PLATFORM_TENANTS_KEY = 'platform-tenants-master-v1';
 export const ACTIVE_TENANT_ID_KEY = 'platform-active-tenant-id';
@@ -41,7 +41,7 @@ export const SUB_ACCOUNTS_ACCESS_KEY = 'platform-subaccounts-access-v2';
 // قائمة IDs الشركات المحذوفة نهائياً حتى لا يُعيدها loadAllTenants من DEFAULT_TENANTS
 export const DELETED_TENANTS_KEY = 'platform-deleted-tenants-v1';
 
-function getDeletedTenantIds() {
+export function getDeletedTenantIds() {
   try {
     const raw = localStorage.getItem(DELETED_TENANTS_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
@@ -138,9 +138,18 @@ try {
       if (changed) {
         localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
       }
+      // ✅ تأخير المزامنة حتى يتحقق Firebase Auth من الجلسة أولاً
+      // منع خطأ "Missing or insufficient permissions" عند التحميل بدون جلسة
       setTimeout(() => {
-        try { syncAllLocalUsersToCloud(); } catch(e) {}
-      }, 500);
+        try {
+          import('../firebase').then(({ auth }) => {
+            if (auth.currentUser) {
+              syncAllLocalUsersToCloud();
+            }
+            // إذا لم يكن هناك مستخدم مسجل، لا نحاول المزامنة
+          }).catch(() => {});
+        } catch(e) {}
+      }, 1500);
     } catch(e) {}
   }
 } catch (e) {}
@@ -230,12 +239,15 @@ export function loadAllTenants() {
 
 export async function loadAllTenantsAsync() {
   const local = loadAllTenants();
+  // ✅ جلب قائمة الشركات المحذوفة نهائياً لفلترتها من كل المصادر السحابية
+  const deletedIds = getDeletedTenantIds();
   try {
     const cloudTenants = await fetchTenantsListFromCloud();
     const mergedMap = new Map();
     if (Array.isArray(cloudTenants) && cloudTenants.length > 0) {
       cloudTenants.forEach(t => {
-        if (t?.id) mergedMap.set(t.id, t);
+        // ✅ تجاهل أي شركة تم حذفها نهائياً
+        if (t?.id && !deletedIds.has(t.id)) mergedMap.set(t.id, t);
       });
     }
 
@@ -251,6 +263,8 @@ export async function loadAllTenantsAsync() {
         dirSnap.forEach(d => {
           const td = d.data();
           const cId = td.companyId || `comp_${d.id}`;
+          // ✅ تجاهل الشركات المحذوفة من tenant_directory أيضاً
+          if (deletedIds.has(cId)) return;
           if (!mergedMap.has(cId)) {
             mergedMap.set(cId, {
               id: cId,
@@ -679,6 +693,8 @@ export async function registerNewTenant(formData) {
           role: 'owner',
           companyName: newTenant.name,
           currency: newTenant.currency || 'ج.م',
+          subdomain: rawSubdomain,
+          logo: newTenant.logo || null,
         }).catch(() => {});
       }).catch(() => {});
     }
@@ -752,9 +768,24 @@ export function deleteTenant(id) {
       }
     }
   } catch (e) {}
+
+  // ✅ حذف من companies/ في Firestore
+  try { deleteCompanyFromCloud(id); } catch (e) {}
+
+  // ✅ حذف من tenant_directory في Firestore لمنع رجوع الشركة عند fetchTenantsListFromCloud
   try {
-    deleteCompanyFromCloud(id);
+    import('../firebase').then(({ db }) => {
+      import('firebase/firestore').then(({ doc, deleteDoc, collection, getDocs, query, where }) => {
+        // البحث عن الشركة في tenant_directory بالـ companyId وحذفها
+        getDocs(query(collection(db, 'tenant_directory'), where('companyId', '==', id)))
+          .then(snap => {
+            snap.forEach(d => deleteDoc(d.ref).catch(() => {}));
+          })
+          .catch(() => {});
+      }).catch(() => {});
+    }).catch(() => {});
   } catch (e) {}
+
   return tenants;
 }
 
@@ -1220,42 +1251,61 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     return false;
   };
 
-  // 1. تحميل قائمة الشركات أولاً ومحلياً/سحابياً لتكون متوفرة لكافة الفحوصات والحسابات
-  let tenants = [];
-  try {
-    tenants = await loadAllTenantsAsync();
-  } catch (e) {
-    tenants = loadAllTenants();
-  }
-  if (!Array.isArray(tenants) || tenants.length === 0) {
-    tenants = [...DEFAULT_TENANTS];
-  }
-
-  // 2. فحص هل هو حساب الـ Super Admin (عبر Custom Claims المشفرة أو البريد المعتمد للمالك الرئيسي)
+  // 1. فحص هل هو حساب الـ Super Admin (عبر Custom Claims المشفرة أو البريد المعتمد للمالك الرئيسي)
   const isSuperAdminUser = Boolean(
     claims.role === 'super_admin' ||
     claims.isSuperAdmin === true ||
     cleanEmail === 'sicolove7@gmail.com'
   );
 
+  // 2. تحميل قائمة الشركات محلياً أولاً لتكون متوفرة فورياً لكافة الفحوصات بدون تأخير شبكة
+  let tenants = loadAllTenants();
+  if (!Array.isArray(tenants) || tenants.length === 0) {
+    tenants = [...DEFAULT_TENANTS];
+  }
+
   if (isSuperAdminUser) {
-    const activeTenantId = getActiveTenantId();
-    const activeTenant = (activeTenantId && tenants.find(t => t.id === activeTenantId)) ||
-                         tenants.find(t => t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail) ||
-                         (tenants.length > 0 ? tenants[0] : null);
+    const currentSub = isCompanySubdomain() ? getSubdomain() : null;
+    let activeTenant = null;
+
+    // 🔒 إذا كان السوبر أدمن داخلاً من سب-دومين شركة مخصص، الأولوية الحتمية لشركة هذا السب-دومين
+    if (currentSub && currentSub !== 'admin' && currentSub !== 'superadmin') {
+      activeTenant = tenants.find(t => 
+        (t.subdomain || '').toLowerCase().trim() === currentSub ||
+        (t.slug || '').toLowerCase().trim() === currentSub ||
+        (t.id || '').toLowerCase().trim() === currentSub ||
+        (t.id || '').toLowerCase().trim() === `comp_${currentSub}` ||
+        (t.id || '').toLowerCase().trim() === `comp_c_${currentSub}`
+      );
+    }
+
+    if (!activeTenant) {
+      const activeTenantId = getActiveTenantId();
+      activeTenant = (activeTenantId && tenants.find(t => t.id === activeTenantId)) ||
+                     tenants.find(t => t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail) ||
+                     (tenants.length > 0 ? tenants[0] : null);
+    }
+
+    const compName = activeTenant ? getTenantCurrentName(activeTenant) : (currentSub ? currentSub : 'المنصة الرئيسية');
+    const compLogo = activeTenant ? getTenantCurrentLogo(activeTenant) : null;
+
     return {
       success: true,
       user: {
         id: firebaseUid || 'super_admin_master',
         email: cleanEmail,
         name: claims.name || cleanEmail.split('@')[0],
-        role: 'super_admin',
+        role: (currentSub && currentSub !== 'admin') ? 'owner' : 'super_admin',
         isSuperAdmin: true,
         companyId: activeTenant?.id || null,
-        companyName: activeTenant?.name || 'المنصة الرئيسية',
+        companyName: compName,
         currency: activeTenant?.currency || 'ج.م',
       },
-      tenant: activeTenant,
+      tenant: activeTenant ? {
+        ...activeTenant,
+        name: compName,
+        logo: compLogo,
+      } : null,
       isSuperAdmin: true,
     };
   }
@@ -1362,6 +1412,8 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
             currency: sData.currency || 'ج.م',
             phone: sData.phone || null,
             status: 'active',
+            users: Array.isArray(sData.users) ? sData.users : [],
+            authorizedEmails: Array.isArray(sData.authorizedEmails) ? sData.authorizedEmails : [],
           };
         }
       } catch (e) {}
@@ -1402,8 +1454,66 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
           if (Array.isArray(parsed)) subUsers = mergeUsersPreservingLocal(parsed, subUsers);
         }
       } catch (e) {}
-      const subUserMatch = subUsers.find(isUserMatch);
+
+      // إذا لم يكن هناك موظفون في الكاش المحلي، نحاول استرجاعهم من وثيقة الشركة السحابية
+      if (subUsers.length === 0) {
+        try {
+          const { doc: fDoc, getDoc: fGetDoc } = await import('firebase/firestore');
+          const compSnap = await Promise.race([
+            fGetDoc(fDoc(db, 'companies', subTenant.id)),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2000))
+          ]);
+          if (compSnap && compSnap.exists()) {
+            const cData = compSnap.data();
+            if (Array.isArray(cData?.users)) {
+              subUsers = cData.users;
+              subTenant.users = subUsers;
+            }
+            if (Array.isArray(cData?.authorizedEmails)) {
+              subTenant.authorizedEmails = cData.authorizedEmails;
+            }
+          }
+        } catch (e) {}
+      }
+
+      let subUserMatch = subUsers.find(isUserMatch);
+      if (!subUserMatch && Array.isArray(subTenant.authorizedEmails)) {
+        const isAuth = subTenant.authorizedEmails.some(e => (e || '').toLowerCase().trim() === cleanEmail);
+        if (isAuth) {
+          subUserMatch = {
+            id: firebaseUid || `u_${subTenant.id}_auth`,
+            email: cleanEmail,
+            name: cleanEmail.split('@')[0],
+            role: 'engineer',
+            companyId: subTenant.id,
+          };
+        }
+      }
+
       if (subUserMatch) {
+        if (subUserMatch.isDeleted === true) {
+          return {
+            success: false,
+            isDeleted: true,
+            error: '❌ هذا الحساب غير موجود أو تم حذفه من قِبل إدارة الشركة.'
+          };
+        }
+        if (subUserMatch.status === 'suspended' || subUserMatch.status === 'inactive') {
+          return {
+            success: false,
+            isUserSuspended: true,
+            error: '❌ تم إيقاف هذا الحساب من قِبل إدارة الشركة. يرجى مراجعة مسؤول المؤسسة.'
+          };
+        }
+        if (subTenant.status === 'suspended') {
+          return {
+            success: false,
+            isTenantSuspended: true,
+            error: '❌ تم تعليق حساب هذه المؤسسة. يرجى التواصل مع إدارة منصة تشطيب برو لتسوية الاشتراك.',
+            tenant: subTenant,
+          };
+        }
+
         const compName = getTenantCurrentName(subTenant);
         const compLogo = getTenantCurrentLogo(subTenant);
         return {
@@ -1427,276 +1537,9 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     }
   }
 
-  // 4. أولوية مطلقة: هل هذا المستخدم مالك (Owner / Admin) لأي شركة مسجلة محلياً؟
+  // 4. الفحص المحلي الفوري (ذاكرة وتخزين محلي): فحص المالك والموظفين في كافة الشركات المسجلة محلياً
   for (const t of tenants) {
-    if (isTenantAdminMatch(t)) {
-      const compName = getTenantCurrentName(t);
-      const compLogo = getTenantCurrentLogo(t);
-      return {
-        success: true,
-        user: {
-          id: firebaseUid || `u_${t.id}_admin`,
-          email: t.adminEmail,
-          phone: t.phone,
-          name: t.adminName || 'مدير الشركة',
-          role: 'owner',
-          companyId: t.id,
-          companyName: compName,
-          currency: t.currency || 'ج.م',
-        },
-        tenant: {
-          ...t,
-          name: compName,
-          logo: compLogo,
-        },
-        isSuperAdmin: false,
-      };
-    }
-  }
-
-  // 4.5. فحص دليل الشركات السحابي tenant_directory بالبريد كمالك (Cross-Browser Discovery)
-  // يضمن التعرف الفوري على حساب مالك الشركة على أي متصفح جديد كلياً قبل فحص قوائم الموظفين
-  try {
-    const { collection, query, where, getDocs } = await import('firebase/firestore');
-    const q = query(collection(db, 'tenant_directory'), where('adminEmail', '==', cleanEmail));
-    const qSnap = await Promise.race([
-      getDocs(q),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
-    ]);
-
-    if (qSnap && !qSnap.empty) {
-      const tDoc = qSnap.docs[0].data();
-      if (tDoc && tDoc.companyId) {
-        console.log('[resolveTenantUserByEmail] ✅ Found company in tenant_directory:', tDoc.companyId, cleanEmail);
-        const resolvedTenant = {
-          id: tDoc.companyId,
-          name: tDoc.name || tDoc.subdomain,
-          subdomain: tDoc.subdomain,
-          slug: tDoc.subdomain,
-          logo: tDoc.logo || null,
-          adminEmail: cleanEmail,
-          adminName: tDoc.adminName || cleanEmail.split('@')[0],
-          currency: tDoc.currency || 'ج.م',
-          phone: tDoc.phone || null,
-          status: 'active',
-          plan: 'trial',
-        };
-
-        try {
-          const currentList = loadAllTenants();
-          if (!currentList.some(t => t.id === resolvedTenant.id)) {
-            saveAllTenants([resolvedTenant, ...currentList]);
-          }
-        } catch (e) {}
-
-        try {
-          if (!localStorage.getItem(`tenant_${resolvedTenant.id}_settings`)) {
-            localStorage.setItem(`tenant_${resolvedTenant.id}_settings`, JSON.stringify({
-              companyName: resolvedTenant.name,
-              subdomain: resolvedTenant.subdomain,
-              adminEmail: cleanEmail,
-              adminName: resolvedTenant.adminName,
-              currency: resolvedTenant.currency,
-              phone: resolvedTenant.phone,
-              city: 'القاهرة',
-            }));
-          }
-          if (!localStorage.getItem(`tenant_${resolvedTenant.id}_users`)) {
-            localStorage.setItem(`tenant_${resolvedTenant.id}_users`, JSON.stringify([{
-              id: firebaseUid || `u_${resolvedTenant.id}_admin`,
-              email: cleanEmail,
-              name: resolvedTenant.adminName,
-              role: 'owner',
-              companyId: resolvedTenant.id,
-            }]));
-          }
-          if (!localStorage.getItem(`tenant_${resolvedTenant.id}_projects`)) {
-            localStorage.setItem(`tenant_${resolvedTenant.id}_projects`, JSON.stringify([]));
-          }
-        } catch (e) {}
-
-        setActiveTenantId(resolvedTenant.id);
-
-        return {
-          success: true,
-          user: {
-            id: firebaseUid || `u_${resolvedTenant.id}_admin`,
-            email: cleanEmail,
-            name: resolvedTenant.adminName,
-            role: 'owner',
-            companyId: resolvedTenant.id,
-            companyName: resolvedTenant.name,
-            currency: resolvedTenant.currency,
-          },
-          tenant: resolvedTenant,
-          isSuperAdmin: false,
-        };
-      }
-    }
-  } catch (dirErr) {
-    console.warn('[resolveTenantUserByEmail] tenant_directory search notice:', dirErr?.message);
-  }
-
-  // 5. فحص دليل المستخدمين السحابي المركزي أولاً (Direct Cloud Directory Lookup)
-  try {
-    let cloudUser = null;
-    if (cleanEmail.includes('@') && !cleanEmail.endsWith('@tashteeb.app')) {
-      cloudUser = await fetchUserFromCloudDirectory(cleanEmail, currentSub);
-    }
-    if (!cloudUser && phoneFromEmail) {
-      cloudUser = await fetchUserByPhoneFromCloudDirectory(phoneFromEmail);
-    }
-    if (!cloudUser && cleanEmail.endsWith('@tashteeb.app')) {
-      cloudUser = await fetchUserFromCloudDirectory(cleanEmail, currentSub);
-    }
-
-    if (cloudUser && cloudUser.companyId) {
-      if (cloudUser.isDeleted === true || cloudUser.status === 'deleted') {
-        return {
-          success: false,
-          isDeleted: true,
-          user: null,
-          tenant: null,
-          error: '❌ هذا الحساب غير موجود أو تم حذفه من قِبل إدارة الشركة.'
-        };
-      } else if (cloudUser.status === 'suspended' || cloudUser.status === 'inactive') {
-        return {
-          success: false,
-          isUserSuspended: true,
-          error: '❌ تم إيقاف هذا الحساب من قِبل إدارة الشركة. يرجى مراجعة مسؤول المؤسسة.'
-        };
-      } else {
-        const matchTenant = tenants.find(t => t.id === cloudUser.companyId) || {
-          id: cloudUser.companyId,
-          name: cloudUser.companyName || 'الشركة',
-          currency: cloudUser.currency || 'ج.م',
-        };
-
-        if (matchTenant.status === 'suspended') {
-          return {
-            success: false,
-            isTenantSuspended: true,
-            error: '❌ تم تعليق حساب هذه المؤسسة. يرجى التواصل مع إدارة منصة تشطيب برو لتسوية الاشتراك.',
-            tenant: matchTenant,
-          };
-        }
-
-        const compName = getTenantCurrentName(matchTenant);
-        const compLogo = getTenantCurrentLogo(matchTenant);
-        console.log('[resolveTenantUserByEmail] ✅ Found user in cloud directory:', cleanEmail, 'company:', matchTenant.id);
-
-        // حفظ محلي فوري لتسريع عمليات الدخول التالية على هذا المتصفح
-        try {
-          const reg = JSON.parse(localStorage.getItem('platform-all-users-registry') || '{}');
-          reg[cleanEmail] = { ...cloudUser, companyId: matchTenant.id };
-          if (phoneFromEmail) {
-            reg['phone_' + phoneFromEmail] = { ...cloudUser, companyId: matchTenant.id };
-          }
-          localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
-
-          const cKey = `tenant_${matchTenant.id}_users`;
-          const raw = localStorage.getItem(cKey);
-          let uList = raw ? JSON.parse(raw) : [];
-          if (!Array.isArray(uList)) uList = [];
-          const idx = uList.findIndex(isUserMatch);
-          if (idx !== -1) {
-            uList[idx] = { ...uList[idx], ...cloudUser };
-          } else {
-            uList.push(cloudUser);
-          }
-          localStorage.setItem(cKey, JSON.stringify(uList));
-        } catch (e) {}
-
-        return {
-          success: true,
-          user: {
-            ...cloudUser,
-            id: firebaseUid || cloudUser.id,
-            role: cloudUser.role || 'engineer',
-            companyId: matchTenant.id,
-            companyName: compName || matchTenant.name || cloudUser.companyName,
-            currency: matchTenant.currency || cloudUser.currency || 'ج.م',
-          },
-          tenant: {
-            ...matchTenant,
-            name: compName,
-            logo: compLogo,
-          },
-          isSuperAdmin: false,
-        };
-      }
-    }
-  } catch(e) {
-    console.warn('[resolveTenantUserByEmail] Cloud directory check warning:', e);
-  }
-
-  // 5. فحص السجل المركزي لكافة مستخدمي وموظفي المنصة محلياً platform-all-users-registry
-  try {
-    const regRaw = localStorage.getItem('platform-all-users-registry');
-    if (regRaw) {
-      const reg = JSON.parse(regRaw);
-      if (reg) {
-        let u = reg[cleanEmail];
-        if (!u && phoneFromEmail) {
-          u = reg['phone_' + phoneFromEmail] || reg[phoneFromEmail];
-          if (!u) {
-            u = Object.values(reg).find(isUserMatch);
-          }
-        }
-        if (u && u.companyId) {
-          if (u.isDeleted === true) {
-            // حساب محذوف
-          } else if (u.status === 'suspended' || u.status === 'inactive') {
-            return {
-              success: false,
-              isUserSuspended: true,
-              error: '❌ تم إيقاف هذا الحساب من قِبل إدارة الشركة. يرجى مراجعة مسؤول المؤسسة.'
-            };
-          } else {
-            const matchTenant = tenants.find(t => t.id === u.companyId) || {
-              id: u.companyId,
-              name: u.companyName || 'الشركة',
-              currency: u.currency || 'ج.م',
-            };
-
-            if (matchTenant.status === 'suspended') {
-              return {
-                success: false,
-                isTenantSuspended: true,
-                error: '❌ تم تعليق حساب هذه المؤسسة. يرجى التواصل مع إدارة منصة تشطيب برو لتسوية الاشتراك.',
-                tenant: matchTenant,
-              };
-            }
-
-            const compName = getTenantCurrentName(matchTenant);
-            const compLogo = getTenantCurrentLogo(matchTenant);
-            console.log('[resolveTenantUserByEmail] Found user in platform-all-users-registry:', cleanEmail, 'role:', u.role, 'company:', matchTenant.id);
-            return {
-              success: true,
-              user: {
-                ...u,
-                id: firebaseUid || u.id,
-                role: u.role || 'engineer',
-                companyId: matchTenant.id,
-                companyName: compName || matchTenant.name || u.companyName,
-                currency: matchTenant.currency || u.currency || 'ج.م',
-              },
-              tenant: {
-                ...matchTenant,
-                name: compName,
-                logo: compLogo,
-              },
-              isSuperAdmin: false,
-            };
-          }
-        }
-      }
-    }
-  } catch(e) {}
-
-  // 6. فحص كافة الشركات المسجلة: التحقق من المالك أولاً ثم أعضاء الفريق
-  for (const t of tenants) {
-    // أ) هل هو مالك الشركة (Owner / Admin) — فحص ذاكرة فوري فائق السرعة
+    // أ) هل هو مالك الشركة (Owner / Admin)؟
     if (isTenantAdminMatch(t)) {
       if (t.status === 'suspended') {
         return {
@@ -1729,10 +1572,8 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
       };
     }
 
-    // ب) التحقق من قائمة المستخدمين والموظفين
+    // ب) هل هو موظف أو عضو فريق مسجل في الشركة محلياً؟
     let users = Array.isArray(t.users) ? [...t.users] : [];
-
-    // دمج المستخدمين من التخزين المحلي للشركة إن وجدوا
     try {
       const rawUsers = localStorage.getItem(`tenant_${t.id}_users`);
       if (rawUsers) {
@@ -1744,8 +1585,6 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     } catch (e) {}
 
     let match = users.find(isUserMatch);
-
-    // التحقق من قائمة البريد المصرح بها في الشركة authorizedEmails
     if (!match && Array.isArray(t.authorizedEmails)) {
       const isAuth = t.authorizedEmails.some(e => (e || '').toLowerCase().trim() === cleanEmail);
       if (isAuth) {
@@ -1780,18 +1619,7 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
         };
       }
 
-      console.log('[resolveTenantUserByEmail] ✅ Found employee in company users:', cleanEmail, 'company:', t.id, 'role:', match.role);
-
-      try {
-        localStorage.setItem(`tenant_${t.id}_users`, JSON.stringify(users));
-        const reg = JSON.parse(localStorage.getItem('platform-all-users-registry') || '{}');
-        reg[cleanEmail] = { ...match, companyId: t.id };
-        if (phoneFromEmail) {
-          reg['phone_' + phoneFromEmail] = { ...match, companyId: t.id };
-        }
-        localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
-      } catch (e) {}
-
+      console.log('[resolveTenantUserByEmail] ✅ Found employee in local company users:', cleanEmail, 'company:', t.id, 'role:', match.role);
       const compName = getTenantCurrentName(t);
       const compLogo = getTenantCurrentLogo(t);
       return {
@@ -1814,7 +1642,68 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     }
   }
 
-  // 7. فحص شامل لكافة مفاتيح localStorage المحلية (tenant_*_users)
+  // 4.1. فحص السجل المركزي لكافة مستخدمي وموظفي المنصة محلياً platform-all-users-registry
+  try {
+    const regRaw = localStorage.getItem('platform-all-users-registry');
+    if (regRaw) {
+      const reg = JSON.parse(regRaw);
+      if (reg) {
+        let u = reg[cleanEmail];
+        if (!u && phoneFromEmail) {
+          u = reg['phone_' + phoneFromEmail] || reg[phoneFromEmail];
+          if (!u) {
+            u = Object.values(reg).find(isUserMatch);
+          }
+        }
+        if (u && u.companyId) {
+          if (u.isDeleted === true) {
+            // حساب محذوف
+          } else if (u.status === 'suspended' || u.status === 'inactive') {
+            return {
+              success: false,
+              isUserSuspended: true,
+              error: '❌ تم إيقاف هذا الحساب من قِبل إدارة الشركة. يرجى مراجعة مسؤول المؤسسة.'
+            };
+          } else {
+            const matchTenant = tenants.find(t => t.id === u.companyId) || {
+              id: u.companyId,
+              name: u.companyName || 'الشركة',
+              currency: u.currency || 'ج.م',
+            };
+            if (matchTenant.status === 'suspended') {
+              return {
+                success: false,
+                isTenantSuspended: true,
+                error: '❌ تم تعليق حساب هذه المؤسسة. يرجى التواصل مع إدارة منصة تشطيب برو لتسوية الاشتراك.',
+                tenant: matchTenant,
+              };
+            }
+            const compName = getTenantCurrentName(matchTenant);
+            const compLogo = getTenantCurrentLogo(matchTenant);
+            return {
+              success: true,
+              user: {
+                ...u,
+                id: firebaseUid || u.id,
+                role: u.role || 'engineer',
+                companyId: matchTenant.id,
+                companyName: compName || matchTenant.name || u.companyName,
+                currency: matchTenant.currency || u.currency || 'ج.م',
+              },
+              tenant: {
+                ...matchTenant,
+                name: compName,
+                logo: compLogo,
+              },
+              isSuperAdmin: false,
+            };
+          }
+        }
+      }
+    }
+  } catch (e) {}
+
+  // 4.2. فحص شامل لكافة مفاتيح localStorage المحلية (tenant_*_users)
   try {
     for (const k of Object.keys(localStorage)) {
       if (k.startsWith('tenant_') && k.endsWith('_users')) {
@@ -1827,7 +1716,6 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
               const matchedTenant = tenants.find(t => t.id === cId) || { id: cId, name: 'الشركة', currency: 'ج.م' };
               const compName = getTenantCurrentName(matchedTenant);
               const compLogo = getTenantCurrentLogo(matchedTenant);
-              console.log('[resolveTenantUserByEmail] ✅ Found user in local storage key:', k, cleanEmail);
               return {
                 success: true,
                 user: {
@@ -1847,10 +1735,150 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
               };
             }
           }
-        } catch(e) {}
+        } catch (e) {}
       }
     }
-  } catch(e) {}
+  } catch (e) {}
+
+  // 5. الفحص السحابي الشامل عبر المتصفحات (Cloud Directory & Cross-Browser Discovery)
+  // يضمن التعرف الفوري على المالك والموظفين على أي جهاز أو متصفح جديد كلياً
+  try {
+    let cloudUser = null;
+    if (cleanEmail.includes('@') && !cleanEmail.endsWith('@tashteeb.app')) {
+      cloudUser = await fetchUserFromCloudDirectory(cleanEmail, currentSub);
+    }
+    if (!cloudUser && phoneFromEmail) {
+      cloudUser = await fetchUserByPhoneFromCloudDirectory(phoneFromEmail);
+    }
+    if (!cloudUser && cleanEmail.endsWith('@tashteeb.app')) {
+      cloudUser = await fetchUserFromCloudDirectory(cleanEmail, currentSub);
+    }
+
+    if (cloudUser && cloudUser.companyId) {
+      if (cloudUser.isDeleted === true || cloudUser.status === 'deleted') {
+        return {
+          success: false,
+          isDeleted: true,
+          user: null,
+          tenant: null,
+          error: '❌ هذا الحساب غير موجود أو تم حذفه من قِبل إدارة الشركة.'
+        };
+      }
+      if (cloudUser.status === 'suspended' || cloudUser.status === 'inactive') {
+        return {
+          success: false,
+          isUserSuspended: true,
+          error: '❌ تم إيقاف هذا الحساب من قِبل إدارة الشركة. يرجى مراجعة مسؤول المؤسسة.'
+        };
+      }
+
+      const compId = cloudUser.companyId;
+      const compName = cloudUser.companyName || 'الشركة';
+      const compLogo = cloudUser.logo || null;
+      const compSubdomain = cloudUser.subdomain || (compId.startsWith('comp_') ? compId.replace('comp_', '') : compId);
+      const compCurrency = cloudUser.currency || 'ج.م';
+      const isOwner = cloudUser.role === 'owner' || (cloudUser.adminEmail && cloudUser.adminEmail.toLowerCase().trim() === cleanEmail);
+
+      const currentTenantList = loadAllTenants();
+      let matchTenant = currentTenantList.find(t => t.id === compId);
+      if (!matchTenant) {
+        matchTenant = {
+          id: compId,
+          name: compName,
+          subdomain: compSubdomain,
+          slug: compSubdomain,
+          logo: compLogo,
+          adminEmail: cloudUser.adminEmail || (isOwner ? cleanEmail : ''),
+          adminName: cloudUser.adminName || (isOwner ? (cloudUser.name || 'مدير الشركة') : 'مدير الشركة'),
+          currency: compCurrency,
+          status: 'active',
+          plan: 'trial',
+          users: Array.isArray(cloudUser.users) && cloudUser.users.length > 0 ? cloudUser.users : [cloudUser],
+          authorizedEmails: Array.isArray(cloudUser.authorizedEmails) ? cloudUser.authorizedEmails : [cleanEmail],
+        };
+        saveAllTenants([matchTenant, ...currentTenantList]);
+      }
+
+      if (matchTenant.status === 'suspended') {
+        return {
+          success: false,
+          isTenantSuspended: true,
+          error: '❌ تم تعليق حساب هذه المؤسسة. يرجى التواصل مع إدارة منصة تشطيب برو لتسوية الاشتراك.',
+          tenant: matchTenant,
+        };
+      }
+
+      const currentCompName = getTenantCurrentName(matchTenant);
+      const currentCompLogo = getTenantCurrentLogo(matchTenant);
+
+      try {
+        localStorage.setItem(`tenant_${compId}_settings`, JSON.stringify({
+          companyName: currentCompName,
+          subdomain: compSubdomain,
+          adminEmail: matchTenant.adminEmail,
+          adminName: matchTenant.adminName,
+          currency: compCurrency,
+          city: 'القاهرة',
+        }));
+
+        const cKey = `tenant_${compId}_users`;
+        const raw = localStorage.getItem(cKey);
+        let uList = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(uList)) uList = [];
+        if (Array.isArray(cloudUser.users) && cloudUser.users.length > 0) {
+          uList = cloudUser.users;
+        } else {
+          const idx = uList.findIndex(isUserMatch);
+          if (idx !== -1) {
+            uList[idx] = { ...uList[idx], ...cloudUser };
+          } else {
+            uList.push(cloudUser);
+          }
+        }
+        localStorage.setItem(cKey, JSON.stringify(uList));
+
+        const reg = JSON.parse(localStorage.getItem('platform-all-users-registry') || '{}');
+        reg[cleanEmail] = {
+          id: firebaseUid || cloudUser.id,
+          email: cleanEmail,
+          name: cloudUser.name || cleanEmail.split('@')[0],
+          role: cloudUser.role || 'engineer',
+          companyId: compId,
+          companyName: currentCompName,
+          currency: compCurrency,
+        };
+        if (phoneFromEmail) {
+          reg['phone_' + phoneFromEmail] = reg[cleanEmail];
+        }
+        localStorage.setItem('platform-all-users-registry', JSON.stringify(reg));
+      } catch (e) {}
+
+      setActiveTenantId(compId);
+      console.log('[resolveTenantUserByEmail] ✅ Resolved user via cloud discovery:', cleanEmail, 'role:', cloudUser.role, 'company:', compId);
+
+      return {
+        success: true,
+        user: {
+          ...cloudUser,
+          id: firebaseUid || cloudUser.id,
+          role: cloudUser.role || 'engineer',
+          companyId: compId,
+          companyName: currentCompName,
+          currency: matchTenant.currency || compCurrency,
+          permissions: cloudUser.permissions || null,
+          engineerName: cloudUser.engineerName || null,
+        },
+        tenant: {
+          ...matchTenant,
+          name: currentCompName,
+          logo: currentCompLogo,
+        },
+        isSuperAdmin: false,
+      };
+    }
+  } catch (e) {
+    console.warn('[resolveTenantUserByEmail] Cloud discovery notice:', e);
+  }
 
   // 8. فحص سياق السب-دومين والتسجيل الحديث (Subdomain Context & Cross-Domain Recovery)
   try {
@@ -2030,6 +2058,12 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
  */
 export async function syncAllLocalUsersToCloud() {
   try {
+    // ✅ تحقق من وجود مستخدم مسجل في Firebase Auth قبل أي sync
+    const { auth } = await import('../firebase');
+    if (!auth.currentUser) {
+      return; // لا مزامنة بدون جلسة مصادقة
+    }
+
     let allTenants = loadAllTenants();
     let hasChanges = false;
 

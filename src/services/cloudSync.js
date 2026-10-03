@@ -5,8 +5,8 @@
  * مزامنة حية ولحظية للمشاريع، الشركات، الإعدادات، والمستخدمين عبر Firestore.
  */
 
-import app, { db, storage, functions, auth, ensureAnonymousAuth } from '../firebase';
-import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, getDocs } from 'firebase/firestore';
+import app, { db, storage, functions, auth, ensureAnonymousAuth } from '../firebase.js';
+import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, getDocs, query, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, uploadString, getStorage } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 
@@ -1241,6 +1241,55 @@ export async function syncTenantUsersToCloud(companyId, users) {
     console.warn("[syncTenantUsersToCloud] company doc update warning:", e);
   }
 
+  // 1.5. تحديث tenant_directory/{subdomain} في Firestore فورياً للمزامنة عبر المتصفحات (Cross-Browser Discovery)
+  try {
+    let sub = null;
+    try {
+      const rawSettings = localStorage.getItem(`tenant_${cId}_settings`);
+      if (rawSettings) {
+        const parsed = JSON.parse(rawSettings);
+        if (parsed?.subdomain) sub = parsed.subdomain;
+      }
+    } catch (e) {}
+
+    if (!sub) {
+      try {
+        const rawTenants = localStorage.getItem('platform-tenants-master-v1');
+        if (rawTenants) {
+          const list = JSON.parse(rawTenants);
+          const t = list.find(item => item && (item.id === cId || item.companyId === cId));
+          if (t?.subdomain) sub = t.subdomain;
+        }
+      } catch (e) {}
+    }
+
+    if (!sub) {
+      try {
+        const qSub = query(collection(db, 'tenant_directory'), where('companyId', '==', cId));
+        const subSnap = await Promise.race([
+          getDocs(qSub),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2000))
+        ]);
+        if (subSnap && !subSnap.empty) {
+          sub = subSnap.docs[0].id;
+        }
+      } catch (e) {}
+    }
+
+    if (sub) {
+      const cleanSub = sub.toLowerCase().trim();
+      const dirDocRef = doc(db, 'tenant_directory', cleanSub);
+      await setDoc(dirDocRef, {
+        authorizedEmails: authorizedEmails,
+        users: cleanUsers,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      console.log('[syncTenantUsersToCloud] ✅ Updated tenant_directory for subdomain:', cleanSub, 'with', authorizedEmails.length, 'authorized emails');
+    }
+  } catch (dirErr) {
+    console.warn("[syncTenantUsersToCloud] tenant_directory update notice:", dirErr?.message);
+  }
+
   // 2. تحديث قائمة الشركات المركزية platform_metadata/tenants عبر Cloud Function الآمنة (مع بديل مباشر للسوبر أدمن)
   try {
     const fn = httpsCallable(functions, 'updateOwnTenantEntry');
@@ -1711,6 +1760,125 @@ export async function fetchUserFromCloudDirectory(email, preferredSubdomain = nu
   } catch (e) {
     console.warn("[fetchUserFromCloudDirectory] tenants list fallback error:", e.message);
   }
+
+  // 3. فحص tenant_directory بالـ authorizedEmails أو adminEmail
+  try {
+    const qAuth = query(collection(db, 'tenant_directory'), where('authorizedEmails', 'array-contains', cleanEmail));
+    const snapAuth = await Promise.race([
+      getDocs(qAuth),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2500))
+    ]);
+    if (snapAuth && !snapAuth.empty) {
+      const tDoc = snapAuth.docs[0].data();
+      const companyId = tDoc.companyId || `comp_${snapAuth.docs[0].id}`;
+      const companyName = tDoc.name || snapAuth.docs[0].id;
+      const users = Array.isArray(tDoc.users) ? tDoc.users : [];
+      const match = users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
+      if (match) {
+        return {
+          ...match,
+          companyId,
+          companyName,
+          subdomain: tDoc.subdomain || snapAuth.docs[0].id,
+          logo: tDoc.logo || null,
+          adminEmail: tDoc.adminEmail || '',
+          adminName: tDoc.adminName || '',
+          users: tDoc.users || [],
+          authorizedEmails: tDoc.authorizedEmails || [],
+          currency: tDoc.currency || 'ج.م',
+        };
+      }
+      return {
+        id: `u_${companyId}_auth`,
+        email: cleanEmail,
+        name: cleanEmail.split('@')[0],
+        role: 'engineer',
+        companyId,
+        companyName,
+        subdomain: tDoc.subdomain || snapAuth.docs[0].id,
+        logo: tDoc.logo || null,
+        adminEmail: tDoc.adminEmail || '',
+        adminName: tDoc.adminName || '',
+        users: tDoc.users || [],
+        authorizedEmails: tDoc.authorizedEmails || [],
+        currency: tDoc.currency || 'ج.م',
+      };
+    }
+
+    const qAdmin = query(collection(db, 'tenant_directory'), where('adminEmail', '==', cleanEmail));
+    const snapAdmin = await Promise.race([
+      getDocs(qAdmin),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2500))
+    ]);
+    if (snapAdmin && !snapAdmin.empty) {
+      const tDoc = snapAdmin.docs[0].data();
+      const companyId = tDoc.companyId || `comp_${snapAdmin.docs[0].id}`;
+      return {
+        id: `u_${companyId}_admin`,
+        email: cleanEmail,
+        name: tDoc.adminName || cleanEmail.split('@')[0],
+        role: 'owner',
+        companyId,
+        companyName: tDoc.name || snapAdmin.docs[0].id,
+        subdomain: tDoc.subdomain || snapAdmin.docs[0].id,
+        logo: tDoc.logo || null,
+        adminEmail: tDoc.adminEmail || cleanEmail,
+        adminName: tDoc.adminName || cleanEmail.split('@')[0],
+        users: tDoc.users || [],
+        authorizedEmails: tDoc.authorizedEmails || [cleanEmail],
+        currency: tDoc.currency || 'ج.م',
+      };
+    }
+  } catch (e) {
+    console.warn("[fetchUserFromCloudDirectory] tenant_directory search notice:", e.message);
+  }
+
+  // 4. فحص مجموعة companies بالـ authorizedEmails (بدون قيد auth.currentUser لأن المستخدم قد يكون مسجلاً للتو)
+  try {
+    {
+      const qComp = query(collection(db, 'companies'), where('authorizedEmails', 'array-contains', cleanEmail));
+      const snapComp = await Promise.race([
+        getDocs(qComp),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2500))
+      ]);
+      if (snapComp && !snapComp.empty) {
+        const cData = snapComp.docs[0].data();
+        const companyId = cData.companyId || snapComp.docs[0].id;
+        const companyName = cData.name || cData.settings?.companyName || 'الشركة';
+        const users = Array.isArray(cData.users) ? cData.users : [];
+        const match = users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
+        if (match) {
+          return {
+            ...match,
+            companyId,
+            companyName,
+            subdomain: cData.subdomain || '',
+            logo: cData.logo || null,
+            adminEmail: cData.adminEmail || '',
+            adminName: cData.adminName || '',
+            users: cData.users || [],
+            authorizedEmails: cData.authorizedEmails || [],
+            currency: cData.currency || cData.settings?.currency || 'ج.م',
+          };
+        }
+        return {
+          id: `u_${companyId}_auth`,
+          email: cleanEmail,
+          name: cleanEmail.split('@')[0],
+          role: 'engineer',
+          companyId,
+          companyName,
+          subdomain: cData.subdomain || '',
+          logo: cData.logo || null,
+          adminEmail: cData.adminEmail || '',
+          adminName: cData.adminName || '',
+          users: cData.users || [],
+          authorizedEmails: cData.authorizedEmails || [],
+          currency: cData.currency || cData.settings?.currency || 'ج.م',
+        };
+      }
+    }
+  } catch (e) {}
 
   return null;
 }

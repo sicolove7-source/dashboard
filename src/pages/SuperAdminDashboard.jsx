@@ -8,7 +8,8 @@ import {
 import {
   loadAllTenants, loadAllTenantsAsync, createTenant, updateTenant, deleteTenant,
   generateWhatsAppWelcomeMessage, setActiveTenantId,
-  isSubAccountsLoginAllowed, setSubAccountsLoginAllowed
+  isSubAccountsLoginAllowed, setSubAccountsLoginAllowed,
+  getDeletedTenantIds
 } from '../services/tenantsManager';
 import { syncTenantsListToCloud } from '../services/cloudSync';
 import { updateCurrentUserPassword } from '../services/auth';
@@ -62,23 +63,15 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
   }, []);
 
   function refreshTenants() {
-    const localList = loadAllTenants();
+    const deletedIds = getDeletedTenantIds();
+    const localList = loadAllTenants().filter(t => t?.id && !deletedIds.has(t.id));
     setTenants(localList);
-    // جلب السحابة فقط عند الفتح الأول (لمزامنة بيانات الموظفين وغيرها)
-    // لكن لا نسمح للسحابة بالكتابة فوق البيانات المحلية إذا كانت المحلية أحدث أو أكثر
+
     loadAllTenantsAsync().then(cloudTenants => {
       if (Array.isArray(cloudTenants) && cloudTenants.length > 0) {
-        // نستخدم السحابة فقط لو كانت تحتوي نفس عدد الشركات أو أكثر من المحلية
-        // (منع حالة: السحابة لسه ما وصلتهاش الشركة الجديدة)
-        setTenants(prev => {
-          if (cloudTenants.length >= prev.length) {
-            return cloudTenants;
-          }
-          // لو المحلية أكثر: دمج (أضف أي شركة محلية مش موجودة في السحابة)
-          const cloudIds = new Set(cloudTenants.map(t => t.id));
-          const localOnly = prev.filter(t => !cloudIds.has(t.id));
-          return localOnly.length > 0 ? [...localOnly, ...cloudTenants] : cloudTenants;
-        });
+        const freshDeletedIds = getDeletedTenantIds();
+        const filteredCloud = cloudTenants.filter(t => t?.id && !freshDeletedIds.has(t.id));
+        setTenants(filteredCloud);
       }
     }).catch(err => console.warn('[SuperAdminDashboard] Cloud refresh warning:', err));
   }

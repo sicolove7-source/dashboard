@@ -124,8 +124,8 @@ export default function Login({
       // 0. إنهاء أي جلسة مستخدم قديمة لضمان الدخول بالحساب الجديد فقط دون تداخل
       try {
         await logoutUser();
+        // ✅ نمسح فقط localStorage الخاص بهذا النطاق — لا نمس كوكيز النطاقات الأخرى
         localStorage.removeItem('active_session_user');
-        removeCrossSubdomainCookie('tashteeb_session_user');
       } catch (e) {}
 
       const rawIdentifier = (email || '').trim();
@@ -534,10 +534,9 @@ export default function Login({
         });
       } catch (e) {}
 
-      // حفظ بيانات الجلسة مبكراً لتفادي شاشة Login عند الانتقال
+      // ✅ localStorage فقط (per-origin) — لا كوكيز مشتركة للجلسة
       try {
         localStorage.setItem('active_session_user', JSON.stringify(res.user));
-        setCrossSubdomainCookie('tashteeb_session_user', res.user);
       } catch (e) {}
 
       // انتظار لحظة لتأكيد انتشار البيانات السحابية قبل الانتقال
@@ -740,13 +739,13 @@ export default function Login({
                   direction: "ltr",
                   gap: 8,
                 }}>
-                  <span style={{ fontWeight: 800, fontSize: 13.5, color: "#0F172A", wordBreak: "break-all" }}>
-                    https://{registeredTenantInfo.subdomain}.tashteebpro.com
+                  <span style={{ fontWeight: 800, fontSize: 13, color: "#0F172A", wordBreak: "break-all" }}>
+                    {getSubdomainUrl(registeredTenantInfo.subdomain)}
                   </span>
                   <button
                     type="button"
                     onClick={() => {
-                      navigator.clipboard.writeText(`https://${registeredTenantInfo.subdomain}.tashteebpro.com`);
+                      navigator.clipboard.writeText(getSubdomainUrl(registeredTenantInfo.subdomain));
                       setCopiedSubdomain(true);
                       setTimeout(() => setCopiedSubdomain(false), 2500);
                     }}
@@ -1224,7 +1223,7 @@ export default function Login({
                       color: subdomain.trim().length >= 3 ? "#059669" : "var(--muted)",
                       letterSpacing: "0.2px"
                     }}>
-                      https://{subdomain.trim() || 'your-company'}.tashteebpro.com
+                      {getSubdomainUrl(subdomain.trim() || 'your-company')}
                     </span>
                   </div>
                   <span style={{ fontSize: 11, color: "var(--muted)" }}>رابط الدخول المباشر لمكتبكم</span>

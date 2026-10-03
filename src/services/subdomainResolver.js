@@ -86,6 +86,17 @@ export function getSubdomain() {
     }
   }
 
+  // 5. في النطاق الرئيسي المخصص (tashteebpro.com أو www.tashteebpro.com):
+  // فحص الكاش المحلي للسب-دومين النشط للحفاظ على سياق الشركة بين التنقلات والتحديثات
+  if (hostname.includes('tashteebpro.com') || parts.length === 2) {
+    try {
+      const savedSub = localStorage.getItem(SUBDOMAIN_SESSION_KEY);
+      if (savedSub && !RESERVED_SUBDOMAINS.includes(savedSub)) {
+        return savedSub;
+      }
+    } catch (e) {}
+  }
+
   return null;
 }
 
@@ -166,16 +177,17 @@ export function getSubdomainUrl(subdomain) {
 
   // في بيئة التطوير المحلية
   if (hostname.includes('localhost') || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
-    return `${protocol}//${window.location.host}/?subdomain=${subdomain}`;
+    return `${protocol}//${window.location.host}/?subdomain=${encodeURIComponent(subdomain)}`;
   }
 
   // في بيئة استضافة فايربيس الافتراضية (*.web.app أو *.firebaseapp.com)
   if (hostname.endsWith('.web.app') || hostname.endsWith('.firebaseapp.com')) {
-    return `${protocol}//${window.location.host}/?subdomain=${subdomain}`;
+    return `${protocol}//${window.location.host}/?subdomain=${encodeURIComponent(subdomain)}`;
   }
 
-  // في بيئة الإنتاج السحابية
-  const rootDomain = hostname.split('.').slice(-2).join('.');
+  // في بيئة الإنتاج السحابية (مع كلاودفلير والدومين المخصص)
+  const parts = hostname.split('.');
+  const rootDomain = parts.slice(-2).join('.');
   return `${protocol}//${subdomain}.${rootDomain}${port}`;
 }
 

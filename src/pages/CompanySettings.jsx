@@ -10,6 +10,7 @@ import { setGlobalCurrency } from '../utils/helpers';
 import { getActiveTenantId } from '../services/tenantsManager';
 import { syncSettingsToCloud, syncCompanyUsersToCloud, syncTenantUsersToCloud, uploadMediaToFirebaseStorage } from '../services/cloudSync';
 import { callCreateCompanyUser } from '../services/auth';
+import { getSubdomainUrl } from '../services/subdomainResolver';
 import AutomationsCenter from './AutomationsCenter';
 import UserManagement, { loadUsers, saveUsers } from './UserManagement';
 import {
@@ -603,12 +604,12 @@ export default function CompanySettings({
                   fontWeight: 700,
                   color: '#1877F2',
                 }}>
-                  https://{companySubdomain}.tashteebpro.com
+                  {getSubdomainUrl(companySubdomain)}
                 </code>
                 <button
                   type="button"
                   onClick={() => {
-                    navigator.clipboard.writeText(`https://${companySubdomain}.tashteebpro.com`);
+                    navigator.clipboard.writeText(getSubdomainUrl(companySubdomain));
                     alert('تم نسخ رابط مساحة عمل شركتك بنجاح! 📋');
                   }}
                   className="btn btn-secondary"
@@ -617,7 +618,7 @@ export default function CompanySettings({
                   نسخ الرابط 📋
                 </button>
                 <a
-                  href={`https://${companySubdomain}.tashteebpro.com`}
+                  href={getSubdomainUrl(companySubdomain)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn btn-primary"

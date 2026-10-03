@@ -24,10 +24,10 @@ import { cleanPhoneNumber } from './cloudSync';
  * استدعاء Cloud Function لتعيين Custom Claims للمستخدم بشكل آمن من Server-Side
  * يُضمن ربط المستخدم بشركته في Firebase Auth Token
  */
-export async function callAssignUserClaims({ targetUid, companyId, role, companyName, currency }) {
+export async function callAssignUserClaims({ targetUid, companyId, role, companyName, currency, subdomain, logo }) {
   try {
     const fn = httpsCallable(functions, 'assignUserClaims');
-    const result = await fn({ targetUid, companyId, role, companyName, currency });
+    const result = await fn({ targetUid, companyId, role, companyName, currency, subdomain, logo });
     return result.data;
   } catch (err) {
     console.warn('[callAssignUserClaims] Cloud function error (non-blocking):', err?.message || err);
@@ -68,7 +68,7 @@ export async function callCreateCompanyUser({ email, name, role, companyId, pass
       return result.data;
     }
   } catch (cloudErr) {
-    console.warn('[callCreateCompanyUser] Cloud function unavailable or error:', cloudErr?.message || cloudErr?.code);
+    console.warn('[callCreateCompanyUser] Cloud function unavailable or error, proceeding to direct auth creation fallback:', cloudErr?.message || cloudErr?.code);
   }
 
   // 2. البديل المباشر المضمون: إنشاء الحساب فورياً في Firebase Auth عبر تطبيق مستقل (Secondary App)
@@ -202,10 +202,9 @@ export async function loginWithEmail(email, password, retries = 3) {
 export async function logoutUser() {
   try {
     try {
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.clear();
-      }
       if (typeof localStorage !== 'undefined') {
+        // ✅ نمسح فقط بيانات الجلسة الخاصة بهذا النطاق (origin)
+        // لا نستخدم sessionStorage.clear() لأنه يؤثر على كل التبويبات في نفس المتصفح
         localStorage.removeItem('active_session_user');
       }
     } catch (e) {}
@@ -408,6 +407,10 @@ export async function syncAndResetPhonePassword(phone, newPassword, knownEmail =
     }
   } catch (err) {
     console.warn('[syncAndResetPhonePassword] Cloud function unavailable or error:', err?.message || err);
+    const isRetryableNetworkError = ['functions/unavailable', 'functions/deadline-exceeded', 'functions/internal'].includes(err?.code);
+    if (!isRetryableNetworkError) {
+      return { success: false, error: 'تعذر تنفيذ العملية. حاول مرة أخرى أو تواصل مع الدعم الفني.' };
+    }
   }
 
   // 2. البديل المباشر: إنشاء أو تحديث المستخدم في Firebase Auth عبر Secondary App
