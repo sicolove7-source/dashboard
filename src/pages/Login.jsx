@@ -121,12 +121,9 @@ export default function Login({
     setLoading(true);
 
     try {
-      // 0. إنهاء أي جلسة مستخدم قديمة لضمان الدخول بالحساب الجديد فقط دون تداخل
-      try {
-        await logoutUser();
-        // ✅ نمسح فقط localStorage الخاص بهذا النطاق — لا نمس كوكيز النطاقات الأخرى
-        localStorage.removeItem('active_session_user');
-      } catch (e) {}
+      // ✅ نمسح فقط الجلسة المحلية القديمة دون عمل signOut لتجنب طرد التابات الأخرى
+      try { localStorage.removeItem('active_session_user'); } catch (e) {}
+
 
       const rawIdentifier = (email || '').trim();
       if (!rawIdentifier) {
@@ -349,8 +346,24 @@ export default function Login({
 
           onLogin(tenantResult.user, tenantResult.tenant, tenantResult.isSuperAdmin);
         } else {
-          // فحص تعليق الشركة أو الموظف في نتيجة المصادقة
-          if (tenantResult?.isTenantSuspended) {
+          // فحص حذف أو تعليق الشركة أو الموظف في نتيجة المصادقة
+          if (tenantResult?.isCompanyDeleted || tenantResult?.error === 'company_deleted' || tenantResult?.error === 'company_not_found') {
+            setError(
+              <div style={{ textAlign: 'right', lineHeight: 1.6, padding: '12px 14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 10 }}>
+                <div style={{ fontWeight: 800, color: '#EF4444', fontSize: 14, marginBottom: 4 }}>
+                  🚫 حساب المؤسسة محذوف أو غير متاح
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--ink)' }}>
+                  {tenantResult.message || 'تم حذف حساب هذه المؤسسة أو إلغاء اشتراكها من قِبل إدارة منصة تشطيب برو.'}
+                </div>
+              </div>
+            );
+            try {
+              import('../firebase').then(({ auth }) => {
+                import('firebase/auth').then(({ signOut }) => signOut(auth));
+              });
+            } catch (e) {}
+          } else if (tenantResult?.isTenantSuspended) {
             setError(
               <div style={{ textAlign: 'right', lineHeight: 1.6, padding: '12px 14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 10 }}>
                 <div style={{ fontWeight: 800, color: '#EF4444', fontSize: 14, marginBottom: 4 }}>

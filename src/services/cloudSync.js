@@ -6,7 +6,7 @@
  */
 
 import app, { db, storage, functions, auth, ensureAnonymousAuth } from '../firebase.js';
-import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, getDocs, query, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, getDocs, query, where, arrayUnion } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, uploadString, getStorage } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 
@@ -1434,14 +1434,95 @@ export function subscribeToCloudCompanyField(companyId, fieldName, onUpdate) {
 }
 
 /**
- * حذف شركة بالكامل من السحابة
+ * جلب قائمة معرفات الشركات المحذوفة نهائياً من السحابة
+ */
+export async function fetchDeletedTenantsFromCloud() {
+  try {
+    const docRef = doc(db, 'platform_metadata', 'deleted_tenants');
+    const snap = await Promise.race([
+      getDoc(docRef),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))
+    ]);
+    if (snap && snap.exists()) {
+      const data = snap.data();
+      const list = data?.deletedIds;
+      if (Array.isArray(list)) {
+        return list.map(id => String(id).trim()).filter(Boolean);
+      }
+    }
+  } catch (err) {
+    console.warn("[CloudSync] fetchDeletedTenantsFromCloud notice:", err.message);
+  }
+  return [];
+}
+
+/**
+ * تسجيل معرف شركة محذوفة في السحابة فوراً
+ */
+export async function syncDeletedTenantToCloud(companyId) {
+  if (!companyId) return false;
+  const cId = cleanCompanyId(companyId);
+  const possibleIds = Array.from(new Set([
+    cId,
+    cId.startsWith('comp_') ? cId.replace(/^comp_/, '') : `comp_${cId}`
+  ])).filter(Boolean);
+
+  try {
+    const docRef = doc(db, 'platform_metadata', 'deleted_tenants');
+    await setDoc(docRef, {
+      deletedIds: arrayUnion(...possibleIds),
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+    return true;
+  } catch (err) {
+    console.warn("[CloudSync] syncDeletedTenantToCloud error:", err.message);
+    return false;
+  }
+}
+
+/**
+ * حذف شركة بالكامل من السحابة والشطب النهائي
  */
 export async function deleteCompanyFromCloud(companyId) {
   const cId = cleanCompanyId(companyId);
   if (!cId) return false;
+
+  // 1. تسجيلها سحابياً في قائمة المحذوفات المركزية أولاً
+  await syncDeletedTenantToCloud(cId);
+
+  // 2. محاولة الحذف الشامل عبر Cloud Function (لتنظيف Firebase Auth والـ Subcollections)
+  try {
+    const fn = httpsCallable(functions, 'deleteCompanyPermanently');
+    const res = await fn({ companyId: cId });
+    if (res.data?.success) {
+      console.log('[deleteCompanyFromCloud] ✅ Permanently deleted via Cloud Function:', cId);
+      return true;
+    }
+  } catch (fnErr) {
+    console.warn("[deleteCompanyFromCloud] Cloud Function fallback notice:", fnErr.message);
+  }
+
+  // 3. مسار احتياطي عبر Client SDK المباشر
   try {
     const docRef = doc(db, 'companies', cId);
+    // وسم الوثيقة كـ deleted أولاً لمنع عملها حتى لو فشل الـ deleteDoc
+    await setDoc(docRef, {
+      status: 'deleted',
+      isDeleted: true,
+      deletedAt: new Date().toISOString()
+    }, { merge: true }).catch(() => {});
+
     await deleteDoc(docRef);
+
+    // حذف وثيقة النطاق الفرعي من tenant_directory
+    try {
+      const q = query(collection(db, 'tenant_directory'), where('companyId', '==', cId));
+      const snaps = await getDocs(q);
+      for (const d of snaps.docs) {
+        await deleteDoc(d.ref).catch(() => {});
+      }
+    } catch (e) {}
+
     return true;
   } catch (error) {
     console.warn("Cloud delete (company) offline or error:", error.message);

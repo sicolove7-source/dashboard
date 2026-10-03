@@ -17,6 +17,8 @@ import {
   syncProjectsToCloud,
   syncCompanyUsersToCloud,
   deleteCompanyFromCloud,
+  fetchDeletedTenantsFromCloud,
+  syncDeletedTenantToCloud,
   fetchTenantsListFromCloud,
   syncTenantsListToCloud,
   syncTenantUsersToCloud,
@@ -38,7 +40,7 @@ import { getCrossSubdomainCookie, setCrossSubdomainCookie, isCompanySubdomain, g
 export const PLATFORM_TENANTS_KEY = 'platform-tenants-master-v1';
 export const ACTIVE_TENANT_ID_KEY = 'platform-active-tenant-id';
 export const SUB_ACCOUNTS_ACCESS_KEY = 'platform-subaccounts-access-v2';
-// قائمة IDs الشركات المحذوفة نهائياً حتى لا يُعيدها loadAllTenants من DEFAULT_TENANTS
+// قائمة IDs الشركات المحذوفة نهائياً مركزياً وسحابياً لمنع إعادتها عبر أي متصفح
 export const DELETED_TENANTS_KEY = 'platform-deleted-tenants-v1';
 
 export function getDeletedTenantIds() {
@@ -49,11 +51,50 @@ export function getDeletedTenantIds() {
   } catch (e) { return new Set(); }
 }
 
-function addDeletedTenantId(id) {
+export async function fetchDeletedTenantIdsAsync() {
+  const localSet = getDeletedTenantIds();
+  try {
+    const cloudList = await fetchDeletedTenantsFromCloud();
+    if (Array.isArray(cloudList) && cloudList.length > 0) {
+      cloudList.forEach(id => {
+        if (id) {
+          const s = String(id).trim();
+          localSet.add(s);
+          if (s.startsWith('comp_')) localSet.add(s.replace(/^comp_/, ''));
+          else localSet.add(`comp_${s}`);
+        }
+      });
+      try {
+        localStorage.setItem(DELETED_TENANTS_KEY, JSON.stringify(Array.from(localSet)));
+      } catch (e) {}
+    }
+  } catch (e) {}
+  return localSet;
+}
+
+export function isTenantDeleted(id) {
+  if (!id) return false;
+  const deleted = getDeletedTenantIds();
+  const cleanId = String(id).trim();
+  return deleted.has(cleanId) ||
+         deleted.has(cleanId.replace(/^comp_/, '')) ||
+         deleted.has(`comp_${cleanId}`);
+}
+
+export function addDeletedTenantId(id) {
+  if (!id) return;
   try {
     const existing = getDeletedTenantIds();
-    existing.add(id);
+    const cleanId = String(id).trim();
+    existing.add(cleanId);
+    if (cleanId.startsWith('comp_')) {
+      existing.add(cleanId.replace(/^comp_/, ''));
+    } else {
+      existing.add(`comp_${cleanId}`);
+    }
     localStorage.setItem(DELETED_TENANTS_KEY, JSON.stringify(Array.from(existing)));
+    // مزامنة سحابية مركزية فورية حتى تعم كافة المتصفحات فوراً
+    syncDeletedTenantToCloud(cleanId).catch(() => {});
   } catch (e) {}
 }
 
@@ -187,15 +228,16 @@ export function loadAllTenants() {
     const deletedIds = getDeletedTenantIds();
     const map = new Map();
     DEFAULT_TENANTS.forEach(t => {
-      if (t?.id && !deletedIds.has(t.id)) map.set(t.id, { ...t });
+      if (t?.id && !isTenantDeleted(t.id)) map.set(t.id, { ...t });
     });
     parsed.forEach(t => {
-      if (t?.id && !deletedIds.has(t.id)) {
+      if (t?.id && !isTenantDeleted(t.id) && t.status !== 'deleted') {
         let enhanced = { ...t };
         try {
           const sRaw = localStorage.getItem(`tenant_${t.id}_settings`);
           if (sRaw) {
             const s = JSON.parse(sRaw);
+            if (s.status === 'deleted') return;
             if (s.companyName && s.companyName !== 'شركة المقاولات' && s.companyName !== 'شركة المقاولات والتشطيبات') {
               enhanced.name = s.companyName;
             }
@@ -238,16 +280,21 @@ export function loadAllTenants() {
 }
 
 export async function loadAllTenantsAsync() {
+  // ✅ 1. جلب ومزامنة قائمة الشركات المحذوفة نهائياً سحابياً أولاً
+  const deletedIds = await fetchDeletedTenantIdsAsync();
   const local = loadAllTenants();
-  // ✅ جلب قائمة الشركات المحذوفة نهائياً لفلترتها من كل المصادر السحابية
-  const deletedIds = getDeletedTenantIds();
+
   try {
     const cloudTenants = await fetchTenantsListFromCloud();
+    const hasCloudSource = Array.isArray(cloudTenants);
     const mergedMap = new Map();
-    if (Array.isArray(cloudTenants) && cloudTenants.length > 0) {
+
+    if (hasCloudSource && cloudTenants.length > 0) {
       cloudTenants.forEach(t => {
-        // ✅ تجاهل أي شركة تم حذفها نهائياً
-        if (t?.id && !deletedIds.has(t.id)) mergedMap.set(t.id, t);
+        // ✅ تجاهل أي شركة محذوفة سحابياً
+        if (t?.id && !deletedIds.has(t.id) && !isTenantDeleted(t.id) && t.status !== 'deleted') {
+          mergedMap.set(t.id, t);
+        }
       });
     }
 
@@ -263,8 +310,8 @@ export async function loadAllTenantsAsync() {
         dirSnap.forEach(d => {
           const td = d.data();
           const cId = td.companyId || `comp_${d.id}`;
-          // ✅ تجاهل الشركات المحذوفة من tenant_directory أيضاً
-          if (deletedIds.has(cId)) return;
+          // ✅ تجاهل الشركات المحذوفة
+          if (deletedIds.has(cId) || isTenantDeleted(cId)) return;
           if (!mergedMap.has(cId)) {
             mergedMap.set(cId, {
               id: cId,
@@ -295,11 +342,27 @@ export async function loadAllTenantsAsync() {
       // non-blocking
     }
 
-    if (mergedMap.size > 0) {
+    // تنظيف الشركات المحذوفة من التخزين المحلي إن وُجدت
+    local.forEach(t => {
+      if (t?.id && (deletedIds.has(t.id) || isTenantDeleted(t.id) || t.status === 'deleted')) {
+        try {
+          localStorage.removeItem(`tenant_${t.id}_projects`);
+          localStorage.removeItem(`tenant_${t.id}_settings`);
+          localStorage.removeItem(`tenant_${t.id}_users`);
+          localStorage.removeItem(`tenant_${t.id}_team`);
+          localStorage.removeItem(`tenant_${t.id}_leads`);
+        } catch (e) {}
+      }
+    });
+
+    if (mergedMap.size > 0 || hasCloudSource) {
       local.forEach(t => {
-        if (t?.id) {
+        if (t?.id && !deletedIds.has(t.id) && !isTenantDeleted(t.id) && t.status !== 'deleted') {
           if (!mergedMap.has(t.id)) {
-            mergedMap.set(t.id, t);
+            // فقط إذا لم تكن هناك سحابة (Offline) أو تم تسجيل الشركة محلياً للتو نضيفها
+            if (!hasCloudSource || t._isLocalNew) {
+              mergedMap.set(t.id, t);
+            }
           } else {
             const cloudT = mergedMap.get(t.id);
             const mergedUsers = Array.isArray(cloudT.users) && cloudT.users.length > 0
@@ -329,7 +392,6 @@ export async function loadAllTenantsAsync() {
       });
       const merged = Array.from(mergedMap.values());
       try { localStorage.setItem(PLATFORM_TENANTS_KEY, JSON.stringify(merged)); } catch (e) {}
-      try { syncTenantsListToCloud(merged); } catch (e) {}
       return merged;
     }
   } catch (e) {
@@ -738,19 +800,39 @@ export function updateTenant(id, updates) {
 }
 
 export function deleteTenant(id) {
-  // تسجيل الشركة في قائمة المحذوفات أولاً لمنع إعادتها من DEFAULT_TENANTS
-  addDeletedTenantId(id);
-  const tenants = loadAllTenants().filter(t => t.id !== id);
+  if (!id) return loadAllTenants();
+  const cleanId = String(id).trim();
+
+  // 1. تسجيل الشركة في قائمة المحذوفات سحابياً ومحلياً فوراً
+  addDeletedTenantId(cleanId);
+
+  // 2. تحديث وحفظ القائمة المحلية
+  const tenants = loadAllTenants().filter(t => t?.id !== cleanId && !isTenantDeleted(t?.id));
   saveAllTenants(tenants);
+
+  // 3. مزامنة فورية للقائمة المحدثة بدون الشركة المحذوفة إلى السحابة
   try {
     syncTenantsListToCloud(tenants).catch(() => {});
   } catch (e) {}
+
+  // 4. إلغاء تفعيل الشركة النشطة إذا كانت هي المحذوفة
   try {
-    localStorage.removeItem(`tenant_${id}_projects`);
-    localStorage.removeItem(`tenant_${id}_settings`);
-    localStorage.removeItem(`tenant_${id}_users`);
-    localStorage.removeItem(`tenant_${id}_team`);
-    localStorage.removeItem(`tenant_${id}_leads`);
+    const active = getActiveTenantId();
+    if (active === cleanId || active === cleanId.replace(/^comp_/, '') || active === `comp_${cleanId}`) {
+      setActiveTenantId(null);
+    }
+  } catch (e) {}
+
+  // 5. تطهير شامل للتخزين المحلي لكافة مفاتيح هذه الشركة بجميع أشكال المعرف
+  try {
+    const prefixes = [cleanId, cleanId.replace(/^comp_/, ''), `comp_${cleanId}`];
+    prefixes.forEach(p => {
+      localStorage.removeItem(`tenant_${p}_projects`);
+      localStorage.removeItem(`tenant_${p}_settings`);
+      localStorage.removeItem(`tenant_${p}_users`);
+      localStorage.removeItem(`tenant_${p}_team`);
+      localStorage.removeItem(`tenant_${p}_leads`);
+    });
 
     // تطهير كامل لمستخدمي هذه الشركة من السجل المركزي platform-all-users-registry
     const regRaw = localStorage.getItem('platform-all-users-registry');
@@ -758,7 +840,7 @@ export function deleteTenant(id) {
       const reg = JSON.parse(regRaw);
       let changed = false;
       Object.keys(reg).forEach(k => {
-        if (reg[k]?.companyId === id) {
+        if (prefixes.includes(reg[k]?.companyId)) {
           delete reg[k];
           changed = true;
         }
@@ -769,15 +851,14 @@ export function deleteTenant(id) {
     }
   } catch (e) {}
 
-  // ✅ حذف من companies/ في Firestore
-  try { deleteCompanyFromCloud(id); } catch (e) {}
+  // 6. حذف سحابي شامل (Cloud Function لتعطيل الحسابات وحذف المستندات + Firestore Direct)
+  try { deleteCompanyFromCloud(cleanId); } catch (e) {}
 
-  // ✅ حذف من tenant_directory في Firestore لمنع رجوع الشركة عند fetchTenantsListFromCloud
+  // 7. حذف وحجب من tenant_directory
   try {
     import('../firebase').then(({ db }) => {
-      import('firebase/firestore').then(({ doc, deleteDoc, collection, getDocs, query, where }) => {
-        // البحث عن الشركة في tenant_directory بالـ companyId وحذفها
-        getDocs(query(collection(db, 'tenant_directory'), where('companyId', '==', id)))
+      import('firebase/firestore').then(({ deleteDoc, collection, getDocs, query, where }) => {
+        getDocs(query(collection(db, 'tenant_directory'), where('companyId', '==', cleanId)))
           .then(snap => {
             snap.forEach(d => deleteDoc(d.ref).catch(() => {}));
           })
@@ -1312,14 +1393,34 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
 
   // 3. فحص صلاحيات الشركة المحددة بدقة داخل الـ Custom Claims
   if (claims.companyId) {
+    // 🔒 فحص حاسم: هل الشركة محذوفة نهائياً؟
+    if (isTenantDeleted(claims.companyId)) {
+      return {
+        success: false,
+        error: 'company_deleted',
+        isCompanyDeleted: true,
+        message: '🚫 تم حذف أو إلغاء تفعيل حساب هذه المؤسسة من قِبل إدارة المنصة.',
+      };
+    }
+
     const claimTenant = tenants.find(t => t.id === claims.companyId);
 
     // جلب اسم وشعار الشركة من Firestore مباشرة لضمان التوافق عبر جميع المتصفحات
     let cloudCompanyName = null;
     let cloudCompanyLogo = null;
+    let compCloud = null;
     try {
       const { fetchCompanyDataFromCloud } = await import('./cloudSync');
-      const compCloud = await fetchCompanyDataFromCloud(claims.companyId);
+      compCloud = await fetchCompanyDataFromCloud(claims.companyId);
+      if (compCloud?.status === 'deleted' || compCloud?.isDeleted === true) {
+        addDeletedTenantId(claims.companyId);
+        return {
+          success: false,
+          error: 'company_deleted',
+          isCompanyDeleted: true,
+          message: '🚫 تم حذف أو إلغاء تفعيل حساب هذه المؤسسة من قِبل إدارة المنصة.',
+        };
+      }
       if (compCloud?.settings?.companyName) cloudCompanyName = compCloud.settings.companyName;
       if (compCloud?.name && !cloudCompanyName) cloudCompanyName = compCloud.name;
       if (compCloud?.settings?.companyLogo) cloudCompanyLogo = compCloud.settings.companyLogo;
@@ -1332,6 +1433,16 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
       }
     } catch (e) {
       console.warn('[resolveTenantUserByEmail] Could not fetch company from cloud:', e?.message);
+    }
+
+    if (claimTenant?.status === 'deleted') {
+      addDeletedTenantId(claims.companyId);
+      return {
+        success: false,
+        error: 'company_deleted',
+        isCompanyDeleted: true,
+        message: '🚫 تم حذف أو إلغاء تفعيل حساب هذه المؤسسة من قِبل إدارة المنصة.',
+      };
     }
 
     if (claimTenant) {
@@ -1357,8 +1468,17 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
       };
     }
 
-    // ✅ الشركة في الـ Claims لكن غير موجودة محلياً
-    console.warn('[resolveTenantUserByEmail] Company from claims not in local list, building user from claims:', claims.companyId);
+    // إذا لم تكن موجودة محلياً ولا سحابياً إطلاقاً، نمنع الدخول
+    if (!cloudCompanyName && !compCloud) {
+      return {
+        success: false,
+        error: 'company_not_found',
+        isCompanyDeleted: true,
+        message: '🚫 لم يتم العثور على بيانات هذه المؤسسة في المنصة أو تم حذفها نهائياً.',
+      };
+    }
+
+    // ✅ الشركة موثقة سحابياً لكن لم تكن محملة في القائمة المحلية بعد
     return {
       success: true,
       user: {
@@ -1370,11 +1490,11 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
         companyName: cloudCompanyName || claims.companyName || claims.companyId,
         currency: claims.currency || 'ج.م',
       },
-      tenant: cloudCompanyName ? {
+      tenant: {
         id: claims.companyId,
         name: cloudCompanyName,
         logo: cloudCompanyLogo,
-      } : null,
+      },
       isSuperAdmin: false,
     };
   }

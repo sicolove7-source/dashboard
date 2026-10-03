@@ -16,6 +16,8 @@ import {
   updatePassword,
   updateEmail,
   getAuth,
+  setPersistence,
+  browserSessionPersistence,
 } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { cleanPhoneNumber } from './cloudSync';
@@ -141,6 +143,8 @@ export async function callCreateCompanyUser({ email, name, role, companyId, pass
  */
 export async function loginWithEmail(email, password, retries = 3) {
   const cleanEmail = (email || '').trim().toLowerCase();
+  // ✅ ضمان أن كل تاب له جلسة مستقلة (sessionStorage) قبل تسجيل الدخول
+  try { await setPersistence(auth, browserSessionPersistence); } catch (e) {}
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
@@ -203,8 +207,7 @@ export async function logoutUser() {
   try {
     try {
       if (typeof localStorage !== 'undefined') {
-        // ✅ نمسح فقط بيانات الجلسة الخاصة بهذا النطاق (origin)
-        // لا نستخدم sessionStorage.clear() لأنه يؤثر على كل التبويبات في نفس المتصفح
+        // ✅ نمسح بيانات الجلسة الخاصة بهذا النطاق (origin)
         localStorage.removeItem('active_session_user');
       }
     } catch (e) {}
@@ -265,10 +268,13 @@ export async function sendPasswordReset(email) {
  */
 export async function registerWithEmail(email, password, retries = 3) {
   const cleanEmail = (email || '').trim().toLowerCase();
+  // ✅ ضمان جلسة مستقلة لكل تاب (sessionStorage) عند التسجيل الجديد أيضاً
+  try { await setPersistence(auth, browserSessionPersistence); } catch (e) {}
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
       return { success: true, user: cred.user };
+
     } catch (error) {
       const errStr = String(error.message || '') + String(error.code || '');
       const isDbClosing = errStr.includes('closing') || errStr.includes('hidden') || errStr.includes('Database is closing');

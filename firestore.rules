@@ -154,8 +154,13 @@ service cloud.firestore {
       allow write: if isSuperAdmin();
     }
 
+    match /platform_metadata/deleted_tenants {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
     match /platform_metadata/tenants {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isSuperAdmin();
     }
 

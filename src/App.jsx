@@ -37,7 +37,7 @@ import { isFirstLogin, markFirstLoginDone, seedDemoData } from './utils/seedDemo
 
 import { loadCompanySettings, saveCompanySettings, applyCompanyBranding, DEFAULT_COMPANY_SETTINGS } from './utils/branding';
 try { if (typeof localStorage !== 'undefined') localStorage.removeItem('company-settings-v1'); } catch (e) {}
-import { getActiveTenantId, setActiveTenantId, ACTIVE_TENANT_ID_KEY, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail, syncAllLocalUsersToCloud, loadAllTenants, loadAllTenantsAsync, saveAllTenants } from './services/tenantsManager';
+import { getActiveTenantId, setActiveTenantId, ACTIVE_TENANT_ID_KEY, getTenantData, getTenantDataAsync, isSubAccountsLoginAllowed, fetchPlatformSettingsFromCloud, resolveTenantUserByEmail, syncAllLocalUsersToCloud, loadAllTenants, loadAllTenantsAsync, saveAllTenants, isTenantDeleted } from './services/tenantsManager';
 import { getSubdomain, isAdminSubdomain, isCompanySubdomain, clearActiveSubdomain, getSubdomainUrl, getCrossSubdomainCookie, setCrossSubdomainCookie, removeCrossSubdomainCookie } from './services/subdomainResolver';
 import { onAuthChange, logoutUser } from './services/auth';
 import { db } from './firebase';
@@ -190,6 +190,94 @@ function CompanySuspendedScreen({ companyName, onLogout }) {
             تسجيل الخروج والعودة
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function CompanyDeletedScreen({ companyName, onLogout }) {
+  const companyDisplayName = companyName || 'هذه المؤسسة';
+  return (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#090D16',
+      backgroundImage: 'radial-gradient(ellipse at 50% 30%, rgba(220, 38, 38, 0.22), transparent 70%)',
+      color: '#F8FAFC',
+      fontFamily: 'Cairo, system-ui, -apple-system, sans-serif',
+      direction: 'rtl',
+      padding: '24px',
+      textAlign: 'center'
+    }}>
+      <div style={{
+        maxWidth: 520,
+        width: '100%',
+        background: 'rgba(15, 23, 42, 0.92)',
+        border: '1px solid rgba(239, 68, 68, 0.45)',
+        borderRadius: 24,
+        padding: '44px 32px',
+        boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 40px rgba(239, 68, 68, 0.2)',
+        backdropFilter: 'blur(20px)',
+        position: 'relative'
+      }}>
+        <div style={{
+          width: 80,
+          height: 80,
+          margin: '0 auto 24px',
+          borderRadius: '50%',
+          background: 'rgba(239, 68, 68, 0.15)',
+          border: '2px solid rgba(239, 68, 68, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 38,
+          boxShadow: '0 0 30px rgba(239, 68, 68, 0.3)'
+        }}>
+          🚫
+        </div>
+
+        <div style={{
+          display: 'inline-block',
+          background: 'rgba(239, 68, 68, 0.15)',
+          color: '#F87171',
+          border: '1px solid rgba(239, 68, 68, 0.3)',
+          borderRadius: 20,
+          padding: '4px 14px',
+          fontSize: 12,
+          fontWeight: 700,
+          marginBottom: 16
+        }}>
+          تم إلغاء تفعيل أو حذف المؤسسة
+        </div>
+
+        <h2 style={{ fontSize: '1.6rem', fontWeight: 800, margin: '0 0 12px 0', color: '#FFFFFF' }}>
+          حساب {companyDisplayName} غير متاح
+        </h2>
+
+        <p style={{ fontSize: '0.95rem', color: '#94A3B8', lineHeight: 1.7, margin: '0 0 28px 0' }}>
+          تم حذف اشتراك هذه الشركة أو إلغاؤه نهائياً من قِبل إدارة منصة تشطيب برو، وتم إيقاف صلاحيات الوصول لقاعدة بياناتها ومشاريعها.
+        </p>
+
+        <button
+          onClick={onLogout}
+          style={{
+            width: '100%',
+            padding: '14px 20px',
+            backgroundColor: '#DC2626',
+            color: '#FFFFFF',
+            border: 'none',
+            borderRadius: 14,
+            fontSize: '1rem',
+            fontWeight: 800,
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            boxShadow: '0 10px 25px -5px rgba(220, 38, 38, 0.4)'
+          }}
+        >
+          تسجيل الخروج والعودة للرئيسية
+        </button>
       </div>
     </div>
   );
@@ -366,8 +454,8 @@ export default function App() {
   const [saveState, setSaveState] = useState(null); // null | 'saved' | 'offline'
   const [currentUser, setCurrentUser] = useState(() => {
     try {
-      // ✅ نستخدم فقط localStorage (per-origin/subdomain) لعزل الجلسات
-      // الكوكيز المشتركة لا تُستخدم للجلسة لمنع تداخل الحسابات بين النطاقات
+      // ✅ نقرأ من localStorage فقط للعرض الأولي السريع (0ms)
+      // onAuthChange سيُحقق من Firebase Auth الحقيقي ويُصحح الحالة فوراً إذا كانت الجلسة منتهية
       const cached = localStorage.getItem('active_session_user');
       if (cached) {
         return JSON.parse(cached);
@@ -379,18 +467,14 @@ export default function App() {
   });
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     try {
+      // ✅ الحالة الأولية: وجود كاش محلي فقط — onAuthChange هو المصدر الحقيقي للمصادقة
       return !!localStorage.getItem('active_session_user');
     } catch (e) {
       return false;
     }
   });
-  const [authLoading, setAuthLoading] = useState(() => {
-    try {
-      return !localStorage.getItem('active_session_user');
-    } catch (e) {
-      return true;
-    }
-  });
+  const [authLoading, setAuthLoading] = useState(true); // دائماً true عند البداية حتى يُعيد Firebase التحقق
+
   const userRole = currentUser?.role || 'engineer';
 
   // Landing Page vs Login state
@@ -460,6 +544,19 @@ export default function App() {
     } catch (e) {}
     return false;
   }, [isSuperAdminUser, companySettings?.status, activeCompanyId]);
+
+  // فحص ما إذا كانت الشركة الحالية محذوفة نهائياً من قِبل إدارة المنصة
+  const isCompanyDeleted = useMemo(() => {
+    if (isSuperAdminUser || !activeCompanyId) return false;
+    if (companySettings?.status === 'deleted' || companySettings?.isDeleted === true) return true;
+    if (isTenantDeleted(activeCompanyId)) return true;
+    try {
+      const all = loadAllTenants();
+      const currentTenant = all.find(t => t.id === activeCompanyId);
+      if (currentTenant?.status === 'deleted') return true;
+    } catch (e) {}
+    return false;
+  }, [isSuperAdminUser, companySettings?.status, companySettings?.isDeleted, activeCompanyId]);
 
   // Multi-Tenant Subdomain Cloud Resolution States
   const [subdomainResolving, setSubdomainResolving] = useState(() => isCompanySubdomain());
@@ -2340,6 +2437,30 @@ export default function App() {
           />
         </React.Suspense>
       </AdminProvider>
+    );
+  }
+
+  // ─── فحص حذف حساب الشركة للمستخدمين العاديين ───
+  if (isCompanyDeleted) {
+    return (
+      <CompanyDeletedScreen
+        companyName={companySettings?.companyName || subdomainCompanyName}
+        onLogout={() => {
+          try {
+            if (activeCompanyId) {
+              const prefixes = [activeCompanyId, activeCompanyId.replace(/^comp_/, ''), `comp_${activeCompanyId}`];
+              prefixes.forEach(p => {
+                localStorage.removeItem(`tenant_${p}_projects`);
+                localStorage.removeItem(`tenant_${p}_settings`);
+                localStorage.removeItem(`tenant_${p}_users`);
+                localStorage.removeItem(`tenant_${p}_team`);
+                localStorage.removeItem(`tenant_${p}_leads`);
+              });
+            }
+          } catch (e) {}
+          handleLogout();
+        }}
+      />
     );
   }
 

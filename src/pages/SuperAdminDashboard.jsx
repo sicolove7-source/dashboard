@@ -62,18 +62,21 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
     refreshTenants();
   }, []);
 
-  function refreshTenants() {
+  async function refreshTenants() {
     const deletedIds = getDeletedTenantIds();
     const localList = loadAllTenants().filter(t => t?.id && !deletedIds.has(t.id));
     setTenants(localList);
 
-    loadAllTenantsAsync().then(cloudTenants => {
-      if (Array.isArray(cloudTenants) && cloudTenants.length > 0) {
+    try {
+      const cloudTenants = await loadAllTenantsAsync();
+      if (Array.isArray(cloudTenants)) {
         const freshDeletedIds = getDeletedTenantIds();
         const filteredCloud = cloudTenants.filter(t => t?.id && !freshDeletedIds.has(t.id));
         setTenants(filteredCloud);
       }
-    }).catch(err => console.warn('[SuperAdminDashboard] Cloud refresh warning:', err));
+    } catch (err) {
+      console.warn('[SuperAdminDashboard] Cloud refresh warning:', err);
+    }
   }
 
   function openAddModal() {
@@ -148,13 +151,16 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
     }
   }
 
-  function handleDelete(id) {
+  async function handleDelete(id) {
     deleteTenant(id);
-    const updatedList = loadAllTenants();
+    const updatedList = loadAllTenants().filter(t => t?.id !== id);
     setTenants(updatedList);
     setDeleteConfirmId(null);
-    // مزامنة فورية مع السحابة بعد الحذف
-    syncTenantsListToCloud(updatedList).catch(e => console.warn('[SuperAdminDashboard] Delete sync:', e));
+    try {
+      await syncTenantsListToCloud(updatedList);
+    } catch (e) {
+      console.warn('[SuperAdminDashboard] Delete sync:', e);
+    }
   }
 
   function toggleStatus(tenant) {

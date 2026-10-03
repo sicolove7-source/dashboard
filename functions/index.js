@@ -871,3 +871,140 @@ exports.createPortalShare = onCall(async (request) => {
   console.log(`[createPortalShare] Successfully published share for project ${projectId} with token ${token}`);
   return { success: true, token };
 });
+
+/**
+ * دالة حذف الشركة نهائياً من المنصة والسحابة (deleteCompanyPermanently)
+ * متاحة حصرياً للـ Super Admin
+ * تقوم بـ:
+ * 1. تسجيل الشركة في platform_metadata/deleted_tenants
+ * 2. حذف الشركة من platform_metadata/tenants
+ * 3. حذف وثيقة النطاق الفرعي من tenant_directory
+ * 4. وسم وثيقة الشركة companies/{companyId} بـ status: 'deleted' وحذفها مع مستنداتها
+ * 5. تعطيل حسابات جميع موظفي ومدراء الشركة في Firebase Auth لمنعهم من تسجيل الدخول نهائياً
+ */
+exports.deleteCompanyPermanently = onCall(async (request) => {
+  const { companyId } = request.data || {};
+  if (!companyId) {
+    throw new HttpsError("invalid-argument", "معرف الشركة (companyId) مطلوب.");
+  }
+
+  // 1. التحقق من صلاحية Super Admin
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً.");
+  }
+
+  const callerClaims = request.auth?.token || {};
+  const callerEmail = (request.auth?.token?.email || '').toLowerCase().trim();
+  let isSuperAdmin = callerClaims.role === 'super_admin' || 
+                     callerClaims.isSuperAdmin === true || 
+                     (callerEmail === 'sicolove7@gmail.com' && callerClaims.email_verified === true);
+  if (!isSuperAdmin) {
+    try {
+      const saDoc = await db.doc('platform_metadata/superadmin').get();
+      if (saDoc.exists && saDoc.data()?.uid === callerUid) {
+        isSuperAdmin = true;
+      }
+    } catch (e) {}
+  }
+
+  if (!isSuperAdmin) {
+    throw new HttpsError("permission-denied", "عملية الحذف متاحة حصرياً للمشرف العام للمنصة (Super Admin).");
+  }
+
+  const cleanId = String(companyId).trim();
+  const possibleIds = [cleanId];
+  if (cleanId.startsWith('comp_')) {
+    possibleIds.push(cleanId.replace(/^comp_/, ''));
+  } else {
+    possibleIds.push(`comp_${cleanId}`);
+  }
+
+  const auth = getAuth();
+
+  // 2. تسجيل الشركة في platform_metadata/deleted_tenants
+  try {
+    const delDocRef = db.doc('platform_metadata/deleted_tenants');
+    await delDocRef.set({
+      deletedIds: FieldValue.arrayUnion(...possibleIds),
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+  } catch (e) {
+    console.warn('[deleteCompanyPermanently] Error updating deleted_tenants:', e.message);
+  }
+
+  // 3. حذف الشركة من platform_metadata/tenants
+  try {
+    const tenantsDocRef = db.doc('platform_metadata/tenants');
+    const tenantsSnap = await tenantsDocRef.get();
+    if (tenantsSnap.exists) {
+      const currentList = tenantsSnap.data()?.tenants || [];
+      const updatedList = currentList.filter(t => !possibleIds.includes(t.id));
+      await tenantsDocRef.set({
+        tenants: updatedList,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    }
+  } catch (e) {
+    console.warn('[deleteCompanyPermanently] Error updating tenants list:', e.message);
+  }
+
+  // 4. حذف وحجب النطاق الفرعي من tenant_directory
+  try {
+    for (const pid of possibleIds) {
+      const dirSnaps = await db.collection('tenant_directory').where('companyId', '==', pid).get();
+      for (const d of dirSnaps.docs) {
+        await d.ref.delete();
+      }
+    }
+  } catch (e) {
+    console.warn('[deleteCompanyPermanently] Error cleaning tenant_directory:', e.message);
+  }
+
+  // 5. جلب بيانات الشركة لتحديد موظفيها وتعطيلهم في Auth
+  try {
+    for (const pid of possibleIds) {
+      const compDocRef = db.doc(`companies/${pid}`);
+      const compSnap = await compDocRef.get();
+      if (compSnap.exists) {
+        const cData = compSnap.data() || {};
+        
+        // تعطيل حساب المدير الرئيسي إن وجد
+        if (cData.adminUid) {
+          try {
+            await auth.updateUser(cData.adminUid, { disabled: true });
+            await auth.revokeRefreshTokens(cData.adminUid);
+          } catch (e) {}
+        }
+        if (cData.adminEmail) {
+          try {
+            const uRec = await auth.getUserByEmail(cData.adminEmail.toLowerCase().trim());
+            if (uRec?.uid) {
+              await auth.updateUser(uRec.uid, { disabled: true });
+              await auth.revokeRefreshTokens(uRec.uid);
+            }
+          } catch (e) {}
+        }
+
+        // وسم الوثيقة كـ deleted أولاً
+        await compDocRef.set({
+          status: 'deleted',
+          isDeleted: true,
+          deletedAt: new Date().toISOString(),
+          deletedBy: callerUid,
+        }, { merge: true });
+
+        // حذف كلي بواسطة recursiveDelete
+        try {
+          await db.recursiveDelete(compDocRef);
+        } catch (recErr) {
+          await compDocRef.delete().catch(() => {});
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[deleteCompanyPermanently] Error cleaning company doc:', e.message);
+  }
+
+  return { success: true, companyId: cleanId };
+});
