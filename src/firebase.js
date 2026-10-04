@@ -11,7 +11,7 @@ import { getFunctions } from "firebase/functions";
 
 export const firebaseConfig = {
   apiKey: "AIzaSyCsrivi9P36fdl4DANVdtB_uaBP0X4t8TM",
-  authDomain: "tashteeb-67d13.firebaseapp.com",
+  authDomain: "tashteebpro.com",
   projectId: "tashteeb-67d13",
   storageBucket: "tashteeb-67d13.firebasestorage.app",
   messagingSenderId: "527043598350",

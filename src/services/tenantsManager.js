@@ -757,7 +757,7 @@ export async function registerNewTenant(formData) {
           currency: newTenant.currency || 'ج.م',
           subdomain: rawSubdomain,
           logo: newTenant.logo || null,
-        }).catch(() => {});
+        }).catch(err => console.error('[assignUserClaims] FAILED:', err?.code, err?.message));
       }).catch(() => {});
     }
   }, 50);

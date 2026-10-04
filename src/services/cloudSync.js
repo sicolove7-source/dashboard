@@ -1280,11 +1280,10 @@ export async function syncTenantUsersToCloud(companyId, users) {
       const cleanSub = sub.toLowerCase().trim();
       const dirDocRef = doc(db, 'tenant_directory', cleanSub);
       await setDoc(dirDocRef, {
-        authorizedEmails: authorizedEmails,
-        users: cleanUsers,
+        companyId: cId,
         updatedAt: new Date().toISOString(),
       }, { merge: true });
-      console.log('[syncTenantUsersToCloud] ✅ Updated tenant_directory for subdomain:', cleanSub, 'with', authorizedEmails.length, 'authorized emails');
+      console.log('[syncTenantUsersToCloud] ✅ Updated tenant_directory timestamp for subdomain:', cleanSub);
     }
   } catch (dirErr) {
     console.warn("[syncTenantUsersToCloud] tenant_directory update notice:", dirErr?.message);
@@ -1747,6 +1746,27 @@ export async function fetchUserFromCloudDirectory(email, preferredSubdomain = nu
   const cleanEmail = (email || '').toLowerCase().trim();
   if (!cleanEmail) return null;
 
+  // 0. البحث الآمن عبر الدالة السحابية resolveLoginUser (تمنع تسريب بيانات الموظفين)
+  try {
+    const fn = httpsCallable(functions, 'resolveLoginUser');
+    const res = await Promise.race([
+      fn({ email: cleanEmail, subdomain: preferredSubdomain }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3000))
+    ]);
+    if (res?.data?.found && res?.data?.user) {
+      return {
+        ...res.data.user,
+        companyId: res.data.companyId,
+        companyName: res.data.companyName,
+        subdomain: res.data.subdomain,
+        logo: res.data.logo || null,
+        currency: res.data.currency || 'ج.م',
+      };
+    }
+  } catch (fnErr) {
+    // استمرار احتياطي في حال عدم جاهزية الدالة السحابية
+  }
+
   // 1. فحص وثيقة الدليل المركزي السحابي platform_metadata/users_directory
   try {
     const dirRef = doc(db, TENANTS_META_DOC, 'users_directory');
@@ -1993,6 +2013,27 @@ export function cleanPhoneNumber(raw) {
 export async function fetchUserByPhoneFromCloudDirectory(phone) {
   const cPhone = cleanPhoneNumber(phone);
   if (!cPhone || cPhone.length < 7) return null;
+
+  // 0. البحث الآمن عبر الدالة السحابية resolveLoginUser
+  try {
+    const fn = httpsCallable(functions, 'resolveLoginUser');
+    const res = await Promise.race([
+      fn({ phone: cPhone }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3000))
+    ]);
+    if (res?.data?.found && res?.data?.user) {
+      return {
+        ...res.data.user,
+        companyId: res.data.companyId,
+        companyName: res.data.companyName,
+        subdomain: res.data.subdomain,
+        logo: res.data.logo || null,
+        currency: res.data.currency || 'ج.م',
+      };
+    }
+  } catch (fnErr) {
+    // استمرار احتياطي
+  }
 
   // 1. فحص وثيقة الدليل المركزي السحابي platform_metadata/users_directory
   try {

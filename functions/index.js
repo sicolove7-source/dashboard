@@ -96,7 +96,8 @@ exports.assignUserClaims = onCall(async (request) => {
         const compDoc = await db.doc(`companies/${companyId}`).get();
         if (compDoc.exists) {
           const compData = compDoc.data() || {};
-          if (compData.adminUid === callerUid || compData.adminEmail === request.auth?.token?.email) {
+          const tokenEmail = (request.auth?.token?.email || '').toLowerCase().trim();
+          if (compData.adminUid === callerUid || (compData.adminEmail || '').toLowerCase().trim() === tokenEmail) {
             isSelfRegisteringOwner = true;
           }
         }
@@ -1008,3 +1009,178 @@ exports.deleteCompanyPermanently = onCall(async (request) => {
 
   return { success: true, companyId: cleanId };
 });
+
+/**
+ * دالة مساعدة لتطهير وتوحيد أرقام الهواتف داخل السحابة
+ */
+function cleanPhoneHelper(raw) {
+  if (!raw) return '';
+  let str = String(raw).trim()
+    .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+    .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+    .replace(/[\s\-\(\)\.]/g, '');
+
+  if (str.startsWith('00')) str = str.slice(2);
+  if (str.startsWith('+')) str = str.slice(1);
+
+  if (str.startsWith('20') && str.length === 12 && ['10', '11', '12', '15'].includes(str.slice(2, 4))) {
+    str = '0' + str.slice(2);
+  } else if (str.length === 10 && ['10', '11', '12', '15'].includes(str.slice(0, 2))) {
+    str = '0' + str;
+  }
+
+  return str.replace(/\D/g, '');
+}
+
+/**
+ * دالة سحابية آمنة للبحث عن الشركة والمستخدم لتسجيل الدخول (resolveLoginUser)
+ * تبحث بالبريد الإلكتروني أو رقم الهاتف خلف السيرفر الآمن
+ * وتُرجع فقط البيانات العامة للشركة مع كائن المستخدم المطابق فقط (بدون تسريب باقي الموظفين أو الشركات الأخرى)
+ */
+exports.resolveLoginUser = onCall(async (request) => {
+  const { identifier, phone, email, subdomain } = request.data || {};
+  const rawInput = (identifier || email || phone || '').toString().trim();
+  if (!rawInput) {
+    return { found: false, message: 'لم يتم تقديم بريد أو رقم هاتف للبحث.' };
+  }
+
+  const cleanEmail = rawInput.includes('@') ? rawInput.toLowerCase().trim() : (email ? email.toLowerCase().trim() : '');
+  const cPhone = cleanPhoneHelper(phone || (!rawInput.includes('@') ? rawInput : ''));
+  const cleanSub = subdomain ? subdomain.toLowerCase().trim() : null;
+
+  // 1. جلب قائمة الشركات المركزية من platform_metadata/tenants بسيرفر Admin
+  let tenantsList = [];
+  try {
+    const tenantsDoc = await db.doc('platform_metadata/tenants').get();
+    if (tenantsDoc.exists) {
+      tenantsList = tenantsDoc.data()?.tenants || [];
+    }
+  } catch (e) {
+    console.warn('[resolveLoginUser] Error fetching platform_metadata/tenants:', e.message);
+  }
+
+  // ترتيب البحث: إذا تم إرسال نطاق فرعي، نبدأ بالشركة التابعة له أولاً
+  if (cleanSub) {
+    tenantsList.sort((a, b) => {
+      const subA = (a.subdomain || a.slug || a.id || '').toLowerCase().trim();
+      const subB = (b.subdomain || b.slug || b.id || '').toLowerCase().trim();
+      if (subA === cleanSub || subA === `comp_${cleanSub}`) return -1;
+      if (subB === cleanSub || subB === `comp_${cleanSub}`) return 1;
+      return 0;
+    });
+  }
+
+  // 2. البحث في الشركات عن المالك أو الموظف المطابق
+  for (const t of tenantsList) {
+    if (!t || t.status === 'deleted') continue;
+
+    const companyId = t.id || t.companyId;
+    const companyName = t.name || companyId;
+    const sub = t.subdomain || t.slug || '';
+    const logo = t.logo || null;
+    const currency = t.currency || 'ج.م';
+
+    // فحص هل هو المدير / المالك
+    const isOwnerByEmail = cleanEmail && t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail;
+    const isOwnerByPhone = cPhone && ((t.phone && cleanPhoneHelper(t.phone) === cPhone) || (t.adminPhone && cleanPhoneHelper(t.adminPhone) === cPhone));
+
+    if (isOwnerByEmail || isOwnerByPhone) {
+      return {
+        found: true,
+        companyId,
+        companyName,
+        subdomain: sub,
+        logo,
+        currency,
+        user: {
+          id: `u_${companyId}_admin`,
+          name: t.adminName || 'المدير العام',
+          email: t.adminEmail || (isOwnerByPhone ? `phone_${cPhone}@tashteeb.app` : cleanEmail),
+          phone: t.phone || t.adminPhone || cPhone || null,
+          role: 'owner',
+        }
+      };
+    }
+
+    // فحص موظفي الشركة إن وجدوا في وثيقة المنصة
+    if (Array.isArray(t.users)) {
+      const match = t.users.find(u => {
+        if (!u) return false;
+        if (cleanEmail && u.email && u.email.toLowerCase().trim() === cleanEmail) return true;
+        if (cPhone) {
+          const uPhone = cleanPhoneHelper(u.phone || u.cleanPhone);
+          if (uPhone && uPhone === cPhone) return true;
+          if (u.email) {
+            const prefix = cleanPhoneHelper(u.email.split('@')[0].replace('phone_', ''));
+            if (prefix && prefix === cPhone) return true;
+          }
+        }
+        return false;
+      });
+
+      if (match) {
+        return {
+          found: true,
+          companyId,
+          companyName,
+          subdomain: sub,
+          logo,
+          currency,
+          user: {
+            id: match.id || `u_${companyId}_member`,
+            name: match.name || match.email?.split('@')[0] || 'عضو فريق',
+            email: match.email || (cPhone ? `phone_${cPhone}@tashteeb.app` : cleanEmail),
+            phone: match.phone || cPhone || null,
+            role: match.role || 'engineer',
+          }
+        };
+      }
+    }
+  }
+
+  // 3. بحث احتياطي مباشر في وثيقة الشركة داخل companies/{companyId} إذا كان هناك نطاق فرعي محدد
+  if (cleanSub) {
+    try {
+      const possibleIds = [cleanSub, `comp_${cleanSub}`];
+      for (const cId of possibleIds) {
+        const cSnap = await db.doc(`companies/${cId}`).get();
+        if (cSnap.exists) {
+          const cData = cSnap.data() || {};
+          const users = Array.isArray(cData.users) ? cData.users : [];
+          const match = users.find(u => {
+            if (!u) return false;
+            if (cleanEmail && u.email && u.email.toLowerCase().trim() === cleanEmail) return true;
+            if (cPhone) {
+              const uPhone = cleanPhoneHelper(u.phone || u.cleanPhone);
+              if (uPhone && uPhone === cPhone) return true;
+              if (u.email && cleanPhoneHelper(u.email.split('@')[0]) === cPhone) return true;
+            }
+            return false;
+          });
+          if (match) {
+            return {
+              found: true,
+              companyId: cId,
+              companyName: cData.name || cData.settings?.companyName || cleanSub,
+              subdomain: cleanSub,
+              logo: cData.logo || null,
+              currency: cData.currency || 'ج.م',
+              user: {
+                id: match.id || `u_${cId}_member`,
+                name: match.name || 'عضو فريق',
+                email: match.email || cleanEmail,
+                phone: match.phone || cPhone || null,
+                role: match.role || 'engineer',
+              }
+            };
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[resolveLoginUser] Backup companies doc lookup notice:', e.message);
+    }
+  }
+
+  return { found: false };
+});
+
