@@ -129,7 +129,8 @@ service cloud.firestore {
     }
 
     match /portal_shares/{token} {
-      allow read: if true;
+      allow get: if true;
+      allow list: if false;
       allow create: if isAuthenticated() && companyDocBelongsToUser(request.resource.data.companyId);
       allow delete: if isAuthenticated() && companyDocBelongsToUser(resource.data.companyId);
       allow update: if (isAuthenticated() && companyDocBelongsToUser(resource.data.companyId)) ||
@@ -138,7 +139,8 @@ service cloud.firestore {
     }
 
     match /portal_shares_media/{mediaId} {
-      allow read: if true;
+      allow get: if true;
+      allow list: if false;
       allow write: if isAuthenticated() && (
         isSuperAdmin() ||
         ('companyId' in request.resource.data && companyDocBelongsToUser(request.resource.data.companyId))

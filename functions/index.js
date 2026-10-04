@@ -424,7 +424,7 @@ exports.updateOwnTenantEntry = onCall(async (request) => {
     // الحقول المسموح لمالك الشركة بتعديلها فقط
     const tenantAllowedFields = [
       'name', 'subtitle', 'city', 'phone', 'logo', 'currency',
-      'primaryColor', 'accentColor', 'settings', 'users', 'authorizedEmails',
+      'primaryColor', 'accentColor', 'settings', 'usersCount',
       'subdomain', 'slug'
     ];
 

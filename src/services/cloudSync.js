@@ -1289,38 +1289,17 @@ export async function syncTenantUsersToCloud(companyId, users) {
     console.warn("[syncTenantUsersToCloud] tenant_directory update notice:", dirErr?.message);
   }
 
-  // 2. تحديث قائمة الشركات المركزية platform_metadata/tenants عبر Cloud Function الآمنة (مع بديل مباشر للسوبر أدمن)
+  // 2. تحديث عدد الموظفين في السجل المركزي platform_metadata/tenants (أمان تام بدون تسريب بياناتهم)
   try {
     const fn = httpsCallable(functions, 'updateOwnTenantEntry');
     await fn({
       companyId: cId,
       patch: {
-        users: cleanUsers,
-        authorizedEmails: authorizedEmails,
+        usersCount: cleanUsers.length,
       }
     });
   } catch (fnErr) {
-    try {
-      const tenantsRef = doc(db, TENANTS_META_DOC, TENANTS_META_KEY);
-      const snap = await getDoc(tenantsRef);
-      if (snap.exists()) {
-        const currentList = snap.data()?.tenants || [];
-        const idx = currentList.findIndex(t => t.id === cId);
-        if (idx !== -1) {
-          currentList[idx] = {
-            ...currentList[idx],
-            users: cleanUsers,
-            authorizedEmails: authorizedEmails,
-          };
-          await setDoc(tenantsRef, {
-            tenants: currentList,
-            updatedAt: new Date().toISOString(),
-          }, { merge: true });
-        }
-      }
-    } catch (e) {
-      console.warn("[syncTenantUsersToCloud] tenants list update notice:", e.message);
-    }
+    // Non-blocking notice
   }
 
   // 3. تحديث دليل المستخدمين المركزي السحابي platform_metadata/users_directory عبر Cloud Function الآمنة
@@ -1616,14 +1595,10 @@ export async function syncTenantsListToCloud(tenants) {
     const clean = { ...t };
     delete clean.adminPassword;
     delete clean.password;
-    if (Array.isArray(clean.users)) {
-      clean.users = clean.users.map(u => {
-        if (!u) return u;
-        const cleanU = { ...u };
-        delete cleanU.password;
-        delete cleanU.adminPassword;
-        return cleanU;
-      });
+    delete clean.users;
+    delete clean.authorizedEmails;
+    if (Array.isArray(t.users)) {
+      clean.usersCount = t.users.length;
     }
     return clean;
   });
