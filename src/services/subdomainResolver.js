@@ -86,15 +86,11 @@ export function getSubdomain() {
     }
   }
 
-  // 5. في النطاق الرئيسي المخصص (tashteebpro.com أو www.tashteebpro.com):
-  // فحص الكاش المحلي للسب-دومين النشط للحفاظ على سياق الشركة بين التنقلات والتحديثات
-  if (hostname.includes('tashteebpro.com') || parts.length === 2) {
-    try {
-      const savedSub = localStorage.getItem(SUBDOMAIN_SESSION_KEY);
-      if (savedSub && !RESERVED_SUBDOMAINS.includes(savedSub)) {
-        return savedSub;
-      }
-    } catch (e) {}
+  // 5. في النطاق الرئيسي (tashteebpro.com أو www.tashteebpro.com):
+  // لا يوجد سب-دومين إطلاقاً إلا إذا حُدد صراحة في رابط الاستعلام (?subdomain=...)
+  // هذا يمنع أي تداخل بين حسابات الشركات وحساب السوبر أدمن والصفحة الرئيسية
+  if (hostname === 'tashteebpro.com' || hostname === 'www.tashteebpro.com' || parts.length === 2) {
+    return null;
   }
 
   return null;

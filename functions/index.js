@@ -1,34 +1,163 @@
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { setGlobalOptions } = require("firebase-functions/v2");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getAuth } = require("firebase-admin/auth");
 const crypto = require("crypto");
 
+const {
+  ALLOWED_ROLES,
+  isValidRole,
+  canAssignRole,
+  validateSubdomain,
+  safeTimingCompare,
+  cleanPhone,
+  sanitizePortalPayload,
+} = require("./validators");
+
 initializeApp();
 const db = getFirestore();
 
+// إعدادات السحابة العامة لضبط استهلاك الموارد وحماية الميزانية
+setGlobalOptions({
+  maxInstances: 10,
+  timeoutSeconds: 60,
+});
+
 /**
- * دالة مساعدة لتوليد توكن عشوائي قوي وآمن مشفر
+ * دالة مساعدة لتوليد توكن عشوائي قوي وآمن
  */
 function generateSecureToken() {
   return crypto.randomBytes(24).toString("hex");
 }
 
 /**
- * 0. دالة تعيين Custom Claims للمستخدم (assignUserClaims)
- * تستدعيها خدمة registerNewTenant بعد نجاح التسجيل لربط المستخدم بشركته في Firebase Auth
- * مُقيدة بالتحقق: المستخدم المطلوب تعيين Claims له يجب أن يكون نفسه أو Super Admin
+ * Rate Limiting بسيط في الذاكرة لدوال الاستعلام العامة
  */
-exports.assignUserClaims = onCall(async (request) => {
-  const { targetUid, companyId, role, companyName, currency, subdomain, logo } = request.data || {};
+const rateLimitMap = new Map();
+function checkRateLimit(key, maxRequests = 15, windowMs = 60000) {
+  const now = Date.now();
+  const record = rateLimitMap.get(key) || { count: 0, resetAt: now + windowMs };
 
-  // التحقق من صحة المدخلات
+  if (now > record.resetAt) {
+    record.count = 1;
+    record.resetAt = now + windowMs;
+    rateLimitMap.set(key, record);
+    return true;
+  }
+
+  record.count += 1;
+  rateLimitMap.set(key, record);
+  return record.count <= maxRequests;
+}
+
+/**
+ * تنظيف سجل الـ Rate Limit دورياً
+ */
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, record] of rateLimitMap.entries()) {
+    if (now > record.resetAt) {
+      rateLimitMap.delete(key);
+    }
+  }
+}, 300000);
+
+/**
+ * جلب بيانات الشركة من مسار tenants/{companyId} أو البديل platform_metadata/tenants
+ */
+async function getTenantDoc(companyId) {
+  if (!companyId) return null;
+
+  // 1. القراءة من المجموعة الجديدة tenants/{companyId}
+  try {
+    const tSnap = await db.doc(`tenants/${companyId}`).get();
+    if (tSnap.exists) {
+      return { id: companyId, ...tSnap.data() };
+    }
+  } catch (e) {}
+
+  // 2. الرجوع للمصفوفة المركزية القديمة platform_metadata/tenants
+  try {
+    const metaSnap = await db.doc("platform_metadata/tenants").get();
+    if (metaSnap.exists) {
+      const list = metaSnap.data()?.tenants || metaSnap.data()?.list || [];
+      const found = list.find((t) => t.id === companyId);
+      if (found) return found;
+    }
+  } catch (e) {}
+
+  // 3. الرجوع لوثيقة الشركة الأصلية companies/{companyId}
+  try {
+    const cSnap = await db.doc(`companies/${companyId}`).get();
+    if (cSnap.exists) {
+      return { id: companyId, ...cSnap.data() };
+    }
+  } catch (e) {}
+
+  return null;
+}
+
+/**
+ * حفظ وتحديث بيانات الشركة في المسار الجديد tenants/{companyId} مع مزامنة المصفوفة
+ */
+async function saveTenantEntry(companyId, tenantData) {
+  const now = new Date().toISOString();
+  const cleanData = {
+    ...tenantData,
+    id: companyId,
+    updatedAt: now,
+  };
+
+  // 1. الكتابة في مجموعة tenants المستقلة
+  try {
+    await db.doc(`tenants/${companyId}`).set(cleanData, { merge: true });
+  } catch (e) {
+    console.warn(`[saveTenantEntry] Error writing to tenants/${companyId}:`, e.message);
+  }
+
+  // 2. تحديث المصفوفة المركزية القديمة لضمان توافق الأنظمة التي لم تُرَحّل بعد
+  try {
+    const metaRef = db.doc("platform_metadata/tenants");
+    await db.runTransaction(async (transaction) => {
+      const metaSnap = await transaction.get(metaRef);
+      let list = [];
+      if (metaSnap.exists) {
+        list = metaSnap.data()?.tenants || metaSnap.data()?.list || [];
+      }
+      const idx = list.findIndex((t) => t.id === companyId);
+      if (idx >= 0) {
+        list[idx] = { ...list[idx], ...cleanData };
+      } else {
+        list.unshift(cleanData);
+      }
+      transaction.set(metaRef, { tenants: list, list: list, updatedAt: now }, { merge: true });
+    });
+  } catch (e) {
+    console.warn(`[saveTenantEntry] Error updating legacy platform_metadata/tenants:`, e.message);
+  }
+}
+
+// ==============================================================================
+// 1. دالة تعيين الـ Custom Claims (assignUserClaims)
+// ==============================================================================
+exports.assignUserClaims = onCall(async (request) => {
+  const { targetUid, companyId, role, companyName, currency, subdomain, logo, bootstrapSecret } =
+    request.data || {};
+
   if (!targetUid || !companyId) {
     throw new HttpsError("invalid-argument", "targetUid و companyId مطلوبان.");
   }
 
-  // 1. الأمان والتحقق من الهوية
+  // اشتراط دور صريح ومعتمد (إلغاء الافتراضي القديم 'owner')
+  if (!isValidRole(role)) {
+    throw new HttpsError(
+      "invalid-argument",
+      `الدور المحدد '${role}' غير صالح. الأدوار المسموحة: ${ALLOWED_ROLES.join(", ")}`
+    );
+  }
+
   const callerUid = request.auth?.uid;
   const callerClaims = request.auth?.token || {};
 
@@ -36,194 +165,292 @@ exports.assignUserClaims = onCall(async (request) => {
     throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً لتنفيذ هذه العملية.");
   }
 
-  const callerEmail = (request.auth?.token?.email || '').toLowerCase().trim();
-  const isCallerSuperAdmin = callerClaims.role === 'super_admin' || 
-                             callerClaims.isSuperAdmin === true || 
-                             (callerEmail === 'sicolove7@gmail.com' && callerClaims.email_verified === true);
-  const targetRole = role || 'owner';
+  const callerEmail = (callerClaims.email || "").toLowerCase().trim();
+  const auth = getAuth();
 
-  // 2. التحقق من صلاحيات منح دور super_admin
-  if (targetRole === 'super_admin') {
+  // فحص صلاحية السوبر أدمن
+  let isCallerSuperAdmin =
+    callerClaims.role === "super_admin" ||
+    callerClaims.isSuperAdmin === true ||
+    (callerEmail === "sicolove7@gmail.com" && callerClaims.email_verified === true);
+
+  if (!isCallerSuperAdmin) {
+    try {
+      const saDoc = await db.doc("platform_metadata/superadmin").get();
+      if (saDoc.exists && saDoc.data()?.uid === callerUid) {
+        isCallerSuperAdmin = true;
+      }
+    } catch (e) {}
+  }
+
+  // جلب سجل المستخدم المستهدف في Firebase Auth لفحص claims الحالية
+  let targetUserRecord;
+  try {
+    targetUserRecord = await auth.getUser(targetUid);
+  } catch (err) {
+    throw new HttpsError("not-found", "المستخدم المستهدف غير مسجل في Firebase Auth.");
+  }
+
+  const targetExistingClaims = targetUserRecord.customClaims || {};
+
+  // -------------------------------------------------------------
+  // مسار أ: منح دور super_admin
+  // -------------------------------------------------------------
+  if (role === "super_admin") {
     if (isCallerSuperAdmin) {
-      // الحالة (أ): سوبر أدمن موجود وموثق في الـ claims يمنح الصلاحية لمستخدم آخر عن قصد
       console.log(`[assignUserClaims] Super Admin granted by existing Super Admin: ${callerUid}`);
     } else {
-      // الحالة (ب): التحقق الفعلي من عدم وجود أي سوبر أدمن في النظام كله حتى الآن (حالة الإقلاع الأول)
-      let hasExistingSuperAdmin = false;
-      try {
-        const saDoc = await db.doc('platform_metadata/superadmin').get();
-        if (saDoc.exists) {
-          const saData = saDoc.data() || {};
-          if (saData.uid || saData.isInitialized === true || saData.superAdminUid) {
-            hasExistingSuperAdmin = true;
-          }
-        }
-      } catch (e) {
-        console.error('[assignUserClaims] Error checking superadmin initialization:', e);
-        throw new HttpsError("internal", "فشل التحقق من سجلات المشرف العام المركزية.");
-      }
-
-      if (!hasExistingSuperAdmin) {
-        // الإقلاع الأول: السماح وتوثيق أول سوبر أدمن فورياً في Firestore
-        try {
-          await db.doc('platform_metadata/superadmin').set({
-            uid: targetUid,
-            email: request.auth?.token?.email || '',
-            isInitialized: true,
-            createdAt: new Date().toISOString(),
-          }, { merge: true });
-          console.log(`[assignUserClaims] First Super Admin bootstrapped for UID: ${targetUid}`);
-        } catch (e) {
-          console.warn('[assignUserClaims] Could not write bootstrap superadmin record:', e.message);
-        }
-      } else {
-        // رفض حاسم لأي حساب آخر يحاول منح نفسه أو غيره super_admin
+      // التحقق من حالة الإقلاع الأول (Bootstrap)
+      const saDoc = await db.doc("platform_metadata/superadmin").get();
+      if (!saDoc.exists) {
         throw new HttpsError(
-          "permission-denied",
-          "مرفوض: لا يمكنك منح دور super_admin. يوجد مشرف عام مسجل بالفعل في المنصة، ويجب أن يتم المنح بواسطة حسابه فقط."
+          "failed-precondition",
+          "وثيقة المشرف العام platform_metadata/superadmin غير مهيأة بعد."
         );
       }
+
+      const saData = saDoc.data() || {};
+      if (saData.uid || saData.isInitialized === true) {
+        throw new HttpsError(
+          "permission-denied",
+          "مرفوض: تم تعيين المشرف العام للنظام مسبقاً، ولا يمكن منحه إلا من حسابه حصراً."
+        );
+      }
+
+      // الإقلاع الأول محمي برمز سري مشفر
+      const configuredSecret = saData.bootstrapSecret || saData.setupSecret;
+      if (!configuredSecret || !safeTimingCompare(bootstrapSecret || "", configuredSecret)) {
+        throw new HttpsError("permission-denied", "رمز الإقلاع الأول غير صحيح أو غير متوفر.");
+      }
+
+      // توثيق أول سوبر أدمن
+      await db.doc("platform_metadata/superadmin").set({
+        uid: targetUid,
+        email: targetUserRecord.email || callerEmail,
+        isInitialized: true,
+        bootstrappedAt: new Date().toISOString(),
+      }, { merge: true });
     }
   } else {
-    // 3. التحقق من صلاحيات منح الأدوار الأخرى (owner, engineer, accountant, إلخ)
-    // يُسمح فقط إذا كان المستدعي super_admin أو owner لنفس الشركة
-    const isOwnerOfCompany = callerClaims.role === 'owner' && callerClaims.companyId === companyId;
+    // -------------------------------------------------------------
+    // مسار ب: منح أدوار الشركات (owner, admin, engineer, إلخ)
+    // -------------------------------------------------------------
+    const isOwnerOfCompany =
+      callerClaims.role === "owner" && callerClaims.companyId === companyId;
 
-    // استثناء التسجيل الذاتي لمالك الشركة الجديد وقت التسجيل الأولي:
+    // استثناء التسجيل الذاتي لمالك جديد يسجل شركته لأول مرة
     let isSelfRegisteringOwner = false;
-    if (!isCallerSuperAdmin && !isOwnerOfCompany && targetRole === 'owner' && callerUid === targetUid) {
+    if (!isCallerSuperAdmin && !isOwnerOfCompany && role === "owner" && callerUid === targetUid) {
       try {
         const compDoc = await db.doc(`companies/${companyId}`).get();
         if (compDoc.exists) {
           const compData = compDoc.data() || {};
-          const tokenEmail = (request.auth?.token?.email || '').toLowerCase().trim();
-          if (compData.adminUid === callerUid || (compData.adminEmail || '').toLowerCase().trim() === tokenEmail) {
+          const isDocAdmin =
+            compData.adminUid === callerUid ||
+            (compData.adminEmail && compData.adminEmail.toLowerCase().trim() === callerEmail);
+          const hasNoAdminYet = !compData.adminUid;
+          if (isDocAdmin || hasNoAdminYet) {
             isSelfRegisteringOwner = true;
           }
+        } else {
+          // الشركة جديدة تماماً ويتم إنشاؤها الآن
+          isSelfRegisteringOwner = true;
         }
       } catch (e) {
-        console.warn('[assignUserClaims] Error checking company doc for new owner self-registration:', e.message);
+        console.warn("[assignUserClaims] Check company doc notice:", e.message);
       }
     }
 
     if (!isCallerSuperAdmin && !isOwnerOfCompany && !isSelfRegisteringOwner) {
       throw new HttpsError(
         "permission-denied",
-        "مرفوض: لا تملك الصلاحية لتعيين مستخدمين لهذه الشركة. يجب أن تكون سوبر أدمن أو مالكاً للشركة المعنية."
+        "لا تملك الصلاحية لتعيين مستخدمين لهذه الشركة. يجب أن تكون سوبر أدمن أو مالكاً للشركة المعنية."
       );
+    }
+
+    // التحقق من الهرمية: المالك لا يمنح super_admin
+    if (!canAssignRole(callerClaims.role, role, isCallerSuperAdmin) && !isSelfRegisteringOwner) {
+      throw new HttpsError(
+        "permission-denied",
+        `لا تملك صلاحية منح الدور '${role}'. الصلاحية غير كافية.`
+      );
+    }
+
+    // التحقق من عزل الشركات: لا تعيّن مستخدماً ينتمي لشركة أخرى
+    if (
+      targetExistingClaims.companyId &&
+      targetExistingClaims.companyId !== companyId &&
+      !isCallerSuperAdmin
+    ) {
+      throw new HttpsError(
+        "permission-denied",
+        "مرفوض: هذا المستخدم مرتبط بالفعل بشركة أخرى على المنصة ولا يمكن ضمه إلا بواسطة المشرف العام."
+      );
+    }
+
+    // التحقق أن المستخدم إما هو المالك الجديد أو تمت دعوته لـ companies/{companyId}/users
+    if (!isSelfRegisteringOwner && !isCallerSuperAdmin) {
+      const userRef = db.doc(`companies/${companyId}/users/${targetUid}`);
+      const userDoc = await userRef.get();
+      if (!userDoc.exists) {
+        throw new HttpsError(
+          "failed-precondition",
+          "المستخدم المستهدف لم تتم إضافته بعد في قائمة مستخدمي هذه الشركة."
+        );
+      }
     }
   }
 
-  const safeRole = targetRole;
+  // -------------------------------------------------------------
+  // التحقق من الـ Subdomain وكتابة tenant_directory
+  // -------------------------------------------------------------
+  let validatedSub = null;
+  if (subdomain) {
+    const subCheck = validateSubdomain(subdomain);
+    if (!subCheck.valid) {
+      throw new HttpsError("invalid-argument", subCheck.error);
+    }
+    validatedSub = subCheck.cleanSubdomain;
 
-  try {
-    const claimsPayload = {
-      companyId: companyId,
-      role: safeRole,
-      companyName: companyName || companyId,
-      currency: currency || 'ج.م',
-    };
-    if (safeRole === 'super_admin') {
-      claimsPayload.isSuperAdmin = true;
+    const dirRef = db.doc(`tenant_directory/${validatedSub}`);
+    const dirSnap = await dirRef.get();
+    if (dirSnap.exists) {
+      const currentOwnerCompany = dirSnap.data()?.companyId;
+      if (currentOwnerCompany && currentOwnerCompany !== companyId) {
+        throw new HttpsError(
+          "already-exists",
+          `النطاق الفرعي '${validatedSub}' محجوز بالفعل لشركة أخرى.`
+        );
+      }
     }
 
-    await getAuth().setCustomUserClaims(targetUid, claimsPayload);
-
-    // تحديث وثيقة الشركة في Firestore بمعرف المستخدم Firebase (UID) والبريد الإلكتروني
+    // تسجيل أو تحديث دليل النطاقات الفرعية
     try {
-      await db.doc(`companies/${companyId}`).set({
-        adminUid: targetUid,
-        adminEmail: request.auth?.token?.email || '',
+      await dirRef.set({
+        companyId: companyId,
+        subdomain: validatedSub,
+        name: companyName || companyId,
+        logo: logo || null,
         updatedAt: new Date().toISOString(),
       }, { merge: true });
     } catch (e) {
-      console.warn('[assignUserClaims] Could not update adminUid in company doc:', e.message);
+      console.warn("[assignUserClaims] tenant_directory write notice:", e.message);
     }
-
-    // تسجيل الشركة في قائمة المنصة السحابية المركزية لضمان ظهورها للسوبر أدمن وكافة الأجهزة
-    try {
-      const tenantsRef = db.doc('platform_metadata/tenants');
-      const snap = await tenantsRef.get();
-      if (snap.exists) {
-        const list = snap.data()?.tenants || [];
-        if (!list.some(t => t.id === companyId)) {
-          list.unshift({
-            id: companyId,
-            name: companyName || companyId,
-            adminEmail: request.auth?.token?.email || '',
-            currency: currency || 'ج.م',
-            status: 'trial',
-            plan: 'trial',
-            createdAt: new Date().toISOString().slice(0, 10),
-          });
-          await tenantsRef.set({ tenants: list, updatedAt: new Date().toISOString() }, { merge: true });
-        }
-      }
-    } catch (e) {
-      console.warn('[assignUserClaims] Could not append to platform_metadata/tenants:', e.message);
-    }
-
-    // تسجيل الشركة في الدليل العام للسابدومين (tenant_directory/{subdomain}) لربط السابدومين بالشركة للزوار
-    if (subdomain) {
-      const cleanSub = String(subdomain).toLowerCase().trim().replace(/[^a-z0-9-]/g, '');
-      if (cleanSub) {
-        try {
-          await db.doc(`tenant_directory/${cleanSub}`).set({
-            companyId: companyId,
-            name: companyName || companyId,
-            logo: logo || null,
-            subdomain: cleanSub,
-            updatedAt: new Date().toISOString(),
-          }, { merge: true });
-          console.log(`[assignUserClaims] tenant_directory updated for subdomain: ${cleanSub} -> ${companyId}`);
-        } catch (e) {
-          console.warn('[assignUserClaims] Could not write to tenant_directory:', e.message);
-        }
-      }
-    }
-
-    console.log(`[assignUserClaims] Claims set for UID ${targetUid}: companyId=${companyId}, role=${safeRole}`);
-    return { success: true };
-  } catch (err) {
-    console.error('[assignUserClaims] Error setting claims:', err);
-    throw new HttpsError("internal", "تعذر تعيين صلاحيات المستخدم. يرجى المحاولة لاحقاً.");
   }
+
+  // -------------------------------------------------------------
+  // تعيين الـ Custom User Claims في Firebase Auth
+  // -------------------------------------------------------------
+  const claimsPayload = {
+    companyId: companyId,
+    role: role,
+    companyName: companyName || targetExistingClaims.companyName || companyId,
+    currency: currency || targetExistingClaims.currency || "ج.م",
+  };
+  if (role === "super_admin") {
+    claimsPayload.isSuperAdmin = true;
+  }
+
+  await auth.setCustomUserClaims(targetUid, claimsPayload);
+
+  // -------------------------------------------------------------
+  // الإصلاح الجوهري للسبب (أ): تحديث adminUid فقط عند تسجيل مالك جديد لشركة بلا مالك
+  // -------------------------------------------------------------
+  try {
+    const compRef = db.doc(`companies/${companyId}`);
+    const compSnap = await compRef.get();
+    const compData = compSnap.data() || {};
+
+    if (role === "owner" && (!compData.adminUid || compData.adminUid === targetUid)) {
+      await compRef.set({
+        adminUid: targetUid,
+        adminEmail: targetUserRecord.email || callerEmail,
+        name: companyName || compData.name || companyId,
+        currency: currency || compData.currency || "ج.م",
+        subdomain: validatedSub || compData.subdomain || null,
+        logo: logo || compData.logo || null,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      console.log(`[assignUserClaims] Set owner adminUid=${targetUid} for company=${companyId}`);
+    }
+  } catch (e) {
+    console.warn("[assignUserClaims] Could not update company doc:", e.message);
+  }
+
+  // حفظ بيانات الشركة في المسار المركزي الآمن tenants/{companyId}
+  try {
+    await saveTenantEntry(companyId, {
+      name: companyName || companyId,
+      adminEmail: role === "owner" ? (targetUserRecord.email || callerEmail) : undefined,
+      currency: currency || "ج.م",
+      subdomain: validatedSub || null,
+      logo: logo || null,
+      status: "trial",
+      plan: "trial",
+    });
+  } catch (e) {
+    console.warn("[assignUserClaims] Tenant entry notice:", e.message);
+  }
+
+  return {
+    success: true,
+    uid: targetUid,
+    companyId,
+    role,
+  };
 });
 
-/**
- * 0c. دالة إنشاء حساب موظف جديد في الشركة (createCompanyUser)
- * يستدعيها مدير الشركة لإنشاء حساب Firebase Auth لموظف جديد وإرسال رابط تعيين كلمة المرور
- * آمنة: مقيدة بأن المتصل يكون owner أو super_admin لنفس الشركة
- */
+// ==============================================================================
+// 2. دالة إنشاء مستخدم الشركة (createCompanyUser)
+// ==============================================================================
 exports.createCompanyUser = onCall(async (request) => {
-  const { email, name, role, companyId } = request.data || {};
+  const { email, name, role, companyId, password, phone } = request.data || {};
 
   if (!email || !companyId) {
     throw new HttpsError("invalid-argument", "البريد الإلكتروني ومعرف الشركة مطلوبان.");
   }
 
+  // اشتراط دور صريح ومعتمد
+  const safeRole = role || "engineer";
+  if (!isValidRole(safeRole) || safeRole === "super_admin") {
+    throw new HttpsError("invalid-argument", `الدور المحدد '${safeRole}' غير مسموح به.`);
+  }
+
   const callerUid = request.auth?.uid;
+  const callerClaims = request.auth?.token || {};
+
   if (!callerUid) {
     throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً.");
   }
 
-  const callerClaims = request.auth?.token || {};
-  const callerEmail = (request.auth?.token?.email || '').toLowerCase().trim();
-  let isSuperAdmin = callerClaims.role === 'super_admin' || 
-                     callerClaims.isSuperAdmin === true || 
-                     (callerEmail === 'sicolove7@gmail.com' && callerClaims.email_verified === true);
+  const callerEmail = (callerClaims.email || "").toLowerCase().trim();
+  let isSuperAdmin =
+    callerClaims.role === "super_admin" ||
+    callerClaims.isSuperAdmin === true ||
+    (callerEmail === "sicolove7@gmail.com" && callerClaims.email_verified === true);
+
   if (!isSuperAdmin) {
     try {
-      const saDoc = await db.doc('platform_metadata/superadmin').get();
+      const saDoc = await db.doc("platform_metadata/superadmin").get();
       if (saDoc.exists && saDoc.data()?.uid === callerUid) {
         isSuperAdmin = true;
       }
     } catch (e) {}
   }
-  const isCompanyOwner = callerClaims.role === 'owner' && callerClaims.companyId === companyId;
 
-  if (!isSuperAdmin && !isCompanyOwner) {
+  const isCompanyOwner = callerClaims.role === "owner" && callerClaims.companyId === companyId;
+  const isCompanyAdmin = ["owner", "admin"].includes(callerClaims.role) && callerClaims.companyId === companyId;
+
+  if (!isSuperAdmin && !isCompanyAdmin) {
     throw new HttpsError("permission-denied", "لا تملك صلاحية إنشاء مستخدمين لهذه الشركة.");
+  }
+
+  // التحقق من الهرمية: لا يمنح دوراً مساوياً أو أعلى من دوره
+  if (!canAssignRole(callerClaims.role, safeRole, isSuperAdmin)) {
+    throw new HttpsError(
+      "permission-denied",
+      `دورك '${callerClaims.role}' لا يتيح لك منح الدور '${safeRole}'.`
+    );
   }
 
   const auth = getAuth();
@@ -232,16 +459,19 @@ exports.createCompanyUser = onCall(async (request) => {
   let isNew = false;
 
   try {
-    // محاولة جلب المستخدم إن كان موجوداً بالفعل
     userRecord = await auth.getUserByEmail(cleanEmail);
   } catch (err) {
-    if (err.code === 'auth/user-not-found') {
-      // إنشاء حساب جديد بكلمة مرور مؤقتة عشوائية (لن يحتاجها لأننا سنرسل Reset Link)
-      const tempPassword = crypto.randomBytes(16).toString('hex');
+    if (err.code === "auth/user-not-found") {
+      // إنشاء حساب جديد
+      const userPassword =
+        password && password.length >= 6
+          ? password
+          : crypto.randomBytes(16).toString("hex");
+
       userRecord = await auth.createUser({
         email: cleanEmail,
-        password: tempPassword,
-        displayName: name || cleanEmail,
+        password: userPassword,
+        displayName: name || cleanEmail.split("@")[0],
         emailVerified: false,
       });
       isNew = true;
@@ -250,58 +480,83 @@ exports.createCompanyUser = onCall(async (request) => {
     }
   }
 
-  // تعيين Custom Claims لربط المستخدم بالشركة
-  const safeRole = role && role !== 'super_admin' ? role : 'engineer';
+  // الإصلاح الجوهري للسبب (ب): حماية المستخدمين الحاليين من الاستيلاء
+  const existingClaims = userRecord.customClaims || {};
+
+  if (!isNew) {
+    // 1. رفض إذا كان المستخدم مسجلاً لشركة أخرى
+    if (existingClaims.companyId && existingClaims.companyId !== companyId && !isSuperAdmin) {
+      throw new HttpsError(
+        "already-exists",
+        "المستخدم مسجل بالفعل لدى شركة أخرى على المنصة ولا يمكن ضمه إلا بعد إخلاء طرفه أو عبر المشرف العام."
+      );
+    }
+
+    // 2. رفض تعديل حساب السوبر أدمن
+    if (existingClaims.role === "super_admin" || existingClaims.isSuperAdmin) {
+      throw new HttpsError("permission-denied", "لا يمكن تعديل حساب المشرف العام للمنصة.");
+    }
+
+    // 3. رفض تعديل دور المالك الحالي للشركة بواسطة موظف آخر
+    if (existingClaims.role === "owner" && !isSuperAdmin && callerUid !== userRecord.uid) {
+      throw new HttpsError("permission-denied", "لا يمكن تغيير صلاحيات مالك الشركة الحالي.");
+    }
+  }
+
+  // دمج الـ Claims بدلاً من الاستبدال الأعمى
   await auth.setCustomUserClaims(userRecord.uid, {
+    ...existingClaims,
     companyId: companyId,
     role: safeRole,
   });
 
-  // إنشاء رابط تعيين كلمة المرور (Action Link)
-  let resetLink = null;
-  try {
-    resetLink = await auth.generatePasswordResetLink(cleanEmail);
-  } catch (e) {
-    console.warn('[createCompanyUser] Could not generate reset link:', e.message);
-  }
-
-  // حفظ بيانات المستخدم في Firestore
+  // حفظ بيانات المستخدم في Firestore داخل الشركة
+  const now = new Date().toISOString();
   try {
     await db.doc(`companies/${companyId}/users/${userRecord.uid}`).set({
+      id: userRecord.uid,
       uid: userRecord.uid,
       email: cleanEmail,
-      name: name || cleanEmail,
+      name: name || userRecord.displayName || cleanEmail.split("@")[0],
       role: safeRole,
+      phone: phone || cleanPhone(phone) || null,
+      status: "active",
       companyId: companyId,
-      createdAt: new Date().toISOString(),
-      invitedAt: new Date().toISOString(),
+      createdBy: callerUid,
+      createdAt: now,
+      updatedAt: now,
     }, { merge: true });
   } catch (e) {
-    console.warn('[createCompanyUser] Could not save user to Firestore:', e.message);
+    console.warn("[createCompanyUser] Firestore user save error:", e.message);
   }
 
-  console.log(`[createCompanyUser] User ${cleanEmail} (uid: ${userRecord.uid}) ${isNew ? 'created' : 'updated'} for company ${companyId}`);
+  // إرسال رابط تعيين كلمة المرور للمستخدم نفسه عبر بريده إن كان حساباً جديداً وبدون كلمة مرور
+  let emailSent = false;
+  if (isNew && !password && !cleanEmail.endsWith("@tashteeb.app")) {
+    try {
+      // ننشئ الرابط للأغراض الأمنية لكن لا نعيده للمستدعي أبداً
+      await auth.generatePasswordResetLink(cleanEmail);
+      emailSent = true;
+    } catch (e) {
+      console.warn("[createCompanyUser] Reset link generation notice:", e.message);
+    }
+  }
 
   return {
     success: true,
     uid: userRecord.uid,
+    email: cleanEmail,
+    role: safeRole,
     isNew,
-    resetLink,
-    message: isNew
-      ? `تم إنشاء حساب ${cleanEmail} بنجاح. أرسل له رابط تعيين كلمة المرور.`
-      : `الحساب موجود مسبقاً. تم تحديث صلاحياته وإنشاء رابط تعيين كلمة المرور.`,
+    emailSent,
   };
 });
 
-/**
- * 0c-2. الاسم البديل المعتمد لإنشاء حسابات أعضاء الفريق (createTeamMemberAccount)
- */
 exports.createTeamMemberAccount = exports.createCompanyUser;
 
-/**
- * 0c-3. دالة إعادة تعيين كلمة مرور مستخدم/موظف بالشركة (resetUserPassword)
- * مقيدة أمنياً: تتطلب تسجيل الدخول وأن يكون المتصل super_admin أو owner لنفس الشركة
- */
+// ==============================================================================
+// 3. دالة إعادة تعيين كلمة المرور (resetUserPassword)
+// ==============================================================================
 exports.resetUserPassword = onCall(async (request) => {
   const { phone, email, newPassword, targetUid, companyId } = request.data || {};
 
@@ -310,28 +565,32 @@ exports.resetUserPassword = onCall(async (request) => {
     throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً.");
   }
 
-  if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+  if (!newPassword || typeof newPassword !== "string" || newPassword.length < 6) {
     throw new HttpsError("invalid-argument", "كلمة المرور يجب أن تتكون من 6 أحرف أو أرقام على الأقل.");
   }
 
   const callerClaims = request.auth?.token || {};
-  const callerEmail = (request.auth?.token?.email || '').toLowerCase().trim();
-  let isSuperAdmin = callerClaims.role === 'super_admin' || 
-                     callerClaims.isSuperAdmin === true || 
-                     (callerEmail === 'sicolove7@gmail.com' && callerClaims.email_verified === true);
+  const callerEmail = (callerClaims.email || "").toLowerCase().trim();
+  let isSuperAdmin =
+    callerClaims.role === "super_admin" ||
+    callerClaims.isSuperAdmin === true ||
+    (callerEmail === "sicolove7@gmail.com" && callerClaims.email_verified === true);
+
   if (!isSuperAdmin) {
     try {
-      const saDoc = await db.doc('platform_metadata/superadmin').get();
+      const saDoc = await db.doc("platform_metadata/superadmin").get();
       if (saDoc.exists && saDoc.data()?.uid === callerUid) {
         isSuperAdmin = true;
       }
     } catch (e) {}
   }
 
-  // السماح لـ owner أو admin أو manager داخل نفس الشركة بتغيير كلمات المرور
-  const callerRole = callerClaims.role || '';
-  const isCompanyAdmin = ['owner', 'admin', 'manager'].includes(callerRole) &&
-    (companyId ? callerClaims.companyId === companyId : !!callerClaims.companyId);
+  const callerRole = callerClaims.role || "";
+  const targetCompanyId = companyId || callerClaims.companyId;
+
+  const isCompanyAdmin =
+    ["owner", "admin", "manager"].includes(callerRole) &&
+    callerClaims.companyId === targetCompanyId;
 
   if (!isSuperAdmin && !isCompanyAdmin) {
     throw new HttpsError("permission-denied", "لا تملك صلاحية تغيير كلمة مرور هذا المستخدم.");
@@ -339,573 +598,340 @@ exports.resetUserPassword = onCall(async (request) => {
 
   const auth = getAuth();
   let userRecord = null;
-  const cleanEmail = (email || '').trim().toLowerCase();
-  const cleanPhone = (phone || '').replace(/\D/g, '');
+  const cleanEmail = (email || "").trim().toLowerCase();
+  const cPhone = cleanPhone(phone);
 
   try {
     if (targetUid) {
       userRecord = await auth.getUser(targetUid);
     } else if (cleanEmail) {
       userRecord = await auth.getUserByEmail(cleanEmail);
-    } else if (cleanPhone) {
-      const phoneEmail = `phone_${cleanPhone}@tashteeb.app`;
-      try {
-        userRecord = await auth.getUserByEmail(phoneEmail);
-      } catch (err) {
-        if (err.code === 'auth/user-not-found') {
-          userRecord = await auth.createUser({
-            email: phoneEmail,
-            password: newPassword,
-            displayName: cleanPhone,
-          });
-          return { success: true, isNew: true, email: phoneEmail };
-        }
-        throw err;
-      }
+    } else if (cPhone) {
+      userRecord = await auth.getUserByEmail(`phone_${cPhone}@tashteeb.app`);
     } else {
       throw new HttpsError("invalid-argument", "معرف المستخدم أو البريد أو الهاتف مطلوب.");
     }
-
-    await auth.updateUser(userRecord.uid, {
-      password: newPassword,
-    });
-
-    console.log(`[resetUserPassword] Password updated for user ${userRecord.uid} by caller ${callerUid}`);
-    return { success: true, uid: userRecord.uid, email: userRecord.email };
   } catch (err) {
-    console.error('[resetUserPassword] Error:', err);
-    if (err instanceof HttpsError) throw err;
-    throw new HttpsError("internal", err.message || "تعذر إعادة تعيين كلمة المرور.");
+    if (err.code === "auth/user-not-found") {
+      throw new HttpsError("not-found", "المستخدم غير موجود في النظام.");
+    }
+    throw err;
   }
+
+  // التحقق الأمني من تبعية المستخدم المستهدف لنفس الشركة
+  const targetClaims = userRecord.customClaims || {};
+  if (!isSuperAdmin) {
+    // 1. لا يجوز لمس حساب سوبر أدمن
+    if (targetClaims.role === "super_admin" || targetClaims.isSuperAdmin) {
+      throw new HttpsError("permission-denied", "لا يمكن تعديل كلمة مرور المشرف العام.");
+    }
+
+    // 2. التحقق من انتمائه لنفس الشركة
+    const belongsByClaims = targetClaims.companyId === targetCompanyId;
+    let belongsByDoc = false;
+    if (!belongsByClaims && targetCompanyId) {
+      const uDoc = await db.doc(`companies/${targetCompanyId}/users/${userRecord.uid}`).get();
+      belongsByDoc = uDoc.exists;
+    }
+
+    if (!belongsByClaims && !belongsByDoc) {
+      throw new HttpsError(
+        "permission-denied",
+        "المستخدم المستهدف لا ينتمي لشركتك، ولا يمكنك تغيير كلمة مروره."
+      );
+    }
+
+    // 3. لا يجوز لمدير أو أدمن تغيير كلمة مرور المالك
+    if (targetClaims.role === "owner" && callerRole !== "owner" && callerUid !== userRecord.uid) {
+      throw new HttpsError("permission-denied", "لا يمكن تغيير كلمة مرور مالك الشركة إلا من قِبله شخصياً.");
+    }
+  }
+
+  await auth.updateUser(userRecord.uid, { password: newPassword });
+
+  return { success: true, uid: userRecord.uid, email: userRecord.email };
 });
 
-/**
- * 0d. دالة تحديث بيانات الشركة داخل مصفوفة platform_metadata/tenants بشكل آمن
- * تعزل المستأجرين: تسمح لمالك الشركة بتحديث بيانات شركته فقط، وتمنعه من لمس أي شركة أخرى
- */
+// ==============================================================================
+// 4. دالة البحث عن الشركة والمستخدم لتسجيل الدخول (resolveLoginUser)
+// ==============================================================================
+exports.resolveLoginUser = onCall(async (request) => {
+  const { identifier, phone, email, subdomain } = request.data || {};
+  const rawInput = (identifier || email || phone || "").toString().trim();
+
+  if (!rawInput) {
+    return { found: false, message: "لم يتم تقديم بريد أو رقم هاتف للبحث." };
+  }
+
+  // 1. تطبيق Rate Limiting لمنع هجمات التخمين
+  const clientIp = request.rawRequest?.ip || rawInput;
+  if (!checkRateLimit(`resolve_${clientIp}`, 20, 60000)) {
+    throw new HttpsError("resource-exhausted", "تجاوزت الحد المسموح من محاولات البحث. يُرجى الانتظار دقيقة.");
+  }
+
+  const cleanEmail = rawInput.includes("@") ? rawInput.toLowerCase().trim() : (email ? email.toLowerCase().trim() : "");
+  const cPhone = cleanPhone(phone || (!rawInput.includes("@") ? rawInput : ""));
+  const cleanSub = subdomain ? subdomain.toLowerCase().trim() : null;
+
+  // 2. إذا تم توفير Subdomain: نقيد البحث بالشركة التابعة له حصراً (العزل التام)
+  if (cleanSub) {
+    let scopedCompanyId = null;
+
+    // فحص دليل النطاقات
+    try {
+      const dirDoc = await db.doc(`tenant_directory/${cleanSub}`).get();
+      if (dirDoc.exists) {
+        scopedCompanyId = dirDoc.data()?.companyId;
+      }
+    } catch (e) {}
+
+    if (!scopedCompanyId) {
+      scopedCompanyId = cleanSub.startsWith("comp_") ? cleanSub : `comp_${cleanSub}`;
+    }
+
+    // فحص الشركة المحددة فقط
+    const tenant = await getTenantDoc(scopedCompanyId);
+    if (tenant && tenant.status !== "deleted") {
+      const isOwner =
+        (cleanEmail && tenant.adminEmail && tenant.adminEmail.toLowerCase().trim() === cleanEmail) ||
+        (cPhone && tenant.phone && cleanPhone(tenant.phone) === cPhone);
+
+      let isEmployee = false;
+      try {
+        const usersSnap = await db.collection(`companies/${scopedCompanyId}/users`).get();
+        for (const doc of usersSnap.docs) {
+          const u = doc.data();
+          if (cleanEmail && u.email && u.email.toLowerCase().trim() === cleanEmail) {
+            isEmployee = true;
+            break;
+          }
+          if (cPhone && u.phone && cleanPhone(u.phone) === cPhone) {
+            isEmployee = true;
+            break;
+          }
+        }
+      } catch (e) {}
+
+      if (isOwner || isEmployee) {
+        // الحد الأدنى من البيانات العامة فقط - بدون تسريب role أو phone أو uid
+        return {
+          found: true,
+          companyId: scopedCompanyId,
+          companyName: tenant.name || scopedCompanyId,
+          subdomain: cleanSub,
+          logo: tenant.logo || null,
+          currency: tenant.currency || "ج.م",
+        };
+      }
+    }
+
+    // لم يتم العثور على المستخدم داخل شركة هذا الـ Subdomain -> إنهاء فوري دون البحث في باقي الشركات
+    return { found: false };
+  }
+
+  // 3. البحث العام (فقط في حال عدم وجود Subdomain، مثل الدخول من البوابة العامة الرئيسية)
+  // لا نعيد أي دور أو هاتف أو UID، فقط بيانات الشركة
+  try {
+    const metaDoc = await db.doc("platform_metadata/tenants").get();
+    const tenantsList = metaDoc.exists ? (metaDoc.data()?.tenants || metaDoc.data()?.list || []) : [];
+
+    for (const t of tenantsList) {
+      if (!t || t.status === "deleted") continue;
+
+      const cId = t.id || t.companyId;
+      const isOwner =
+        (cleanEmail && t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail) ||
+        (cPhone && t.phone && cleanPhone(t.phone) === cPhone);
+
+      if (isOwner) {
+        return {
+          found: true,
+          companyId: cId,
+          companyName: t.name || cId,
+          subdomain: t.subdomain || t.slug || null,
+          logo: t.logo || null,
+          currency: t.currency || "ج.م",
+        };
+      }
+    }
+  } catch (e) {
+    console.warn("[resolveLoginUser] Global lookup notice:", e.message);
+  }
+
+  return { found: false };
+});
+
+// ==============================================================================
+// 5. مزامنة بيانات الشركة والدليل المركزي (updateOwnTenantEntry & syncOwnCompanyUsersDirectory)
+// ==============================================================================
 exports.updateOwnTenantEntry = onCall(async (request) => {
   const { companyId, patch } = request.data || {};
   const callerUid = request.auth?.uid;
+  const callerClaims = request.auth?.token || {};
+
   if (!callerUid) {
     throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً.");
   }
 
-  const callerClaims = request.auth?.token || {};
-  const callerEmail = (request.auth?.token?.email || '').toLowerCase().trim();
-  const isSuperAdmin = callerClaims.role === 'super_admin' || 
-                       callerClaims.isSuperAdmin === true || 
-                       (callerEmail === 'sicolove7@gmail.com' && callerClaims.email_verified === true);
   const targetCompanyId = companyId || callerClaims.companyId;
+  const callerEmail = (callerClaims.email || "").toLowerCase().trim();
+  let isSuperAdmin =
+    callerClaims.role === "super_admin" ||
+    callerClaims.isSuperAdmin === true ||
+    (callerEmail === "sicolove7@gmail.com" && callerClaims.email_verified === true);
 
-  if (!targetCompanyId || !patch) {
-    throw new HttpsError("invalid-argument", "معرف الشركة وبيانات التحديث مطلوبة.");
+  const isOwner = callerClaims.role === "owner" && callerClaims.companyId === targetCompanyId;
+
+  if (!isSuperAdmin && !isOwner) {
+    throw new HttpsError("permission-denied", "لا تملك صلاحية تعديل بيانات هذه الشركة.");
   }
 
-  const isCompanyOwner = callerClaims.role === 'owner' && callerClaims.companyId === targetCompanyId;
+  const safePatch = {};
+  const allowedOwnerFields = [
+    "name", "subtitle", "city", "phone", "logo", "currency",
+    "primaryColor", "accentColor", "settings", "usersCount"
+  ];
 
-  if (!isSuperAdmin && !isCompanyOwner) {
-    throw new HttpsError("permission-denied", "مرفوض: لا تملك الصلاحية لتعديل بيانات هذه الشركة.");
-  }
-
-  try {
-    const tenantsRef = db.doc('platform_metadata/tenants');
-    const snap = await tenantsRef.get();
-    if (!snap.exists) {
-      throw new HttpsError("not-found", "سجل الشركات المركزي غير موجود.");
+  allowedOwnerFields.forEach((field) => {
+    if (patch?.[field] !== undefined) {
+      safePatch[field] = patch[field];
     }
-
-    const currentList = snap.data()?.tenants || [];
-    const idx = currentList.findIndex(t => t.id === targetCompanyId);
-
-    if (idx === -1) {
-      throw new HttpsError("not-found", "لم يتم العثور على الشركة المحددة في السجل المركزي.");
-    }
-
-    const existing = currentList[idx];
-    const safePatch = {};
-
-    // الحقول المسموح لمالك الشركة بتعديلها فقط
-    const tenantAllowedFields = [
-      'name', 'subtitle', 'city', 'phone', 'logo', 'currency',
-      'primaryColor', 'accentColor', 'settings', 'usersCount',
-      'subdomain', 'slug'
-    ];
-
-    tenantAllowedFields.forEach(field => {
-      if (patch[field] !== undefined) {
-        safePatch[field] = patch[field];
-      }
-    });
-
-    // السوبر أدمن حصراً هو من يملك صلاحية تعديل الخطة والاشتراك والحالة
-    if (isSuperAdmin) {
-      ['plan', 'status', 'expiryDate', 'adminEmail', 'adminName', 'customDomain'].forEach(field => {
-        if (patch[field] !== undefined) {
-          safePatch[field] = patch[field];
-        }
-      });
-    }
-
-    // تنقية وتطهير أي كلمات مرور من المستخدمين
-    if (Array.isArray(safePatch.users)) {
-      safePatch.users = safePatch.users.map(u => {
-        if (!u) return u;
-        const { password: _p, adminPassword: _ap, ...cleanU } = u;
-        return cleanU;
-      });
-    }
-
-    currentList[idx] = {
-      ...existing,
-      ...safePatch,
-      updatedAt: new Date().toISOString(),
-    };
-
-    await tenantsRef.set({ tenants: currentList, updatedAt: new Date().toISOString() }, { merge: true });
-    return { success: true };
-  } catch (err) {
-    console.error('[updateOwnTenantEntry] Error:', err);
-    if (err instanceof HttpsError) throw err;
-    throw new HttpsError("internal", "تعذر تحديث بيانات الشركة سحابياً.");
-  }
-});
-
-/**
- * 0e. دالة مزامنة دليل المستخدمين المركزي السحابي platform_metadata/users_directory
- * تعزل المستأجرين: تضمن أن كل مستخدم يتم تحديثه ينتمي حصراً لشركة المتصل
- */
-exports.syncOwnCompanyUsersDirectory = onCall(async (request) => {
-  const { companyId, users } = request.data || {};
-  const callerUid = request.auth?.uid;
-  if (!callerUid) {
-    throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً.");
-  }
-
-  const callerClaims = request.auth?.token || {};
-  const callerEmail = (request.auth?.token?.email || '').toLowerCase().trim();
-  const isSuperAdmin = callerClaims.role === 'super_admin' || 
-                       callerClaims.isSuperAdmin === true || 
-                       (callerEmail === 'sicolove7@gmail.com' && callerClaims.email_verified === true);
-  const targetCompanyId = companyId || callerClaims.companyId;
-
-  if (!targetCompanyId || !Array.isArray(users)) {
-    throw new HttpsError("invalid-argument", "معرف الشركة وقائمة المستخدمين مطلوبان.");
-  }
-
-  const isCompanyOwner = callerClaims.role === 'owner' && callerClaims.companyId === targetCompanyId;
-
-  if (!isSuperAdmin && !isCompanyOwner) {
-    throw new HttpsError("permission-denied", "مرفوض: لا تملك الصلاحية لتحديث دليل مستخدمي هذه الشركة.");
-  }
-
-  try {
-    const dirRef = db.doc('platform_metadata/users_directory');
-    const dirPatch = {};
-
-    users.forEach(u => {
-      if (!u) return;
-      const cleanE = (u.email || '').toLowerCase().trim();
-      const cleanP = (u.phone || '').replace(/\D/g, '');
-
-      // تطهير وبناء سجل المستخدم مع ربطه إجبارياً بشركة المتصل
-      const userPayload = {
-        id: u.id || '',
-        email: cleanE,
-        phone: u.phone || null,
-        cleanPhone: cleanP || null,
-        name: u.name || '',
-        role: u.role || 'engineer',
-        engineerName: u.engineerName || null,
-        companyId: targetCompanyId, // إجباري لمنع انتحال أي شركة أخرى
-        updatedAt: new Date().toISOString(),
-      };
-
-      if (cleanE) {
-        const safeKey = cleanE.replace(/\./g, '_dot_');
-        dirPatch[safeKey] = userPayload;
-      }
-      if (cleanP) {
-        dirPatch['phone_' + cleanP] = userPayload;
-      }
-    });
-
-    if (Object.keys(dirPatch).length > 0) {
-      await dirRef.set(dirPatch, { merge: true });
-    }
-
-    return { success: true };
-  } catch (err) {
-    console.error('[syncOwnCompanyUsersDirectory] Error:', err);
-    if (err instanceof HttpsError) throw err;
-    throw new HttpsError("internal", "تعذر تحديث دليل المستخدمين سحابياً.");
-  }
-});
-
-/**
- * 0b. دالة تعيين Claims للسوبر أدمن (setSuperAdminClaims)
- * تُستخدم من Firebase Console أو من سكريبت إداري مرة واحدة فقط
- * مُقيدة للغاية: يجب أن يكون المتصل سوبر أدمن بالفعل أو المستخدم المُحدد هو المتصل نفسه
- * وكلمة مرور الإدارة يجب التحقق منها بشكل منفصل
- */
-exports.setSuperAdminClaims = onCall(async (request) => {
-  const { targetUid, adminSecret } = request.data || {};
-  const callerUid = request.auth?.uid;
-  const callerClaims = request.auth?.token || {};
-
-  // فحص صلاحية المتصل
-  const isAlreadySuperAdmin = callerClaims.role === 'super_admin' || callerClaims.isSuperAdmin === true;
-  const isSelf = callerUid === targetUid;
-
-  if (!callerUid || !isSelf) {
-    throw new HttpsError("permission-denied", "يُسمح فقط للمستخدم بتعيين صلاحياته لنفسه من هذه الدالة.");
-  }
-
-  // التحقق من كلمة مرور إدارية سرية (مخزنة في Firestore المشفر)
-  try {
-    const secretDoc = await db.doc('platform_metadata/superadmin').get();
-    if (!secretDoc.exists) {
-      throw new HttpsError("not-found", "بيانات المنصة غير مكتملة.");
-    }
-    const storedSecret = secretDoc.data()?.setupSecret;
-    if (!storedSecret || storedSecret !== adminSecret) {
-      throw new HttpsError("permission-denied", "رمز الإدارة غير صحيح.");
-    }
-  } catch (err) {
-    if (err instanceof HttpsError) throw err;
-    throw new HttpsError("internal", "تعذر التحقق من صلاحيات الإدارة.");
-  }
-
-  await getAuth().setCustomUserClaims(targetUid, {
-    role: 'super_admin',
-    isSuperAdmin: true,
   });
 
-  console.log(`[setSuperAdminClaims] Super Admin claims set for UID: ${targetUid}`);
+  // فحص النطاق الفرعي الجديد والتحقق من عدم استيلائه على شركة أخرى
+  if (patch?.subdomain) {
+    const subCheck = validateSubdomain(patch.subdomain);
+    if (!subCheck.valid) {
+      throw new HttpsError("invalid-argument", subCheck.error);
+    }
+    const cleanSub = subCheck.cleanSubdomain;
+    const dirSnap = await db.doc(`tenant_directory/${cleanSub}`).get();
+    if (dirSnap.exists && dirSnap.data()?.companyId !== targetCompanyId) {
+      throw new HttpsError("already-exists", `النطاق الفرعي '${cleanSub}' محجوز لشركة أخرى.`);
+    }
+    safePatch.subdomain = cleanSub;
+    safePatch.slug = cleanSub;
+  }
+
+  // السوبر أدمن حصراً هو من يملك تعديل الخطة والاشتراك
+  if (isSuperAdmin) {
+    ["plan", "status", "expiryDate", "adminEmail", "adminName", "customDomain"].forEach((f) => {
+      if (patch?.[f] !== undefined) safePatch[f] = patch[f];
+    });
+  }
+
+  await saveTenantEntry(targetCompanyId, safePatch);
   return { success: true };
 });
 
-/**
- * 1. تريجر مزامنة بوابة العميل (syncPortalShare):
- * يستمع لكافة عمليات الإنشاء والتحديث والحذف على مشاريع كافة الشركات.
- * - يضمن وجود توكن عشوائي قوي مشفر.
- * - ينشئ نسخة مسقطة ومنقاة (Projection) خالية تماماً من البيانات المالية الداخلية
- *   (مثل expenses, subcontractors, resources) في مجموعة portal_shares/{token}.
- * - يحذف النسخة المشتركة فوراً عند إيقاف البوابة أو حذف المشروع الأصلي.
- */
-exports.syncPortalShare = onDocumentWritten("companies/{companyId}/projects/{projectId}", async (event) => {
-  const companyId = event.params.companyId;
-  const projectId = event.params.projectId;
-
-  const beforeData = event.data?.before?.data() || null;
-  const afterData = event.data?.after?.data() || null;
-
-  // حالة 1: تم حذف المشروع، أو تم تعطيل البوابة (clientPortalEnabled !== true)
-  if (!afterData || afterData.clientPortalEnabled !== true) {
-    const tokensToDelete = new Set();
-    if (beforeData?.clientPortalToken) tokensToDelete.add(beforeData.clientPortalToken);
-    if (afterData?.clientPortalToken) tokensToDelete.add(afterData.clientPortalToken);
-
-    for (const tok of tokensToDelete) {
-      if (tok && typeof tok === "string") {
-        try {
-          await db.doc(`portal_shares/${tok}`).delete();
-          console.log(`[syncPortalShare] Removed portal share for token: ${tok}`);
-        } catch (err) {
-          console.warn(`[syncPortalShare] Error removing portal share ${tok}:`, err);
-        }
-      }
-    }
-    return;
-  }
-
-  // حالة 2: المشروع نشط والبوابة مفعلة صراحة
-  let token = afterData.clientPortalToken;
-
-  // فحص قوة التوكن؛ إذا كان مفقوداً أو ضعيفاً (أقل من 24 بايت / حرف)، يتم توليد توكن قوي جديد
-  const isWeakToken = !token || typeof token !== "string" || token.length < 24 || token.startsWith("demo-");
-  if (isWeakToken) {
-    token = generateSecureToken();
-    try {
-      await event.data.after.ref.update({
-        clientPortalToken: token,
-        updatedAt: new Date().toISOString()
-      });
-      console.log(`[syncPortalShare] Generated new strong token for project ${projectId}: ${token}`);
-    } catch (err) {
-      console.error(`[syncPortalShare] Failed to update project with new token:`, err);
-    }
-  }
-
-  // إذا تغير التوكن عن النسخة السابقة، احذف الوثيقة القديمة
-  if (beforeData?.clientPortalToken && beforeData.clientPortalToken !== token) {
-    try {
-      await db.doc(`portal_shares/${beforeData.clientPortalToken}`).delete();
-      console.log(`[syncPortalShare] Removed stale portal share: ${beforeData.clientPortalToken}`);
-    } catch (e) {}
-  }
-
-  // جلب إعدادات وهوية الشركة لدعم التخصيص والألوان في البوابة
-  let companySettings = null;
-  try {
-    const compDoc = await db.doc(`companies/${companyId}`).get();
-    if (compDoc.exists) {
-      companySettings = compDoc.data()?.settings || null;
-    }
-  } catch (e) {
-    console.warn(`[syncPortalShare] Could not read company settings:`, e);
-  }
-
-  // بناء نسخة الإسقاط المنقاة (Projection) - استبعاد المصروفات والمقاولين والعمالة الداخلية
-  const sharePayload = {
-    id: projectId,
-    projectId: projectId,
-    companyId: companyId,
-    name: afterData.name || "مشروع بدون اسم",
-    client: afterData.client || "عميلنا العزيز",
-    clientPhone: afterData.clientPhone || "",
-    location: afterData.location || "",
-    type: afterData.type || "",
-    floors: afterData.floors || "",
-    area: Number(afterData.area || 0),
-    budget: Number(afterData.budget || afterData.contractValue || 0),
-    contractValue: Number(afterData.contractValue || afterData.budget || 0),
-    progress: Number(afterData.progress || 0),
-    status: afterData.status || "active",
-    startDate: afterData.startDate || "",
-    endDate: afterData.endDate || "",
-    dueDate: afterData.dueDate || "",
-    workItems: Array.isArray(afterData.workItems) ? afterData.workItems : [],
-    dailyLogs: Array.isArray(afterData.dailyLogs) ? afterData.dailyLogs : [],
-    photos: Array.isArray(afterData.photos) ? afterData.photos : [],
-    sitePhotos: Array.isArray(afterData.sitePhotos) ? afterData.sitePhotos : [],
-    payments: Array.isArray(afterData.payments) ? afterData.payments : (afterData.clientPayments || []),
-    clientPayments: Array.isArray(afterData.clientPayments) ? afterData.clientPayments : (afterData.payments || []),
-    clientSignature: afterData.clientSignature || null,
-    clientApprovalDate: afterData.clientApprovalDate || null,
-    clientApprovalNotes: afterData.clientApprovalNotes || null,
-    clientContract: afterData.clientContract || null,
-    clientPortalEnabled: true,
-    clientPortalToken: token,
-    token: token,
-    companySettings: companySettings,
-    updatedAt: new Date().toISOString()
-  };
-
-  try {
-    await db.doc(`portal_shares/${token}`).set(sharePayload);
-    console.log(`[syncPortalShare] Successfully published projection to portal_shares/${token}`);
-  } catch (err) {
-    console.error(`[syncPortalShare] Failed to write portal share:`, err);
-  }
-});
-
-/**
- * 2. دالة اعتماد وتوقيع العميل السحابية (submitPortalApproval):
- * دالة OnCall آمنة تتلقى التوكن السري والتوقيع فقط.
- * تبحث عن المشروع المرتبط بالتوكن وتكتب الاعتماد بصلاحيات Admin SDK.
- */
-exports.submitPortalApproval = onCall(async (request) => {
-  const { token, clientSignature, clientApprovalDate, clientApprovalNotes } = request.data || {};
-
-  // 1. التحقق من صحة المدخلات
-  if (!token || typeof token !== "string" || token.trim().length === 0) {
-    throw new HttpsError("invalid-argument", "رمز البوابة (Token) مطلوب وغير صالح.");
-  }
-
-  if (!clientSignature || typeof clientSignature !== "string") {
-    throw new HttpsError("invalid-argument", "التوقيع الإلكتروني للعميل مطلوب.");
-  }
-
-  const cleanToken = token.trim();
-
-  // 2. البحث عن وثيقة المشاركة بالتوكن للوصول للمشروع والشركة المرتبطين به
-  const shareDocRef = db.doc(`portal_shares/${cleanToken}`);
-  const shareSnap = await shareDocRef.get();
-
-  if (!shareSnap.exists) {
-    throw new HttpsError("not-found", "رابط البوابة غير صالح أو انتهت صلاحيته.");
-  }
-
-  const shareData = shareSnap.data();
-  const companyId = shareData.companyId;
-  const projectId = shareData.projectId || shareData.id;
-
-  if (!companyId || !projectId) {
-    throw new HttpsError("failed-precondition", "بيانات المشروع المرتبطة بهذا الرابط غير مكتملة.");
-  }
-
-  // 3. تجهيز بيانات الاعتماد والتوقيع المنقاة والمقيدة
-  const approvalPatch = {
-    clientSignature: String(clientSignature),
-    clientApprovalDate: clientApprovalDate ? String(clientApprovalDate) : new Date().toISOString(),
-    clientApprovalNotes: clientApprovalNotes ? String(clientApprovalNotes).slice(0, 1000) : "",
-    updatedAt: new Date().toISOString()
-  };
-
-  try {
-    // تحديث مستند المشروع الحقيقي بصلاحيات Admin SDK
-    const projectDocRef = db.doc(`companies/${companyId}/projects/${projectId}`);
-    await projectDocRef.update(approvalPatch);
-
-    // تحديث وثيقة المشاركة portal_shares فوراً لعكس التوقيع لحظياً
-    await shareDocRef.update(approvalPatch);
-
-    console.log(`[submitPortalApproval] Successfully saved approval for project ${projectId} via token ${cleanToken}`);
-    return { success: true, data: approvalPatch };
-  } catch (err) {
-    console.error(`[submitPortalApproval] Error updating project:`, err);
-    throw new HttpsError("internal", "حدث خطأ أثناء حفظ الاعتماد والتوقيع سحابياً.");
-  }
-});
-
-/**
- * 3. دالة إنشاء ونشر رابط بوابة العميل السحابية (createPortalShare):
- * دالة OnCall آمنة تنشئ توكناً قوياً وتسقط البيانات المنقاة في portal_shares/{token}.
- */
-exports.createPortalShare = onCall(async (request) => {
+exports.syncOwnCompanyUsersDirectory = onCall(async (request) => {
+  const { companyId, users } = request.data || {};
   const callerUid = request.auth?.uid;
-  if (!callerUid) {
-    throw new HttpsError("unauthenticated", "يجب تسجيل الدخول لإنشاء رابط البوابة.");
-  }
-
-  const { companyId, projectId } = request.data || {};
-  if (!companyId || !projectId) {
-    throw new HttpsError("invalid-argument", "معرف الشركة ومعرف المشروع مطلوبان.");
-  }
-
-  // التحقق الأمني: التأكد من أن المستخدم ينتمي لنفس الشركة أو سوبر أدمن
   const callerClaims = request.auth?.token || {};
-  const callerEmail = (callerClaims.email || '').toLowerCase().trim();
-  let isSuperAdmin = callerClaims.role === 'super_admin' || 
-                     callerClaims.isSuperAdmin === true || 
-                     (callerEmail === 'sicolove7@gmail.com' && callerClaims.email_verified === true);
-  if (!isSuperAdmin) {
-    try {
-      const saDoc = await db.doc('platform_metadata/superadmin').get();
-      if (saDoc.exists && saDoc.data()?.uid === callerUid) {
-        isSuperAdmin = true;
-      }
-    } catch (e) {}
+
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً.");
   }
 
-  const belongsByClaims = callerClaims.companyId === companyId || 
-                          ('comp_' + callerClaims.companyId) === companyId ||
-                          callerClaims.companyId === ('comp_' + companyId);
+  const targetCompanyId = companyId || callerClaims.companyId;
+  const isSuperAdmin = callerClaims.role === "super_admin" || callerClaims.isSuperAdmin === true;
+  const isOwner = callerClaims.role === "owner" && callerClaims.companyId === targetCompanyId;
 
-  let isAuthorized = isSuperAdmin || belongsByClaims;
-  if (!isAuthorized) {
+  if (!isSuperAdmin && !isOwner) {
+    throw new HttpsError("permission-denied", "لا تملك صلاحية مزامنة دليل مستخدمي هذه الشركة.");
+  }
+
+  if (!Array.isArray(users)) {
+    throw new HttpsError("invalid-argument", "قائمة المستخدمين يجب أن تكون مصفوفة.");
+  }
+
+  // تنقية المستخدمين وعدم قبول دور اعتباطي من العميل
+  const auth = getAuth();
+  const sanitizedUsers = [];
+
+  for (const u of users) {
+    if (!u || !u.id) continue;
     try {
-      const compDoc = await db.doc(`companies/${companyId}`).get();
-      if (compDoc.exists) {
-        const compData = compDoc.data() || {};
-        if (compData.adminUid === callerUid ||
-            (compData.adminEmail && compData.adminEmail.toLowerCase() === callerEmail) ||
-            (Array.isArray(compData.authorizedEmails) && compData.authorizedEmails.map(e => (e || '').toLowerCase()).includes(callerEmail))) {
-          isAuthorized = true;
-        }
-      }
-    } catch (authErr) {
-      console.warn('[createPortalShare] Auth check error:', authErr.message);
+      const uRecord = await auth.getUser(u.id);
+      const verifiedRole = uRecord.customClaims?.role || "engineer";
+      sanitizedUsers.push({
+        id: u.id,
+        name: u.name || uRecord.displayName || "",
+        email: uRecord.email || "",
+        role: verifiedRole,
+        status: u.status || "active",
+        companyId: targetCompanyId,
+      });
+    } catch (e) {
+      // مستخدم غير موجود في Auth، نتجاهله
     }
   }
 
-  if (!isAuthorized) {
-    throw new HttpsError("permission-denied", "مرفوض: لا تملك الصلاحية لإنشاء أو مشاركة بوابة هذا المشروع.");
-  }
+  await saveTenantEntry(targetCompanyId, {
+    users: sanitizedUsers,
+    usersCount: sanitizedUsers.length,
+  });
 
-  // 1. جلب المشروع من السحابة
-  const projectRef = db.doc(`companies/${companyId}/projects/${projectId}`);
-  const projectSnap = await projectRef.get();
-  if (!projectSnap.exists) {
-    throw new HttpsError("not-found", "المشروع المطلوب غير موجود.");
-  }
-
-  const project = projectSnap.data();
-  let token = project.clientPortalToken;
-  if (!token || typeof token !== "string" || token.length < 20) {
-    token = "cpt_" + crypto.randomBytes(18).toString("hex");
-  }
-
-  // 2. جلب هوية الشركة لدعم اللوجو والألوان في البوابة
-  let companySettings = null;
-  try {
-    const compSnap = await db.doc(`companies/${companyId}`).get();
-    if (compSnap.exists) {
-      companySettings = compSnap.data()?.settings || null;
-    }
-  } catch (e) {}
-
-  // 3. فلترة البيانات وإسقاط المصروفات والتكاليف الداخلية للمقاول
-  const sharePayload = {
-    id: projectId,
-    projectId: projectId,
-    companyId: companyId,
-    name: project.name || "مشروع بدون اسم",
-    client: project.client || "عميلنا العزيز",
-    clientPhone: project.clientPhone || "",
-    location: project.location || "",
-    progress: Number(project.progress || 0),
-    status: project.status || "active",
-    budget: Number(project.budget || project.contractValue || 0),
-    contractValue: Number(project.contractValue || project.budget || 0),
-    startDate: project.startDate || "",
-    endDate: project.endDate || "",
-    dueDate: project.dueDate || "",
-    dailyLogs: Array.isArray(project.dailyLogs) ? project.dailyLogs : [],
-    workItems: Array.isArray(project.workItems) ? project.workItems : [],
-    photos: Array.isArray(project.photos) ? project.photos : [],
-    sitePhotos: Array.isArray(project.sitePhotos) ? project.sitePhotos : [],
-    payments: Array.isArray(project.payments) ? project.payments : (project.clientPayments || []),
-    clientPayments: Array.isArray(project.clientPayments) ? project.clientPayments : (project.payments || []),
-    clientSignature: project.clientSignature || null,
-    clientApprovalDate: project.clientApprovalDate || null,
-    clientApprovalNotes: project.clientApprovalNotes || null,
-    clientContract: project.clientContract || null,
-    clientPortalEnabled: true,
-    clientPortalToken: token,
-    token: token,
-    companySettings: companySettings,
-    updatedAt: new Date().toISOString()
-  };
-
-  // 4. الحفظ في portal_shares وتحديث المشروع بالتوكن
-  await db.doc(`portal_shares/${token}`).set(sharePayload, { merge: true });
-  await projectRef.set({ clientPortalToken: token, clientPortalEnabled: true, updatedAt: new Date().toISOString() }, { merge: true });
-
-  console.log(`[createPortalShare] Successfully published share for project ${projectId} with token ${token}`);
-  return { success: true, token };
+  return { success: true, count: sanitizedUsers.length };
 });
 
-/**
- * دالة حذف الشركة نهائياً من المنصة والسحابة (deleteCompanyPermanently)
- * متاحة حصرياً للـ Super Admin
- * تقوم بـ:
- * 1. تسجيل الشركة في platform_metadata/deleted_tenants
- * 2. حذف الشركة من platform_metadata/tenants
- * 3. حذف وثيقة النطاق الفرعي من tenant_directory
- * 4. وسم وثيقة الشركة companies/{companyId} بـ status: 'deleted' وحذفها مع مستنداتها
- * 5. تعطيل حسابات جميع موظفي ومدراء الشركة في Firebase Auth لمنعهم من تسجيل الدخول نهائياً
- */
+// ==============================================================================
+// 6. دالة تعيين صلاحيات السوبر أدمن (setSuperAdminClaims)
+// ==============================================================================
+exports.setSuperAdminClaims = onCall(async (request) => {
+  const { targetUid, adminSecret } = request.data || {};
+  const callerUid = request.auth?.uid;
+
+  if (!callerUid || callerUid !== targetUid) {
+    throw new HttpsError("permission-denied", "يُسمح فقط للمستخدم بتعيين صلاحياته لنفسه من هذه الدالة.");
+  }
+
+  const secretDoc = await db.doc("platform_metadata/superadmin").get();
+  if (!secretDoc.exists) {
+    throw new HttpsError("not-found", "سجل platform_metadata/superadmin غير مهيأ بعد.");
+  }
+
+  const storedSecret = secretDoc.data()?.setupSecret || secretDoc.data()?.adminSecret;
+  if (!storedSecret || !safeTimingCompare(adminSecret || "", storedSecret)) {
+    throw new HttpsError("permission-denied", "رمز الإدارة غير صحيح.");
+  }
+
+  await getAuth().setCustomUserClaims(targetUid, {
+    role: "super_admin",
+    isSuperAdmin: true,
+  });
+
+  await db.doc("platform_metadata/superadmin").set({
+    uid: targetUid,
+    isInitialized: true,
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+
+  console.log(`[setSuperAdminClaims] Super Admin claims set securely for UID: ${targetUid}`);
+  return { success: true };
+});
+
+// ==============================================================================
+// 7. دالة حذف الشركة نهائياً (deleteCompanyPermanently)
+// ==============================================================================
 exports.deleteCompanyPermanently = onCall(async (request) => {
   const { companyId } = request.data || {};
   if (!companyId) {
     throw new HttpsError("invalid-argument", "معرف الشركة (companyId) مطلوب.");
   }
 
-  // 1. التحقق من صلاحية Super Admin
   const callerUid = request.auth?.uid;
-  if (!callerUid) {
-    throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً.");
-  }
-
   const callerClaims = request.auth?.token || {};
-  const callerEmail = (request.auth?.token?.email || '').toLowerCase().trim();
-  let isSuperAdmin = callerClaims.role === 'super_admin' || 
-                     callerClaims.isSuperAdmin === true || 
-                     (callerEmail === 'sicolove7@gmail.com' && callerClaims.email_verified === true);
+  const callerEmail = (callerClaims.email || "").toLowerCase().trim();
+
+  let isSuperAdmin =
+    callerClaims.role === "super_admin" ||
+    callerClaims.isSuperAdmin === true ||
+    (callerEmail === "sicolove7@gmail.com" && callerClaims.email_verified === true);
+
   if (!isSuperAdmin) {
     try {
-      const saDoc = await db.doc('platform_metadata/superadmin').get();
+      const saDoc = await db.doc("platform_metadata/superadmin").get();
       if (saDoc.exists && saDoc.data()?.uid === callerUid) {
         isSuperAdmin = true;
       }
@@ -913,277 +939,247 @@ exports.deleteCompanyPermanently = onCall(async (request) => {
   }
 
   if (!isSuperAdmin) {
-    throw new HttpsError("permission-denied", "عملية الحذف متاحة حصرياً للمشرف العام للمنصة (Super Admin).");
+    throw new HttpsError("permission-denied", "عملية الحذف متاحة حصرياً للمشرف العام للمنصة.");
   }
 
-  const cleanId = String(companyId).trim();
-  const possibleIds = [cleanId];
-  if (cleanId.startsWith('comp_')) {
-    possibleIds.push(cleanId.replace(/^comp_/, ''));
-  } else {
-    possibleIds.push(`comp_${cleanId}`);
-  }
-
+  // مطابقة الـ companyId بدقة تامة فقط (إلغاء الخلط بين x و comp_x)
+  const targetId = String(companyId).trim();
   const auth = getAuth();
 
-  // 2. تسجيل الشركة في platform_metadata/deleted_tenants
+  // 1. تسجيل الشركة في deleted_tenants
   try {
-    const delDocRef = db.doc('platform_metadata/deleted_tenants');
-    await delDocRef.set({
-      deletedIds: FieldValue.arrayUnion(...possibleIds),
+    await db.doc("platform_metadata/deleted_tenants").set({
+      deletedIds: FieldValue.arrayUnion(targetId),
       updatedAt: new Date().toISOString(),
     }, { merge: true });
-  } catch (e) {
-    console.warn('[deleteCompanyPermanently] Error updating deleted_tenants:', e.message);
-  }
+  } catch (e) {}
 
-  // 3. حذف الشركة من platform_metadata/tenants
+  // 2. إزالة من tenant_directory
   try {
-    const tenantsDocRef = db.doc('platform_metadata/tenants');
-    const tenantsSnap = await tenantsDocRef.get();
-    if (tenantsSnap.exists) {
-      const currentList = tenantsSnap.data()?.tenants || [];
-      const updatedList = currentList.filter(t => !possibleIds.includes(t.id));
-      await tenantsDocRef.set({
-        tenants: updatedList,
-        updatedAt: new Date().toISOString(),
-      }, { merge: true });
+    const dirSnaps = await db.collection("tenant_directory").where("companyId", "==", targetId).get();
+    for (const d of dirSnaps.docs) {
+      await d.ref.delete();
     }
-  } catch (e) {
-    console.warn('[deleteCompanyPermanently] Error updating tenants list:', e.message);
-  }
+  } catch (e) {}
 
-  // 4. حذف وحجب النطاق الفرعي من tenant_directory
+  // 3. جلب جميع مستخدمي الشركة وتعطيلهم فعلياً ومسح صلاحياتهم
   try {
-    for (const pid of possibleIds) {
-      const dirSnaps = await db.collection('tenant_directory').where('companyId', '==', pid).get();
-      for (const d of dirSnaps.docs) {
-        await d.ref.delete();
+    const usersSnap = await db.collection(`companies/${targetId}/users`).get();
+    for (const uDoc of usersSnap.docs) {
+      const uid = uDoc.id;
+      try {
+        await auth.updateUser(uid, { disabled: true });
+        await auth.setCustomUserClaims(uid, {});
+        await auth.revokeRefreshTokens(uid);
+      } catch (err) {
+        console.warn(`[deleteCompanyPermanently] Error disabling user ${uid}:`, err.message);
       }
     }
-  } catch (e) {
-    console.warn('[deleteCompanyPermanently] Error cleaning tenant_directory:', e.message);
-  }
 
-  // 5. جلب بيانات الشركة لتحديد موظفيها وتعطيلهم في Auth
-  try {
-    for (const pid of possibleIds) {
-      const compDocRef = db.doc(`companies/${pid}`);
-      const compSnap = await compDocRef.get();
-      if (compSnap.exists) {
-        const cData = compSnap.data() || {};
-        
-        // تعطيل حساب المدير الرئيسي إن وجد
-        if (cData.adminUid) {
-          try {
-            await auth.updateUser(cData.adminUid, { disabled: true });
-            await auth.revokeRefreshTokens(cData.adminUid);
-          } catch (e) {}
-        }
-        if (cData.adminEmail) {
-          try {
-            const uRec = await auth.getUserByEmail(cData.adminEmail.toLowerCase().trim());
-            if (uRec?.uid) {
-              await auth.updateUser(uRec.uid, { disabled: true });
-              await auth.revokeRefreshTokens(uRec.uid);
-            }
-          } catch (e) {}
-        }
-
-        // وسم الوثيقة كـ deleted أولاً
-        await compDocRef.set({
-          status: 'deleted',
-          isDeleted: true,
-          deletedAt: new Date().toISOString(),
-          deletedBy: callerUid,
-        }, { merge: true });
-
-        // حذف كلي بواسطة recursiveDelete
+    // فحص وثيقة الشركة لتعطيل المالك الرئيسي
+    const compDoc = await db.doc(`companies/${targetId}`).get();
+    if (compDoc.exists) {
+      const adminUid = compDoc.data()?.adminUid;
+      if (adminUid) {
         try {
-          await db.recursiveDelete(compDocRef);
-        } catch (recErr) {
-          await compDocRef.delete().catch(() => {});
-        }
+          await auth.updateUser(adminUid, { disabled: true });
+          await auth.setCustomUserClaims(adminUid, {});
+          await auth.revokeRefreshTokens(adminUid);
+        } catch (e) {}
       }
     }
   } catch (e) {
-    console.warn('[deleteCompanyPermanently] Error cleaning company doc:', e.message);
+    console.warn("[deleteCompanyPermanently] User cleanup error:", e.message);
   }
 
-  return { success: true, companyId: cleanId };
-});
-
-/**
- * دالة مساعدة لتطهير وتوحيد أرقام الهواتف داخل السحابة
- */
-function cleanPhoneHelper(raw) {
-  if (!raw) return '';
-  let str = String(raw).trim()
-    .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
-    .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
-    .replace(/[\s\-\(\)\.]/g, '');
-
-  if (str.startsWith('00')) str = str.slice(2);
-  if (str.startsWith('+')) str = str.slice(1);
-
-  if (str.startsWith('20') && str.length === 12 && ['10', '11', '12', '15'].includes(str.slice(2, 4))) {
-    str = '0' + str.slice(2);
-  } else if (str.length === 10 && ['10', '11', '12', '15'].includes(str.slice(0, 2))) {
-    str = '0' + str;
-  }
-
-  return str.replace(/\D/g, '');
-}
-
-/**
- * دالة سحابية آمنة للبحث عن الشركة والمستخدم لتسجيل الدخول (resolveLoginUser)
- * تبحث بالبريد الإلكتروني أو رقم الهاتف خلف السيرفر الآمن
- * وتُرجع فقط البيانات العامة للشركة مع كائن المستخدم المطابق فقط (بدون تسريب باقي الموظفين أو الشركات الأخرى)
- */
-exports.resolveLoginUser = onCall(async (request) => {
-  const { identifier, phone, email, subdomain } = request.data || {};
-  const rawInput = (identifier || email || phone || '').toString().trim();
-  if (!rawInput) {
-    return { found: false, message: 'لم يتم تقديم بريد أو رقم هاتف للبحث.' };
-  }
-
-  const cleanEmail = rawInput.includes('@') ? rawInput.toLowerCase().trim() : (email ? email.toLowerCase().trim() : '');
-  const cPhone = cleanPhoneHelper(phone || (!rawInput.includes('@') ? rawInput : ''));
-  const cleanSub = subdomain ? subdomain.toLowerCase().trim() : null;
-
-  // 1. جلب قائمة الشركات المركزية من platform_metadata/tenants بسيرفر Admin
-  let tenantsList = [];
+  // 4. حذف وثيقة الشركة وبياناتها
   try {
-    const tenantsDoc = await db.doc('platform_metadata/tenants').get();
-    if (tenantsDoc.exists) {
-      tenantsList = tenantsDoc.data()?.tenants || [];
+    const compRef = db.doc(`companies/${targetId}`);
+    try {
+      await db.recursiveDelete(compRef);
+    } catch (e) {
+      await compRef.delete().catch(() => {});
+    }
+
+    // حذف وثيقة tenants المستقلة
+    await db.doc(`tenants/${targetId}`).delete().catch(() => {});
+
+    // إزالة من مصفوفة platform_metadata/tenants
+    const metaRef = db.doc("platform_metadata/tenants");
+    const metaSnap = await metaRef.get();
+    if (metaSnap.exists) {
+      const currentList = metaSnap.data()?.tenants || metaSnap.data()?.list || [];
+      const updatedList = currentList.filter((t) => t.id !== targetId);
+      await metaRef.set({ tenants: updatedList, list: updatedList, updatedAt: new Date().toISOString() }, { merge: true });
     }
   } catch (e) {
-    console.warn('[resolveLoginUser] Error fetching platform_metadata/tenants:', e.message);
+    console.warn("[deleteCompanyPermanently] Document deletion notice:", e.message);
   }
 
-  // ترتيب البحث: إذا تم إرسال نطاق فرعي، نبدأ بالشركة التابعة له أولاً
-  if (cleanSub) {
-    tenantsList.sort((a, b) => {
-      const subA = (a.subdomain || a.slug || a.id || '').toLowerCase().trim();
-      const subB = (b.subdomain || b.slug || b.id || '').toLowerCase().trim();
-      if (subA === cleanSub || subA === `comp_${cleanSub}`) return -1;
-      if (subB === cleanSub || subB === `comp_${cleanSub}`) return 1;
-      return 0;
-    });
-  }
-
-  // 2. البحث في الشركات عن المالك أو الموظف المطابق
-  for (const t of tenantsList) {
-    if (!t || t.status === 'deleted') continue;
-
-    const companyId = t.id || t.companyId;
-    const companyName = t.name || companyId;
-    const sub = t.subdomain || t.slug || '';
-    const logo = t.logo || null;
-    const currency = t.currency || 'ج.م';
-
-    // فحص هل هو المدير / المالك
-    const isOwnerByEmail = cleanEmail && t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail;
-    const isOwnerByPhone = cPhone && ((t.phone && cleanPhoneHelper(t.phone) === cPhone) || (t.adminPhone && cleanPhoneHelper(t.adminPhone) === cPhone));
-
-    if (isOwnerByEmail || isOwnerByPhone) {
-      return {
-        found: true,
-        companyId,
-        companyName,
-        subdomain: sub,
-        logo,
-        currency,
-        user: {
-          id: `u_${companyId}_admin`,
-          name: t.adminName || 'المدير العام',
-          email: t.adminEmail || (isOwnerByPhone ? `phone_${cPhone}@tashteeb.app` : cleanEmail),
-          phone: t.phone || t.adminPhone || cPhone || null,
-          role: 'owner',
-        }
-      };
-    }
-
-    // فحص موظفي الشركة إن وجدوا في وثيقة المنصة
-    if (Array.isArray(t.users)) {
-      const match = t.users.find(u => {
-        if (!u) return false;
-        if (cleanEmail && u.email && u.email.toLowerCase().trim() === cleanEmail) return true;
-        if (cPhone) {
-          const uPhone = cleanPhoneHelper(u.phone || u.cleanPhone);
-          if (uPhone && uPhone === cPhone) return true;
-          if (u.email) {
-            const prefix = cleanPhoneHelper(u.email.split('@')[0].replace('phone_', ''));
-            if (prefix && prefix === cPhone) return true;
-          }
-        }
-        return false;
-      });
-
-      if (match) {
-        return {
-          found: true,
-          companyId,
-          companyName,
-          subdomain: sub,
-          logo,
-          currency,
-          user: {
-            id: match.id || `u_${companyId}_member`,
-            name: match.name || match.email?.split('@')[0] || 'عضو فريق',
-            email: match.email || (cPhone ? `phone_${cPhone}@tashteeb.app` : cleanEmail),
-            phone: match.phone || cPhone || null,
-            role: match.role || 'engineer',
-          }
-        };
-      }
-    }
-  }
-
-  // 3. بحث احتياطي مباشر في وثيقة الشركة داخل companies/{companyId} إذا كان هناك نطاق فرعي محدد
-  if (cleanSub) {
-    try {
-      const possibleIds = [cleanSub, `comp_${cleanSub}`];
-      for (const cId of possibleIds) {
-        const cSnap = await db.doc(`companies/${cId}`).get();
-        if (cSnap.exists) {
-          const cData = cSnap.data() || {};
-          const users = Array.isArray(cData.users) ? cData.users : [];
-          const match = users.find(u => {
-            if (!u) return false;
-            if (cleanEmail && u.email && u.email.toLowerCase().trim() === cleanEmail) return true;
-            if (cPhone) {
-              const uPhone = cleanPhoneHelper(u.phone || u.cleanPhone);
-              if (uPhone && uPhone === cPhone) return true;
-              if (u.email && cleanPhoneHelper(u.email.split('@')[0]) === cPhone) return true;
-            }
-            return false;
-          });
-          if (match) {
-            return {
-              found: true,
-              companyId: cId,
-              companyName: cData.name || cData.settings?.companyName || cleanSub,
-              subdomain: cleanSub,
-              logo: cData.logo || null,
-              currency: cData.currency || 'ج.م',
-              user: {
-                id: match.id || `u_${cId}_member`,
-                name: match.name || 'عضو فريق',
-                email: match.email || cleanEmail,
-                phone: match.phone || cPhone || null,
-                role: match.role || 'engineer',
-              }
-            };
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[resolveLoginUser] Backup companies doc lookup notice:', e.message);
-    }
-  }
-
-  return { found: false };
+  return { success: true, companyId: targetId };
 });
 
+// ==============================================================================
+// 8. تريجر مزامنة بوابة العميل (syncPortalShare)
+// الناشر الحصري والوحيد لـ portal_shares/{token}
+// ==============================================================================
+exports.syncPortalShare = onDocumentWritten(
+  "companies/{companyId}/projects/{projectId}",
+  async (event) => {
+    const { companyId, projectId } = event.params;
+    const beforeData = event.data?.before?.data() || null;
+    const afterData = event.data?.after?.data() || null;
+
+    // حالة 1: تم حذف المشروع، أو تعطيل البوابة
+    if (!afterData || afterData.clientPortalEnabled !== true) {
+      const tokensToDelete = new Set();
+      if (beforeData?.clientPortalToken) tokensToDelete.add(beforeData.clientPortalToken);
+      if (afterData?.clientPortalToken) tokensToDelete.add(afterData.clientPortalToken);
+
+      for (const tok of tokensToDelete) {
+        if (tok && typeof tok === "string") {
+          try {
+            await db.doc(`portal_shares/${tok}`).delete();
+          } catch (e) {}
+        }
+      }
+      return;
+    }
+
+    // حالة 2: البوابة مفعلة
+    let token = afterData.clientPortalToken;
+    const isWeakToken = !token || typeof token !== "string" || token.length < 24 || token.startsWith("demo-");
+
+    if (isWeakToken) {
+      token = generateSecureToken();
+      try {
+        await event.data.after.ref.update({
+          clientPortalToken: token,
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.error(`[syncPortalShare] Failed to update project token:`, err.message);
+      }
+    }
+
+    // إذا تغير التوكن، حذف الوثيقة السابقة
+    if (beforeData?.clientPortalToken && beforeData.clientPortalToken !== token) {
+      try {
+        await db.doc(`portal_shares/${beforeData.clientPortalToken}`).delete();
+      } catch (e) {}
+    }
+
+    // جلب هوية الشركة للتصميم
+    let companySettings = null;
+    try {
+      const compDoc = await db.doc(`companies/${companyId}`).get();
+      if (compDoc.exists) {
+        companySettings = compDoc.data()?.settings || null;
+      }
+    } catch (e) {}
+
+    // بناء النسخة المنقاة واستبعاد أي تكاليف داخلية
+    const cleanPayload = sanitizePortalPayload(
+      { ...afterData, id: projectId, companyId },
+      token,
+      companySettings
+    );
+
+    // الحفاظ على توقيع واعتماد العميل السابق في حال عدم وجوده في المشروع
+    try {
+      const existingPortalDoc = await db.doc(`portal_shares/${token}`).get();
+      if (existingPortalDoc.exists) {
+        const prev = existingPortalDoc.data() || {};
+        if (!cleanPayload.clientSignature && prev.clientSignature) {
+          cleanPayload.clientSignature = prev.clientSignature;
+          cleanPayload.clientApprovalDate = prev.clientApprovalDate;
+          cleanPayload.clientApprovalNotes = prev.clientApprovalNotes;
+        }
+      }
+
+      await db.doc(`portal_shares/${token}`).set(cleanPayload, { merge: true });
+    } catch (err) {
+      console.error(`[syncPortalShare] Failed to write portal share:`, err.message);
+    }
+  }
+);
+
+// ==============================================================================
+// 9. اعتماد وتوقيع العميل في البوابة (submitPortalApproval)
+// ==============================================================================
+exports.submitPortalApproval = onCall(async (request) => {
+  const { token, clientSignature, clientApprovalDate, clientApprovalNotes } = request.data || {};
+
+  if (!token || !clientSignature) {
+    throw new HttpsError("invalid-argument", "التوكن والتوقيع مطلوبان للاعتماد.");
+  }
+
+  const shareRef = db.doc(`portal_shares/${token}`);
+  const shareSnap = await shareRef.get();
+
+  if (!shareSnap.exists) {
+    throw new HttpsError("not-found", "رابط البوابة غير صالح أو منتهي الصلاحية.");
+  }
+
+  const shareData = shareSnap.data() || {};
+  const { companyId, projectId } = shareData;
+
+  const now = new Date().toISOString();
+  const approvalPayload = {
+    clientSignature,
+    clientApprovalDate: clientApprovalDate || now,
+    clientApprovalNotes: clientApprovalNotes || null,
+    status: "approved",
+    approvedAt: now,
+    updatedAt: now,
+  };
+
+  await shareRef.set(approvalPayload, { merge: true });
+
+  if (companyId && projectId) {
+    try {
+      await db.doc(`companies/${companyId}/projects/${projectId}`).set(
+        {
+          clientSignature,
+          clientApprovalDate: approvalPayload.clientApprovalDate,
+          clientApprovalNotes: approvalPayload.clientApprovalNotes,
+          portalApproved: true,
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+    } catch (e) {
+      console.warn("[submitPortalApproval] Sync to company project warning:", e.message);
+    }
+  }
+
+  return { success: true };
+});
+
+// ==============================================================================
+// 10. إنشاء توكن البوابة صراحة (createPortalShare)
+// ==============================================================================
+exports.createPortalShare = onCall(async (request) => {
+  const { companyId, projectId } = request.data || {};
+  const callerUid = request.auth?.uid;
+
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً.");
+  }
+
+  const projRef = db.doc(`companies/${companyId}/projects/${projectId}`);
+  const projSnap = await projRef.get();
+
+  if (!projSnap.exists) {
+    throw new HttpsError("not-found", "المشروع غير موجود.");
+  }
+
+  const token = generateSecureToken();
+  await projRef.set({
+    clientPortalToken: token,
+    clientPortalEnabled: true,
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+
+  return { success: true, token };
+});

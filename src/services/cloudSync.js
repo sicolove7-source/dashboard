@@ -892,11 +892,7 @@ export async function syncSingleProjectToCloud(companyId, projectId, patchOrProj
       updatedAt: new Date().toISOString(),
     }, { merge: true });
 
-    // 3. النشر الفوري لبوابة العميل في portal_shares/{token} لتمكين العميل من فتحها من أي جهاز فوراً
-    if (safeProject.clientPortalToken && safeProject.clientPortalEnabled !== false) {
-      publishProjectToPortalShares(cId, safeProject).catch(() => {});
-    }
-
+    // 3. مزامنة البوابة تتم تلقائياً وحصرياً عبر Cloud Function syncPortalShare عند حفظ المشروع
     return true;
   } catch (error) {
     console.warn("Cloud sync (subcollection single project) offline or error:", error.message);
@@ -906,96 +902,11 @@ export async function syncSingleProjectToCloud(companyId, projectId, patchOrProj
 
 /**
  * نشر وإسقاط نسخة آمنة ومنقاة من المشروع إلى portal_shares/{token}
- * تمكّن العميل من فتح البوابة برابطه المخصص من أي متصفح أو جهاز بدون تسجيل دخول
+ * تم نقله بالكامل إلى Cloud Function syncPortalShare لضمان عزل التكاليف وتأمين توقيع العميل
  */
-export async function publishProjectToPortalShares(companyId, project) {
-  const cId = cleanCompanyId(companyId);
-  const token = project?.clientPortalToken;
-  if (!cId || !token) return false;
-
-  try {
-    const shareRef = doc(db, 'portal_shares', token);
-
-    // إذا كانت البوابة معطلة صراحة، احذف وثيقة المشاركة
-    if (project.clientPortalEnabled === false) {
-      await deleteDoc(shareRef).catch(() => {});
-      return true;
-    }
-
-    // استخراج أو جلب إعدادات الشركة الخاصة بالهوية والألوان
-    let companySettings = project.companySettings || null;
-    if (!companySettings) {
-      try {
-        const compDoc = await getDoc(doc(db, 'companies', cId));
-        if (compDoc.exists()) {
-          companySettings = compDoc.data()?.settings || null;
-        }
-      } catch (e) {}
-    }
-
-    // تطهير كامل لبيانات المشروع والوسائط لضمان حفظ مصغرات صالحة ونظيفة في وثيقة المشاركة
-    const safeProject = sanitizeProjectForCloud(project);
-
-    const sharePayload = {
-      id: safeProject.id,
-      projectId: safeProject.id,
-      companyId: cId,
-      name: safeProject.name || "مشروع بدون اسم",
-      client: safeProject.client || "عميلنا العزيز",
-      clientPhone: safeProject.clientPhone || "",
-      location: safeProject.location || "",
-      type: safeProject.type || "",
-      floors: safeProject.floors || "",
-      area: Number(safeProject.area || 0),
-      budget: Number(safeProject.budget || safeProject.contractValue || 0),
-      contractValue: Number(safeProject.contractValue || safeProject.budget || 0),
-      spent: Number(safeProject.spent || (Array.isArray(safeProject.expenses) ? safeProject.expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0) : 0)),
-      progress: Number(safeProject.progress || 0),
-      status: safeProject.status || "active",
-      startDate: safeProject.startDate || "",
-      endDate: safeProject.endDate || "",
-      dueDate: safeProject.dueDate || "",
-      workItems: Array.isArray(safeProject.workItems) ? safeProject.workItems : [],
-      dailyLogs: Array.isArray(safeProject.dailyLogs) ? safeProject.dailyLogs : [],
-      photos: Array.isArray(safeProject.photos) ? safeProject.photos : [],
-      sitePhotos: Array.isArray(safeProject.sitePhotos) ? safeProject.sitePhotos : [],
-      payments: Array.isArray(safeProject.payments) ? safeProject.payments : (safeProject.clientPayments || []),
-      clientPayments: Array.isArray(safeProject.clientPayments) ? safeProject.clientPayments : (safeProject.payments || []),
-      expenses: Array.isArray(safeProject.expenses) ? safeProject.expenses : [],
-      paymentMilestones: Array.isArray(safeProject.paymentMilestones) ? safeProject.paymentMilestones : [],
-      clientSignature: safeProject.clientSignature || null,
-      clientApprovalDate: safeProject.clientApprovalDate || null,
-      clientApprovalNotes: safeProject.clientApprovalNotes || null,
-      clientContract: safeProject.clientContract || null,
-      clientPortalEnabled: true,
-      clientPortalToken: token,
-      token: token,
-      companySettings: companySettings,
-      updatedAt: new Date().toISOString()
-    };
-
-    try {
-      await setDoc(shareRef, stripUndefined(sharePayload), { merge: true });
-      console.log('[publishProjectToPortalShares] ✅ Live portal published for token:', token);
-      return true;
-    } catch (writeErr) {
-      console.warn('[publishProjectToPortalShares] Direct write failed, trying Cloud Function fallback:', writeErr.message);
-      if (functions) {
-        try {
-          const createFn = httpsCallable(functions, 'createPortalShare');
-          await createFn({ companyId: cId, projectId: project.id });
-          console.log('[publishProjectToPortalShares] ✅ Published via Cloud Function fallback for token:', token);
-          return true;
-        } catch (fnErr) {
-          console.warn('[publishProjectToPortalShares] Cloud Function fallback notice:', fnErr.message);
-        }
-      }
-      return false;
-    }
-  } catch (err) {
-    console.warn('[publishProjectToPortalShares] Non-blocking portal sync notice:', err.message);
-    return false;
-  }
+export async function publishProjectToPortalShares(_companyId, _project) {
+  // تدار عملية النشر للبوابة تلقائياً وسحابياً عبر الـ Firestore Trigger (syncPortalShare)
+  return true;
 }
 
 /**

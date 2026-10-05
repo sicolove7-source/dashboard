@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { getGlobalCurrency } from '../utils/helpers';
 import { openWhatsApp } from '../utils/whatsappTemplates';
-import { syncSingleProjectToCloud, publishProjectToPortalShares, generatePortalToken } from '../services/cloudSync';
+import { syncSingleProjectToCloud, generatePortalToken } from '../services/cloudSync';
 import { getActiveTenantId } from '../services/tenantsManager';
 
 export default function ContractsHubPanel({
@@ -46,9 +46,6 @@ export default function ContractsHubPanel({
     const full = { ...project, ...patch, companyId };
     try {
       await syncSingleProjectToCloud(companyId, project.id, full);
-    } catch (e) {}
-    try {
-      await publishProjectToPortalShares(companyId, full);
     } catch (e) {}
     return { token: tok, full };
   };

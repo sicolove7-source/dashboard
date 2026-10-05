@@ -138,22 +138,36 @@ export async function resolveCompanyForIntake(companyId) {
       }
     }
 
-    // فحص قائمة المستأجرين المركزية العامة (متاحة للزوار)
-    const tDocRef = doc(db, 'platform_metadata', 'tenants');
-    const tSnap = await getDoc(tDocRef);
-    if (tSnap.exists() && Array.isArray(tSnap.data()?.list)) {
-      const tenant = tSnap.data().list.find(t => t.id === cId);
-      if (tenant) {
-        result = {
-          ...result,
-          companyName: tenant.name || result.companyName,
-          companySubtitle: tenant.subtitle || result.companySubtitle,
-          companyLogo: tenant.logo || result.companyLogo,
-          primaryColor: tenant.primaryColor || result.primaryColor,
-          accentColor: tenant.accentColor || result.accentColor,
-          currency: tenant.currency || result.currency,
-        };
+    // فحص وثيقة الشركة المستقلة أولاً tenants/{cId} ثم البديل المركزي
+    let tenant = null;
+    try {
+      const singleTenantSnap = await getDoc(doc(db, 'tenants', cId));
+      if (singleTenantSnap.exists()) {
+        tenant = singleTenantSnap.data();
       }
+    } catch (e) {}
+
+    if (!tenant) {
+      const tDocRef = doc(db, 'platform_metadata', 'tenants');
+      const tSnap = await getDoc(tDocRef);
+      if (tSnap.exists()) {
+        const list = tSnap.data()?.tenants || tSnap.data()?.list || [];
+        if (Array.isArray(list)) {
+          tenant = list.find(t => t.id === cId);
+        }
+      }
+    }
+
+    if (tenant) {
+      result = {
+        ...result,
+        companyName: tenant.name || result.companyName,
+        companySubtitle: tenant.subtitle || result.companySubtitle,
+        companyLogo: tenant.logo || result.companyLogo,
+        primaryColor: tenant.primaryColor || result.primaryColor,
+        accentColor: tenant.accentColor || result.accentColor,
+        currency: tenant.currency || result.currency,
+      };
     }
   } catch (e) {
     console.warn('[IntakeResolver] Cloud fetch settings fallback to local:', e);

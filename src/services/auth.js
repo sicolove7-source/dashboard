@@ -83,15 +83,6 @@ export async function callCreateCompanyUser({ email, name, role, companyId, pass
       if (!password && !cleanEmail.endsWith('@tashteeb.app')) {
         try { await sendPasswordResetEmail(auth, cleanEmail); } catch (e) {}
       }
-      // استدعاء صريح لـ callAssignUserClaims كطبقة أمان إضافية
-      if (result.data?.uid) {
-        callAssignUserClaims({
-          targetUid: result.data.uid,
-          companyId,
-          role: role || 'engineer',
-          companyName: '',
-        }).catch((err) => console.warn('[callCreateCompanyUser] Post-cloud claims notice:', err?.message));
-      }
       return result.data;
     }
   } catch (cloudErr) {
