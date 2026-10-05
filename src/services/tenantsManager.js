@@ -247,6 +247,9 @@ export function loadAllTenants() {
             if (s.currency) {
               enhanced.currency = s.currency;
             }
+            if (s.phone || s.companyPhone) {
+              enhanced.phone = s.phone || s.companyPhone;
+            }
           }
         } catch (e) {}
         if (!map.has(t.id)) {
@@ -257,6 +260,7 @@ export function loadAllTenants() {
           map.set(t.id, {
             ...defT,
             ...enhanced,
+            phone: enhanced.phone || defT.phone || enhanced.mobile || '',
             name: enhanced.name || defT.name,
             logo: enhanced.logo || defT.logo || null,
             users: mergedUsers,
@@ -382,6 +386,8 @@ export async function loadAllTenantsAsync() {
             mergedMap.set(t.id, {
               ...cloudT,
               ...t,
+              phone: t.phone || cloudT.phone || cloudT.mobile || t.mobile || '',
+              createdAt: t.createdAt || cloudT.createdAt || t.startDate || cloudT.startDate || null,
               name: safeName,
               logo: safeLogo,
               users: mergedUsers,

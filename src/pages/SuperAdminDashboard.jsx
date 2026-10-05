@@ -3,7 +3,7 @@ import {
   Building2, Plus, Search, CheckCircle2, Clock, AlertTriangle,
   Copy, Check, ExternalLink, KeyRound, Shield, Trash2, Pencil,
   Power, Sparkles, MapPin, DollarSign, Calendar, Users, Phone,
-  Mail, X, RefreshCw, Layers, Globe, Server, Lock
+  Mail, X, RefreshCw, Layers, Globe, Server, Lock, ArrowUpDown
 } from 'lucide-react';
 import {
   loadAllTenants, loadAllTenantsAsync, createTenant, updateTenant, deleteTenant,
@@ -14,11 +14,54 @@ import {
 import { syncTenantsListToCloud } from '../services/cloudSync';
 import { updateCurrentUserPassword } from '../services/auth';
 
+function getTenantPhone(t) {
+  if (!t) return '';
+  const candidate = t.phone || t.mobile || t.adminPhone || t.contactPhone || t.userPhone;
+  if (candidate && String(candidate).trim()) return String(candidate).trim();
+  if (Array.isArray(t.users) && t.users.length > 0) {
+    const u = t.users.find(u => u && (u.phone || u.mobile));
+    if (u && (u.phone || u.mobile)) return String(u.phone || u.mobile).trim();
+  }
+  return '';
+}
+
+function getTenantTimestamp(t) {
+  if (!t) return 0;
+  if (typeof t.createdTimestamp === 'number') return t.createdTimestamp;
+  if (typeof t.timestamp === 'number') return t.timestamp;
+  if (t.createdAt) {
+    if (typeof t.createdAt.toMillis === 'function') return t.createdAt.toMillis();
+    if (typeof t.createdAt.seconds === 'number') return t.createdAt.seconds * 1000;
+    if (typeof t.createdAt === 'string') {
+      const p = Date.parse(t.createdAt);
+      if (!isNaN(p) && p > 0) return p;
+    }
+  }
+  if (t.startDate && typeof t.startDate === 'string') {
+    const p = Date.parse(t.startDate);
+    if (!isNaN(p) && p > 0) return p;
+  }
+  if (t.updatedAt && typeof t.updatedAt === 'string') {
+    const p = Date.parse(t.updatedAt);
+    if (!isNaN(p) && p > 0) return p;
+  }
+  if (typeof t.id === 'string') {
+    const clean = t.id.replace(/^comp_/, '');
+    if (/^\d{10,13}$/.test(clean)) {
+      const num = parseInt(clean, 10);
+      return clean.length === 10 ? num * 1000 : num;
+    }
+  }
+  return 0;
+}
+
 export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) {
   const [tenants, setTenants] = useState([]);
   const [search, setSearch] = useState('');
   const [filterCity, setFilterCity] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [sortBy, setSortBy] = useState('newest'); // الافتراضي: الأحدث تسجيلاً أولاً (آخر حد سجّل)
+  const [onlyLatest, setOnlyLatest] = useState(false); // إظهار آخر حد سجّل فقط
   const [showModal, setShowModal] = useState(false);
   const [editTenant, setEditTenant] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
@@ -111,7 +154,7 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
       city: tenant.city || 'أبوظبي',
       country: tenant.country || 'الإمارات',
       currency: tenant.currency || 'د.إ',
-      phone: tenant.phone || '',
+      phone: getTenantPhone(tenant) || tenant.phone || '',
       plan: tenant.plan || 'trial',
       status: tenant.status || 'active',
       expiryDate: tenant.expiryDate || '',
@@ -185,16 +228,49 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
     }
   }
 
-  const filtered = tenants.filter((t) => {
-    const matchSearch =
-      (t.name || '').toLowerCase().includes(search.toLowerCase()) ||
-      (t.adminEmail || '').toLowerCase().includes(search.toLowerCase()) ||
-      (t.phone || '').includes(search) ||
-      (t.customDomain || '').toLowerCase().includes(search.toLowerCase());
-    const matchCity = filterCity === 'all' || t.city === filterCity;
-    const matchStatus = filterStatus === 'all' || t.status === filterStatus;
-    return matchSearch && matchCity && matchStatus;
-  });
+  const filtered = tenants
+    .filter((t) => {
+      const p = getTenantPhone(t);
+      const matchSearch =
+        (t.name || '').toLowerCase().includes(search.toLowerCase()) ||
+        (t.adminEmail || '').toLowerCase().includes(search.toLowerCase()) ||
+        (p && p.includes(search)) ||
+        (t.phone || '').includes(search) ||
+        (t.subdomain || '').toLowerCase().includes(search.toLowerCase()) ||
+        (t.customDomain || '').toLowerCase().includes(search.toLowerCase());
+      const matchCity = filterCity === 'all' || t.city === filterCity;
+      const matchStatus = filterStatus === 'all' || t.status === filterStatus;
+      return matchSearch && matchCity && matchStatus;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'newest') {
+        const diff = getTenantTimestamp(b) - getTenantTimestamp(a);
+        if (diff !== 0) return diff;
+        return (b.id || '').localeCompare(a.id || '');
+      }
+      if (sortBy === 'oldest') {
+        const diff = getTenantTimestamp(a) - getTenantTimestamp(b);
+        if (diff !== 0) return diff;
+        return (a.id || '').localeCompare(b.id || '');
+      }
+      if (sortBy === 'name_asc') {
+        return (a.name || '').localeCompare(b.name || '', 'ar');
+      }
+      if (sortBy === 'name_desc') {
+        return (b.name || '').localeCompare(a.name || '', 'ar');
+      }
+      if (sortBy === 'projects') {
+        return (b.projectsCount || 0) - (a.projectsCount || 0);
+      }
+      if (sortBy === 'expiry') {
+        const da = a.expiryDate ? Date.parse(a.expiryDate) : Infinity;
+        const db = b.expiryDate ? Date.parse(b.expiryDate) : Infinity;
+        return da - db;
+      }
+      return 0;
+    });
+
+  const displayed = onlyLatest && filtered.length > 0 ? [filtered[0]] : filtered;
 
   return (
     <div className="tab-fade" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -392,7 +468,7 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
           />
         </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <select
             className="filter-select"
             value={filterCity}
@@ -417,21 +493,76 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
             <option value="trial">تجريبي (Trial)</option>
             <option value="suspended">موقوف (Suspended)</option>
           </select>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+              الترتيب:
+            </span>
+            <select
+              className="filter-select"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              style={{ fontWeight: 700, color: 'var(--ink)' }}
+            >
+              <option value="newest">⚡ الأحدث أولاً (آخر حد سجّل)</option>
+              <option value="oldest">⏳ الأقدم تسجيلاً أولاً</option>
+              <option value="name_asc">🔤 اسم الشركة (أ - ي)</option>
+              <option value="name_desc">🔤 اسم الشركة (ي - أ)</option>
+              <option value="projects">🏗️ الأكثر مشاريع</option>
+              <option value="expiry">📅 الأقرب انتهاءً للاشتراك</option>
+            </select>
+          </div>
+
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setOnlyLatest(!onlyLatest)}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 700,
+              background: onlyLatest ? '#EFF6FF' : '#F8FAFC',
+              color: onlyLatest ? '#1D4ED8' : '#475569',
+              border: onlyLatest ? '1px solid #93C5FD' : '1px solid #CBD5E1',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              cursor: 'pointer',
+            }}
+            title={onlyLatest ? 'إلغاء التصفية وعرض جميع الشركات' : 'إظهار أحدث شركة مسجلة فقط'}
+          >
+            <Sparkles size={13} color={onlyLatest ? '#2563EB' : '#64748B'} />
+            <span>{onlyLatest ? 'عرض الكل' : 'آخر شركة فقط ⚡'}</span>
+          </button>
         </div>
       </div>
 
       {/* Tenants Table */}
       <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: 'var(--ink)' }}>
-            الشركات والمشتركون ({filtered.length})
-          </h3>
-          <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 600 }}>
-            اضغط على "دخول لحساب الشركة" لتجربة أو إدارة مساحة العمل الخاصة بها
+        <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: 'var(--ink)' }}>
+              الشركات والمشتركون ({displayed.length}{displayed.length !== tenants.length ? ` من أصل ${tenants.length}` : ''})
+            </h3>
+            {onlyLatest && (
+              <span style={{ fontSize: 11.5, fontWeight: 700, background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', padding: '2px 8px', borderRadius: 6 }}>
+                معروض أحدث مسجل فقط ⚡
+              </span>
+            )}
+          </div>
+          <span style={{ fontSize: 12.5, color: 'var(--muted)', fontWeight: 600 }}>
+            مرتبة حسب: {
+              sortBy === 'newest' ? 'الأحدث تسجيلاً (آخر حد سجّل)' :
+              sortBy === 'oldest' ? 'الأقدم تسجيلاً' :
+              sortBy === 'name_asc' ? 'الاسم أبجدياً (أ-ي)' :
+              sortBy === 'name_desc' ? 'الاسم أبجدياً (ي-أ)' :
+              sortBy === 'projects' ? 'الأكثر مشاريع' : 'تاريخ الانتهاء'
+            }
           </span>
         </div>
 
-        {filtered.length === 0 ? (
+        {displayed.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--muted)' }}>
             <Building2 size={42} style={{ opacity: 0.3, marginBottom: 12 }} />
             <div>لا توجد شركات مطابقة لمعايير البحث.</div>
@@ -443,21 +574,52 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
               <table className="table" style={{ width: '100%', margin: 0 }}>
                 <thead>
                   <tr style={{ background: 'rgba(0,0,0,0.02)', textAlign: 'right' }}>
+                    <th style={{ width: 50, textAlign: 'center' }}>#</th>
                     <th>الشركة والرابط المخصص</th>
-                    <th>المدير والبريد</th>
+                    <th>المدير والموبايل المسجل</th>
                     <th>الباقة والعملة</th>
-                    <th>صلاحية الاشتراك</th>
+                    <th>صلاحية الاشتراك والتسجيل</th>
                     <th>الحالة</th>
                     <th style={{ textAlign: 'center' }}>إجراءات الحساب والواتساب</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((t) => {
+                  {displayed.map((t, index) => {
                     const isSuspended = t.status === 'suspended';
                     const isTrial = t.status === 'trial';
+                    const phone = getTenantPhone(t);
+                    const isNewestTop = index === 0 && sortBy === 'newest';
 
                     return (
-                      <tr key={t.id} style={{ opacity: isSuspended ? 0.6 : 1 }}>
+                      <tr key={t.id} style={{ opacity: isSuspended ? 0.6 : 1, background: isNewestTop ? 'rgba(59, 130, 246, 0.02)' : undefined }}>
+                        <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                          <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                minWidth: 28,
+                                height: 26,
+                                padding: '0 5px',
+                                borderRadius: 6,
+                                background: isNewestTop ? '#DBEAFE' : '#F1F5F9',
+                                border: isNewestTop ? '1px solid #93C5FD' : '1px solid #E2E8F0',
+                                color: isNewestTop ? '#1E40AF' : '#475569',
+                                fontSize: 12,
+                                fontWeight: 800,
+                              }}
+                            >
+                              {index + 1}
+                            </span>
+                            {isNewestTop && (
+                              <span style={{ fontSize: 9, fontWeight: 700, color: '#1D4ED8', whiteSpace: 'nowrap' }}>
+                                الأحدث
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                             <div
@@ -483,6 +645,9 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
                                 <MapPin size={12} color="#64748B" />
                                 <span>{t.city} - {t.country}</span>
+                                {t.subdomain && (
+                                  <span style={{ color: '#2563EB', fontWeight: 600, direction: 'ltr' }}>• 🔗 {t.subdomain}</span>
+                                )}
                                 {t.customDomain && (
                                   <span style={{ color: '#475569', fontWeight: 600, direction: 'ltr' }}>• 🌐 {t.customDomain}</span>
                                 )}
@@ -492,8 +657,46 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                         </td>
 
                         <td>
-                          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>{t.adminName || 'المدير العام'}</div>
+                          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' }}>{t.adminName || 'المدير العام'}</div>
                           <div style={{ fontSize: 11.5, color: 'var(--muted)', fontFamily: 'monospace' }}>{t.adminEmail}</div>
+                          {phone ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#F0FDF4', border: '1px solid #BBF7D0', padding: '2px 7px', borderRadius: 5 }}>
+                                <Phone size={11} color="#16A34A" />
+                                <a
+                                  href={`tel:${phone}`}
+                                  style={{ fontSize: 11.5, fontWeight: 700, color: '#15803D', textDecoration: 'none', direction: 'ltr' }}
+                                  title="اتصال برقم الموبايل المسجل"
+                                >
+                                  {phone}
+                                </a>
+                              </div>
+                              <a
+                                href={`https://wa.me/${phone.replace(/[^0-9]/g, '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 3,
+                                  padding: '2px 6px',
+                                  borderRadius: 5,
+                                  background: '#25D366',
+                                  color: '#FFFFFF',
+                                  fontSize: 10.5,
+                                  fontWeight: 700,
+                                  textDecoration: 'none',
+                                }}
+                                title="مراسلة واتساب مباشرة"
+                              >
+                                واتساب
+                              </a>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 3 }}>
+                              <span style={{ fontStyle: 'italic' }}>لا يوجد موبايل مسجل</span>
+                            </div>
+                          )}
                         </td>
 
                         <td>
@@ -508,7 +711,7 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                             {t.expiryDate || 'مفتوح'}
                           </div>
                           <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                            تاريخ البدء: {t.startDate || '2026-08'}
+                            تاريخ التسجيل: {t.createdAt ? String(t.createdAt).slice(0, 10) : (t.startDate || '2026-08')}
                           </div>
                         </td>
 
@@ -627,9 +830,11 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
 
             {/* Mobile-Only Responsive Company Cards */}
             <div className="mobile-only-cards" style={{ display: 'none', flexDirection: 'column', gap: 14, padding: 14 }}>
-              {filtered.map((t) => {
+              {displayed.map((t, index) => {
                 const isSuspended = t.status === 'suspended';
                 const isTrial = t.status === 'trial';
+                const phone = getTenantPhone(t);
+                const isNewestTop = index === 0 && sortBy === 'newest';
 
                 return (
                   <div
@@ -638,7 +843,7 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                     style={{
                       padding: 16,
                       borderRadius: 12,
-                      border: '1px solid var(--border)',
+                      border: isNewestTop ? '1px solid #93C5FD' : '1px solid var(--border)',
                       background: 'var(--card)',
                       display: 'flex',
                       flexDirection: 'column',
@@ -649,6 +854,24 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                     {/* Header */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 28,
+                            height: 28,
+                            borderRadius: 6,
+                            background: isNewestTop ? '#DBEAFE' : '#F1F5F9',
+                            border: isNewestTop ? '1px solid #93C5FD' : '1px solid #E2E8F0',
+                            color: isNewestTop ? '#1E40AF' : '#475569',
+                            fontSize: 12,
+                            fontWeight: 800,
+                            flexShrink: 0,
+                          }}
+                        >
+                          #{index + 1}
+                        </span>
                         <div
                           style={{
                             width: 38,
@@ -665,7 +888,7 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                             flexShrink: 0,
                           }}
                         >
-                          {t.name.slice(0, 2)}
+                          {(t.name || '').slice(0, 2)}
                         </div>
                         <div>
                           <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink)' }}>{t.name}</div>
@@ -676,7 +899,12 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                         </div>
                       </div>
 
-                      <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {isNewestTop && (
+                          <span style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', padding: '2px 6px', borderRadius: 6, fontSize: 10.5, fontWeight: 700 }}>
+                            آخر مسجل ⚡
+                          </span>
+                        )}
                         {t.status === 'active' && (
                           <span style={{ background: '#F1F5F9', color: '#1E293B', border: '1px solid #E2E8F0', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>
                             نشط
@@ -708,6 +936,37 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                       <div style={{ gridColumn: 'span 2' }}>
                         <span style={{ color: 'var(--muted)', display: 'block', fontSize: 11 }}>البريد الإلكتروني:</span>
                         <span style={{ fontWeight: 500, color: 'var(--ink)', fontFamily: 'monospace' }}>{t.adminEmail}</span>
+                      </div>
+                      <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--card)', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <Phone size={13} color="#16A34A" />
+                          <span style={{ fontSize: 11, color: 'var(--muted)' }}>الموبايل المسجل:</span>
+                          {phone ? (
+                            <a href={`tel:${phone}`} style={{ fontSize: 12, fontWeight: 700, color: '#15803D', textDecoration: 'none', direction: 'ltr' }}>
+                              {phone}
+                            </a>
+                          ) : (
+                            <span style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>غير مسجل</span>
+                          )}
+                        </div>
+                        {phone && (
+                          <a
+                            href={`https://wa.me/${phone.replace(/[^0-9]/g, '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ padding: '2px 8px', borderRadius: 5, background: '#25D366', color: '#fff', fontSize: 10.5, fontWeight: 700, textDecoration: 'none' }}
+                          >
+                            واتساب
+                          </a>
+                        )}
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--muted)', display: 'block', fontSize: 11 }}>تاريخ التسجيل:</span>
+                        <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{t.createdAt ? String(t.createdAt).slice(0, 10) : (t.startDate || '—')}</span>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--muted)', display: 'block', fontSize: 11 }}>صلاحية الاشتراك:</span>
+                        <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{t.expiryDate || 'مفتوح'}</span>
                       </div>
                     </div>
 
