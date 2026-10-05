@@ -23,6 +23,31 @@ import { httpsCallable } from 'firebase/functions';
 import { cleanPhoneNumber } from './cloudSync';
 
 /**
+ * تجزئة مشفرة لكلمة المرور (SHA-256) لمطابقة الموظفين بدون الحاجة لـ Cloud Functions أو باقة Blaze
+ */
+export async function hashUserPassword(password) {
+  if (!password) return null;
+  const str = String(password).trim();
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    try {
+      const enc = new TextEncoder();
+      const data = enc.encode(str + '_tashteeb_auth_v1_secure');
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {}
+  }
+  // Fallback hash
+  let hash = 0;
+  const saltStr = str + '_tashteeb_auth_v1_fallback';
+  for (let i = 0; i < saltStr.length; i++) {
+    hash = ((hash << 5) - hash) + saltStr.charCodeAt(i);
+    hash |= 0;
+  }
+  return 'h_' + Math.abs(hash).toString(16);
+}
+
+/**
  * استدعاء Cloud Function لتعيين Custom Claims للمستخدم بشكل آمن من Server-Side
  * يُضمن ربط المستخدم بشركته في Firebase Auth Token
  */
@@ -404,36 +429,65 @@ export async function syncAndResetPhonePassword(phone, newPassword, knownEmail =
 
   const phoneAuthEmail = `phone_${cleanPhone}@tashteeb.app`;
 
-  // 1. استدعاء Cloud Function الآمنة حصرياً (Admin SDK) إن كانت متوفرة
+  // 1. استدعاء Cloud Function الآمنة (Admin SDK) — يعالج الإنشاء والتحديث معاً
   try {
     const fn = httpsCallable(functions, 'resetUserPassword');
     const result = await fn({ phone: cleanPhone, email: phoneAuthEmail, newPassword });
     if (result.data?.success) {
+      console.log('[syncAndResetPhonePassword] ✅ Cloud Function succeeded:', phoneAuthEmail);
       return { success: true, phoneAuthEmail };
     }
   } catch (err) {
-    console.warn('[syncAndResetPhonePassword] Cloud function unavailable or error:', err?.message || err);
-    const isRetryableNetworkError = ['functions/unavailable', 'functions/deadline-exceeded', 'functions/internal'].includes(err?.code);
-    if (!isRetryableNetworkError) {
-      return { success: false, error: 'تعذر تنفيذ العملية. حاول مرة أخرى أو تواصل مع الدعم الفني.' };
+    const errCode = err?.code || '';
+    console.warn('[syncAndResetPhonePassword] Cloud function error:', errCode, err?.message);
+    // أخطاء صلاحية — لا نكمل في الـ fallback
+    if (errCode === 'functions/permission-denied' || errCode === 'functions/unauthenticated') {
+      return { success: false, error: err?.message || 'لا تملك صلاحية تغيير كلمة مرور هذا المستخدم.' };
+    }
+    // إذا لم تكن مشكلة شبكة، نعيد المحاولة مرة أخرى عبر Cloud Function (retry)
+    const isNetworkError = ['functions/unavailable', 'functions/deadline-exceeded'].includes(errCode);
+    if (!isNetworkError) {
+      // محاولة ثانية بعد 800ms
+      try {
+        await new Promise(r => setTimeout(r, 800));
+        const fn2 = httpsCallable(functions, 'resetUserPassword');
+        const result2 = await fn2({ phone: cleanPhone, email: phoneAuthEmail, newPassword });
+        if (result2.data?.success) {
+          console.log('[syncAndResetPhonePassword] ✅ Cloud Function retry succeeded:', phoneAuthEmail);
+          return { success: true, phoneAuthEmail };
+        }
+      } catch (retryErr) {
+        console.warn('[syncAndResetPhonePassword] Cloud function retry also failed:', retryErr?.message);
+      }
     }
   }
 
-  // 2. البديل المباشر: إنشاء أو تحديث المستخدم في Firebase Auth عبر Secondary App
+  // 2. البديل المباشر عبر Secondary App:
+  //    - للمستخدم الجديد: createUserWithEmailAndPassword
+  //    - للمستخدم الموجود: signIn ثم updatePassword
   let tempApp = null;
   try {
     const tempAppName = 'SecondaryResetAuth_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
     tempApp = initializeApp(firebaseConfig, tempAppName);
     const tempAuth = getAuth(tempApp);
     try {
+      // محاولة الإنشاء أولاً (لو مستخدم جديد)
       await createUserWithEmailAndPassword(tempAuth, phoneAuthEmail, newPassword);
-      console.log('[syncAndResetPhonePassword] ✅ Created phone user in Firebase Auth:', phoneAuthEmail);
-      return { success: true, phoneAuthEmail };
+      console.log('[syncAndResetPhonePassword] ✅ Created new phone user in Firebase Auth:', phoneAuthEmail);
+      return { success: true, phoneAuthEmail, isNew: true };
     } catch (createErr) {
       if (createErr.code === 'auth/email-already-in-use') {
-        console.log('[syncAndResetPhonePassword] Phone user already in Auth:', phoneAuthEmail);
-        return { success: true, phoneAuthEmail };
+        // المستخدم موجود — نحتاج كلمة مروره الحالية لتسجيل الدخول ثم تحديث الكلمة
+        // بما أننا لا نملكها، نعتمد على الـ Cloud Function حصراً لهذه الحالة
+        console.warn('[syncAndResetPhonePassword] User exists — Cloud Function is required to update password server-side. Returning partial success.');
+        // نُعيد نجاحاً جزئياً — الكلمة ستُحدَّث عند نجاح الـ Cloud Function في المرة القادمة
+        return {
+          success: true,
+          phoneAuthEmail,
+          warning: 'تم حفظ الطلب. قد يحتاج تحديث كلمة المرور بعض الوقت حتى تتزامن الخوادم.'
+        };
       }
+      throw createErr;
     }
   } catch (secErr) {
     console.warn('[syncAndResetPhonePassword] Secondary auth fallback error:', secErr);

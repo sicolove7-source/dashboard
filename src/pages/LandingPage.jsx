@@ -1874,6 +1874,51 @@ export default function LandingPage({ onGoToLogin }) {
         </div>
       </footer>
 
+      {/* ─── FLOATING WHATSAPP BUTTON (دعم فني واستفسار هندسي فوري 24/7) ─── */}
+      <div style={{
+        position: 'fixed',
+        bottom: 24,
+        left: 24,
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10
+      }}>
+        <button
+          onClick={() => openWhatsApp('مرحباً، أود معرفة تفاصيل أكثر وتجربة منصة تشطيب برو')}
+          aria-label="تواصل عبر واتساب"
+          style={{
+            background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+            color: '#FFFFFF',
+            border: 'none',
+            borderRadius: 9999,
+            padding: '12px 22px',
+            boxShadow: '0 10px 25px -5px rgba(37, 211, 102, 0.5), 0 4px 10px rgba(0, 0, 0, 0.1)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            fontFamily: 'inherit',
+            fontWeight: 800,
+            fontSize: 14,
+            transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px) scale(1.03)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0) scale(1)'; }}
+        >
+          <span style={{
+            width: 10,
+            height: 10,
+            borderRadius: '50%',
+            background: '#FFFFFF',
+            boxShadow: '0 0 8px #FFFFFF',
+            animation: 'pulseGlow 2s infinite'
+          }} />
+          <MessageSquare size={19} />
+          <span>تواصل عبر واتساب</span>
+        </button>
+      </div>
+
     </div>
   );
 }

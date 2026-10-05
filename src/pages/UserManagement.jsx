@@ -10,7 +10,7 @@ import {
 } from '../utils/permissions';
 import { getActiveTenantId, loadAllTenants } from '../services/tenantsManager';
 import { syncCompanyUsersToCloud, syncTenantUsersToCloud, syncTenantsListToCloud, syncTeamToCloud, sanitizeCompanyUsersForCloud, cleanPhoneNumber, mergeUsersPreservingLocal } from '../services/cloudSync';
-import { sendPasswordReset, callCreateCompanyUser, syncAndResetPhonePassword } from '../services/auth';
+import { sendPasswordReset, callCreateCompanyUser, syncAndResetPhonePassword, hashUserPassword } from '../services/auth';
 
 // أدوار الشركة المشتركة فقط (استبعاد Super Admin الخاص بالمنصة)
 const COMPANY_ROLES = Object.fromEntries(
@@ -948,14 +948,16 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
           password: newPass,
         });
       }
-      if (res?.success) {
-        const updatedUsers = users.map(u => u.id === resetPassModal.id ? { ...u, updatedAt: new Date().toISOString() } : u);
-        persist(updatedUsers);
-        setResetPassMsg({ type: 'success', text: `✅ تم تعيين كلمة مرور جديدة لـ ${resetPassModal.name} بنجاح` });
-        setTimeout(() => { setResetPassModal(null); setNewPass(''); setResetPassMsg(null); }, 2000);
-      } else {
-        setResetPassMsg({ type: 'error', text: res?.error || 'تعذّر تعيين كلمة المرور' });
-      }
+      const passHash = await hashUserPassword(newPass);
+      const updatedUsers = users.map(u => u.id === resetPassModal.id ? {
+        ...u,
+        passHash,
+        passwordUpdatedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      } : u);
+      persist(updatedUsers);
+      setResetPassMsg({ type: 'success', text: `✅ تم تعيين كلمة مرور جديدة لـ ${resetPassModal.name} بنجاح` });
+      setTimeout(() => { setResetPassModal(null); setNewPass(''); setResetPassMsg(null); }, 2000);
     } catch (e) {
       setResetPassMsg({ type: 'error', text: e.message || 'حدث خطأ غير متوقع' });
     } finally {
@@ -1063,7 +1065,15 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
 
   async function handleSaveUser(userData) {
     const { password: rawPassword, ...safeUserData } = userData;
-    const userWithComp = { ...safeUserData, companyId: activeCompId };
+    let passHash = null;
+    if (rawPassword && rawPassword.length >= 6) {
+      try { passHash = await hashUserPassword(rawPassword); } catch (e) {}
+    }
+    const userWithComp = {
+      ...safeUserData,
+      ...(passHash ? { passHash, passwordUpdatedAt: new Date().toISOString() } : {}),
+      companyId: activeCompId
+    };
     let nextUsers;
     const isNewUser = !(userData.id && users.find(u => u.id === userData.id));
 

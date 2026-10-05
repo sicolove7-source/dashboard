@@ -328,9 +328,12 @@ exports.resetUserPassword = onCall(async (request) => {
     } catch (e) {}
   }
 
-  const isCompanyOwner = callerClaims.role === 'owner' && (companyId ? callerClaims.companyId === companyId : true);
+  // السماح لـ owner أو admin أو manager داخل نفس الشركة بتغيير كلمات المرور
+  const callerRole = callerClaims.role || '';
+  const isCompanyAdmin = ['owner', 'admin', 'manager'].includes(callerRole) &&
+    (companyId ? callerClaims.companyId === companyId : !!callerClaims.companyId);
 
-  if (!isSuperAdmin && !isCompanyOwner) {
+  if (!isSuperAdmin && !isCompanyAdmin) {
     throw new HttpsError("permission-denied", "لا تملك صلاحية تغيير كلمة مرور هذا المستخدم.");
   }
 
