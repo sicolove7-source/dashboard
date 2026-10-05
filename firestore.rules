@@ -9,8 +9,7 @@ service cloud.firestore {
     function isSuperAdmin() {
       return isAuthenticated() && (
         request.auth.token.role == 'super_admin' ||
-        request.auth.token.isSuperAdmin == true ||
-        request.auth.token.email == 'sicolove7@gmail.com'
+        request.auth.token.isSuperAdmin == true
       );
     }
 
@@ -50,6 +49,14 @@ service cloud.firestore {
     }
 
     match /companies/{companyId} {
+      function hasAnyRole(roles) {
+        return request.auth.token.role != null && request.auth.token.role in roles;
+      }
+
+      function isCompanyManagerOrAdmin() {
+        return isSuperAdmin() || hasAnyRole(['owner', 'admin']);
+      }
+
       // 1. القراءة: لأعضاء الشركة فقط أو السوبر أدمن
       allow read: if isAuthenticated() && isCompanyMemberOrAdmin(companyId);
 
@@ -74,16 +81,83 @@ service cloud.firestore {
         isSuperAdmin() || resource.data.adminUid == request.auth.uid
       );
 
+      // ── المجموعات الفرعية المحددة بحسب الصلاحيات والأدوار ──
+      match /projects/{projectId} {
+        allow read: if isAuthenticated() && companySubcollectionBelongsToUser(companyId);
+        allow write: if isAuthenticated() && companySubcollectionBelongsToUser(companyId) &&
+          (isSuperAdmin() || hasAnyRole(['owner', 'admin', 'manager', 'engineer', 'tech_office']));
+      }
+
+      match /finance/{docId} {
+        allow read: if isAuthenticated() && companySubcollectionBelongsToUser(companyId) &&
+          (isSuperAdmin() || hasAnyRole(['owner', 'admin', 'accountant', 'manager']));
+        allow write: if isAuthenticated() && companySubcollectionBelongsToUser(companyId) &&
+          (isSuperAdmin() || hasAnyRole(['owner', 'admin', 'accountant']));
+      }
+
+      match /crm/{docId} {
+        allow read: if isAuthenticated() && companySubcollectionBelongsToUser(companyId) &&
+          (isSuperAdmin() || hasAnyRole(['owner', 'admin', 'manager', 'tech_office', 'customer_service']));
+        allow write: if isAuthenticated() && companySubcollectionBelongsToUser(companyId) &&
+          (isSuperAdmin() || hasAnyRole(['owner', 'admin', 'manager']));
+      }
+
+      match /subcontractors/{docId} {
+        allow read: if isAuthenticated() && companySubcollectionBelongsToUser(companyId);
+        allow write: if isAuthenticated() && companySubcollectionBelongsToUser(companyId) &&
+          (isSuperAdmin() || hasAnyRole(['owner', 'admin', 'manager', 'engineer', 'tech_office', 'procurement']));
+      }
+
+      match /workOrders/{docId} {
+        allow read: if isAuthenticated() && companySubcollectionBelongsToUser(companyId);
+        allow write: if isAuthenticated() && companySubcollectionBelongsToUser(companyId) &&
+          (isSuperAdmin() || hasAnyRole(['owner', 'admin', 'manager', 'engineer', 'procurement']));
+      }
+
+      match /extracts/{docId} {
+        allow read: if isAuthenticated() && companySubcollectionBelongsToUser(companyId);
+        allow write: if isAuthenticated() && companySubcollectionBelongsToUser(companyId) &&
+          (isSuperAdmin() || hasAnyRole(['owner', 'admin', 'manager', 'engineer', 'accountant']));
+      }
+
+      match /suppliers/{docId} {
+        allow read: if isAuthenticated() && companySubcollectionBelongsToUser(companyId);
+        allow write: if isAuthenticated() && companySubcollectionBelongsToUser(companyId) &&
+          (isSuperAdmin() || hasAnyRole(['owner', 'admin', 'manager', 'engineer', 'accountant', 'procurement']));
+      }
+
+      match /quotations/{docId} {
+        allow read: if isAuthenticated() && companySubcollectionBelongsToUser(companyId);
+        allow write: if isAuthenticated() && companySubcollectionBelongsToUser(companyId) &&
+          (isSuperAdmin() || hasAnyRole(['owner', 'admin', 'manager', 'engineer', 'accountant', 'tech_office']));
+      }
+
+      match /users/{userId} {
+        allow read: if isAuthenticated() && companySubcollectionBelongsToUser(companyId);
+        allow write: if isAuthenticated() && companySubcollectionBelongsToUser(companyId) && isCompanyManagerOrAdmin();
+      }
+
+      match /team/{memberId} {
+        allow read: if isAuthenticated() && companySubcollectionBelongsToUser(companyId);
+        allow write: if isAuthenticated() && companySubcollectionBelongsToUser(companyId) && isCompanyManagerOrAdmin();
+      }
+
       match /media/{mediaId} {
         allow read: if isAuthenticated() && isCompanyMemberOrAdmin(companyId);
-        allow write: if isAuthenticated() && isCompanyMemberOrAdmin(companyId);
+        allow write: if isAuthenticated() && isCompanyMemberOrAdmin(companyId) &&
+          (isSuperAdmin() || hasAnyRole(['owner', 'admin', 'manager', 'engineer', 'tech_office', 'procurement']));
       }
 
       match /{subcollection}/{docId} {
-        allow read, write: if isAuthenticated() &&
-                              companyId != '' &&
-                              companyId != 'undefined' &&
-                              companySubcollectionBelongsToUser(companyId);
+        allow read: if isAuthenticated() &&
+                       companyId != '' &&
+                       companyId != 'undefined' &&
+                       companySubcollectionBelongsToUser(companyId);
+        allow write: if isAuthenticated() &&
+                        companyId != '' &&
+                        companyId != 'undefined' &&
+                        companySubcollectionBelongsToUser(companyId) &&
+                        isCompanyManagerOrAdmin();
       }
     }
 
@@ -106,11 +180,19 @@ service cloud.firestore {
     match /portal_shares/{token} {
       allow get: if true;
       allow list: if false;
-      allow create: if isAuthenticated() && companyDocBelongsToUser(request.resource.data.companyId);
+      allow create: if isAuthenticated() &&
+                       'companyId' in request.resource.data &&
+                       companyDocBelongsToUser(request.resource.data.companyId);
       allow delete: if isAuthenticated() && companyDocBelongsToUser(resource.data.companyId);
-      allow update: if (isAuthenticated() && companyDocBelongsToUser(resource.data.companyId)) ||
+      allow update: if (
+        isAuthenticated() &&
+        companyDocBelongsToUser(resource.data.companyId) &&
+        (!('companyId' in request.resource.data) || request.resource.data.companyId == resource.data.companyId)
+      ) || (
+        (!('companyId' in request.resource.data) || request.resource.data.companyId == resource.data.companyId) &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['clientSignature', 'clientApprovalDate', 'clientApprovalNotes', 'updatedAt']);
+          .hasOnly(['clientSignature', 'clientApprovalDate', 'clientApprovalNotes', 'updatedAt'])
+      );
     }
 
     match /portal_shares_media/{mediaId} {

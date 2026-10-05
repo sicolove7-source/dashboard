@@ -136,9 +136,37 @@ describe('Phase 1: Firestore Rules & Security Hardening Unit Tests', () => {
 
     it('proves that even SUPER_ADMIN cannot read platform_metadata/superadmin via Firestore directly', () => {
       // لأن السر نُقل بالكامل إلى Secret Manager، لا ينبغي لأحد قراءتها عبر Client SDK
-      const superAdminUser = { uid: 'sa1', email: 'sicolove7@gmail.com', role: 'super_admin' };
+      const superAdminUser = { uid: 'sa1', email: 'sa@tashteebpro.com', role: 'super_admin' };
       const result = evaluateDocumentAccess('/platform_metadata/superadmin', superAdminUser);
       expect(result.newPermitted).toBe(false);
+    });
+  });
+
+  describe('Phase 4: Granular Subcollections & Hardcoded Email Removal', () => {
+    const storagePath = path.resolve(process.cwd(), 'storage.rules');
+    const storageContent = fs.readFileSync(storagePath, 'utf-8');
+
+    it('firestore.rules does NOT contain any hardcoded sicolove7@gmail.com email', () => {
+      expect(rulesContent).not.toContain('sicolove7@gmail.com');
+    });
+
+    it('storage.rules does NOT contain any hardcoded sicolove7@gmail.com email', () => {
+      expect(storageContent).not.toContain('sicolove7@gmail.com');
+    });
+
+    it('enforces granular subcollection rules for finance (only owner, admin, accountant can write)', () => {
+      const financeMatch = rulesContent.match(/match\s+\/finance\/\{docId\}[\s\S]*?allow\s+write:[\s\S]*?\['owner',\s*'admin',\s*'accountant'\]/);
+      expect(financeMatch).not.toBeNull();
+    });
+
+    it('enforces granular subcollection rules for projects (owner, admin, manager, engineer, tech_office)', () => {
+      const projectsMatch = rulesContent.match(/match\s+\/projects\/\{projectId\}[\s\S]*?allow\s+write:[\s\S]*?\['owner',\s*'admin',\s*'manager',\s*'engineer',\s*'tech_office'\]/);
+      expect(projectsMatch).not.toBeNull();
+    });
+
+    it('enforces that portal_shares update strictly limits unauthenticated diff to affectedKeys and preserves companyId', () => {
+      expect(rulesContent).toMatch(/affectedKeys\(\)\s*\.hasOnly\(\['clientSignature',\s*'clientApprovalDate',\s*'clientApprovalNotes',\s*'updatedAt'\]\)/);
+      expect(rulesContent).toContain("request.resource.data.companyId == resource.data.companyId");
     });
   });
 });
