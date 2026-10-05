@@ -19,18 +19,8 @@ service cloud.firestore {
       let userEmail = request.auth.token.email;
       let userId = request.auth.uid;
 
-      // نزع prefix "comp_" من كلا الجانبين للمقارنة العادلة
-      let normalizedToken = tokenCompId == null ? '' : (tokenCompId.matches('^comp_.*') ? tokenCompId.replace('comp_', '') : tokenCompId);
-      let normalizedCompany = companyId.matches('^comp_.*') ? companyId.replace('comp_', '') : companyId;
-
       return isSuperAdmin() || (
-        tokenCompId != null &&
-        (
-          tokenCompId == companyId ||
-          ('comp_' + companyId) == tokenCompId ||
-          companyId == ('comp_' + tokenCompId) ||
-          normalizedToken == normalizedCompany
-        )
+        tokenCompId != null && tokenCompId == companyId
       ) || (
         resource != null && (
           resource.data.adminEmail == userEmail ||
@@ -46,26 +36,15 @@ service cloud.firestore {
       let userEmail = request.auth.token.email;
       let userId = request.auth.uid;
 
-      // نزع prefix "comp_" من كلا الجانبين للمقارنة العادلة
-      let normalizedToken = tokenCompId == null ? '' : (tokenCompId.matches('^comp_.*') ? tokenCompId.replace('comp_', '') : tokenCompId);
-      let normalizedCompany = companyId.matches('^comp_.*') ? companyId.replace('comp_', '') : companyId;
-
       return isSuperAdmin() || (
-        tokenCompId != null &&
-        (
-          tokenCompId == companyId ||
-          ('comp_' + companyId) == tokenCompId ||
-          companyId == ('comp_' + tokenCompId) ||
-          normalizedToken == normalizedCompany
-        )
+        tokenCompId != null && tokenCompId == companyId
       ) || (
         exists(/databases/$(database)/documents/companies/$(companyId)) && (
-          get(/databases/$(database)/documents/companies/$(companyId)).data.adminEmail == userEmail ||
-          get(/databases/$(database)/documents/companies/$(companyId)).data.adminUid == userId ||
-          ('authorizedEmails' in get(/databases/$(database)/documents/companies/$(companyId)).data &&
-           get(/databases/$(database)/documents/companies/$(companyId)).data.authorizedEmails.hasAny([userEmail])) ||
-          ('authorizedUids' in get(/databases/$(database)/documents/companies/$(companyId)).data &&
-           get(/databases/$(database)/documents/companies/$(companyId)).data.authorizedUids.hasAny([userId]))
+          let compData = get(/databases/$(database)/documents/companies/$(companyId)).data;
+          compData.adminEmail == userEmail ||
+          compData.adminUid == userId ||
+          ('authorizedEmails' in compData && compData.authorizedEmails.hasAny([userEmail])) ||
+          ('authorizedUids' in compData && compData.authorizedUids.hasAny([userId]))
         )
       );
     }
@@ -113,17 +92,13 @@ service cloud.firestore {
       let userEmail = request.auth.token.email;
       return isSuperAdmin() || (
         tokenCompId != null &&
-        (
-          tokenCompId == companyId ||
-          ('comp_' + companyId) == tokenCompId ||
-          companyId == ('comp_' + tokenCompId)
-        )
+        tokenCompId == companyId
       ) || (
         exists(/databases/$(database)/documents/companies/$(companyId)) && (
-          get(/databases/$(database)/documents/companies/$(companyId)).data.adminEmail == userEmail ||
-          get(/databases/$(database)/documents/companies/$(companyId)).data.adminUid == request.auth.uid ||
-          ('authorizedEmails' in get(/databases/$(database)/documents/companies/$(companyId)).data &&
-           get(/databases/$(database)/documents/companies/$(companyId)).data.authorizedEmails.hasAny([userEmail]))
+          let compData = get(/databases/$(database)/documents/companies/$(companyId)).data;
+          compData.adminEmail == userEmail ||
+          compData.adminUid == request.auth.uid ||
+          ('authorizedEmails' in compData && compData.authorizedEmails.hasAny([userEmail]))
         )
       );
     }
@@ -147,12 +122,17 @@ service cloud.firestore {
       );
     }
 
+    // ── وثائق platform_metadata الصريحة حصراً (تم حذف أي wildcard لمنع تداخل OR) ──
     match /platform_metadata/superadmin {
       allow read, write: if false;
     }
 
+    match /platform_metadata/users_directory {
+      allow read, write: if false;
+    }
+
     match /platform_metadata/platform_settings {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isSuperAdmin();
     }
 
@@ -162,19 +142,14 @@ service cloud.firestore {
     }
 
     match /platform_metadata/tenants {
-      allow read: if true;
+      allow read: if isSuperAdmin();
       allow write: if isSuperAdmin();
     }
 
+    // ── مسار tenants/{companyId}: القراءة عامة للبيانات الأساسية والكتابة للسوبر أدمن فقط لمنع تعديل الخطط والأدوار من العميل ──
     match /tenants/{companyId} {
       allow read: if true;
-      allow write: if isSuperAdmin() || (
-        isAuthenticated() && (
-          request.auth.token.companyId == companyId ||
-          ('comp_' + request.auth.token.companyId) == companyId ||
-          request.auth.token.companyId == ('comp_' + companyId)
-        )
-      );
+      allow write: if isSuperAdmin();
     }
 
     match /tenant_directory/{subdomain} {
@@ -185,25 +160,8 @@ service cloud.firestore {
         'companyId' in request.resource.data &&
         companyDocBelongsToUser(request.resource.data.companyId)
       );
-      allow update: if isSuperAdmin() || (
-        isAuthenticated() && (
-          resource.data.adminEmail == request.auth.token.email ||
-          resource.data.adminUid == request.auth.uid ||
-          resource.data.companyId == request.auth.token.companyId ||
-          ('comp_' + resource.data.companyId) == request.auth.token.companyId
-        )
-      );
+      allow update: if isSuperAdmin();
       allow delete: if isSuperAdmin();
-    }
-
-    match /platform_metadata/users_directory {
-      allow read: if isAuthenticated();
-      allow write: if isSuperAdmin();
-    }
-
-    match /platform_metadata/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isSuperAdmin();
     }
 
     match /{document=**} {

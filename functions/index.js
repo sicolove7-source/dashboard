@@ -1,10 +1,14 @@
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { setGlobalOptions } = require("firebase-functions/v2");
+const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getAuth } = require("firebase-admin/auth");
 const crypto = require("crypto");
+
+// تعريف السر المحمي عبر Secret Manager بدلاً من حفظه في وثائق Firestore
+const superAdminSecret = defineSecret("SUPERADMIN_SETUP_SECRET");
 
 const {
   ALLOWED_ROLES,
@@ -100,15 +104,21 @@ async function getTenantDoc(companyId) {
 }
 
 /**
- * حفظ وتحديث بيانات الشركة في المسار الجديد tenants/{companyId} مع مزامنة المصفوفة
+ * حفظ وتحديث بيانات الشركة في المسار الجديد tenants/{companyId} مع مزامنة مصفوفة platform_metadata/tenants
  */
 async function saveTenantEntry(companyId, tenantData) {
   const now = new Date().toISOString();
-  const cleanData = {
-    ...tenantData,
-    id: companyId,
-    updatedAt: now,
-  };
+
+  // تنقية البيانات واستبعاد الحقول الحساسة والمصفوفات الكبيرة
+  const cleanData = {};
+  const sensitiveFields = new Set(["users", "authorizedEmails", "adminPassword", "passHash"]);
+  for (const [key, value] of Object.entries(tenantData || {})) {
+    if (value !== undefined && !sensitiveFields.has(key)) {
+      cleanData[key] = value;
+    }
+  }
+  cleanData.id = companyId;
+  cleanData.updatedAt = now;
 
   // 1. الكتابة في مجموعة tenants المستقلة
   try {
@@ -117,7 +127,7 @@ async function saveTenantEntry(companyId, tenantData) {
     console.warn(`[saveTenantEntry] Error writing to tenants/${companyId}:`, e.message);
   }
 
-  // 2. تحديث المصفوفة المركزية القديمة لضمان توافق الأنظمة التي لم تُرَحّل بعد
+  // 2. تحديث مصفوفة tenants في platform_metadata/tenants (دون كتابة مصفوفة list المكررة)
   try {
     const metaRef = db.doc("platform_metadata/tenants");
     await db.runTransaction(async (transaction) => {
@@ -132,7 +142,7 @@ async function saveTenantEntry(companyId, tenantData) {
       } else {
         list.unshift(cleanData);
       }
-      transaction.set(metaRef, { tenants: list, list: list, updatedAt: now }, { merge: true });
+      transaction.set(metaRef, { tenants: list, updatedAt: now }, { merge: true });
     });
   } catch (e) {
     console.warn(`[saveTenantEntry] Error updating legacy platform_metadata/tenants:`, e.message);
@@ -142,7 +152,7 @@ async function saveTenantEntry(companyId, tenantData) {
 // ==============================================================================
 // 1. دالة تعيين الـ Custom Claims (assignUserClaims)
 // ==============================================================================
-exports.assignUserClaims = onCall(async (request) => {
+exports.assignUserClaims = onCall({ secrets: [superAdminSecret] }, async (request) => {
   const { targetUid, companyId, role, companyName, currency, subdomain, logo, bootstrapSecret } =
     request.data || {};
 
@@ -202,25 +212,27 @@ exports.assignUserClaims = onCall(async (request) => {
     } else {
       // التحقق من حالة الإقلاع الأول (Bootstrap)
       const saDoc = await db.doc("platform_metadata/superadmin").get();
-      if (!saDoc.exists) {
-        throw new HttpsError(
-          "failed-precondition",
-          "وثيقة المشرف العام platform_metadata/superadmin غير مهيأة بعد."
-        );
+      if (saDoc.exists) {
+        const saData = saDoc.data() || {};
+        if (saData.uid || saData.isInitialized === true) {
+          throw new HttpsError(
+            "permission-denied",
+            "مرفوض: تم تعيين المشرف العام للنظام مسبقاً، ولا يمكن منحه إلا من حسابه حصراً."
+          );
+        }
       }
 
-      const saData = saDoc.data() || {};
-      if (saData.uid || saData.isInitialized === true) {
-        throw new HttpsError(
-          "permission-denied",
-          "مرفوض: تم تعيين المشرف العام للنظام مسبقاً، ولا يمكن منحه إلا من حسابه حصراً."
-        );
+      // قراءة السر من Secret Manager حصراً وليس من وثائق Firestore
+      let configuredSecret = null;
+      try {
+        configuredSecret = superAdminSecret.value();
+      } catch (e) {}
+      if (!configuredSecret) {
+        configuredSecret = process.env.SUPERADMIN_SETUP_SECRET;
       }
 
-      // الإقلاع الأول محمي برمز سري مشفر
-      const configuredSecret = saData.bootstrapSecret || saData.setupSecret;
       if (!configuredSecret || !safeTimingCompare(bootstrapSecret || "", configuredSecret)) {
-        throw new HttpsError("permission-denied", "رمز الإقلاع الأول غير صحيح أو غير متوفر.");
+        throw new HttpsError("permission-denied", "رمز الإقلاع الأول غير صحيح أو لم يتم تكوينه في Secret Manager.");
       }
 
       // توثيق أول سوبر أدمن
@@ -848,27 +860,34 @@ exports.syncOwnCompanyUsersDirectory = onCall(async (request) => {
   // تنقية المستخدمين وعدم قبول دور اعتباطي من العميل
   const auth = getAuth();
   const sanitizedUsers = [];
+  const now = new Date().toISOString();
 
   for (const u of users) {
     if (!u || !u.id) continue;
     try {
       const uRecord = await auth.getUser(u.id);
       const verifiedRole = uRecord.customClaims?.role || "engineer";
-      sanitizedUsers.push({
+      const cleanUser = {
         id: u.id,
+        uid: u.id,
         name: u.name || uRecord.displayName || "",
         email: uRecord.email || "",
         role: verifiedRole,
         status: u.status || "active",
         companyId: targetCompanyId,
-      });
+        updatedAt: now,
+      };
+      sanitizedUsers.push(cleanUser);
+
+      // الكتابة في المجموعة الفرعية المستقلة companies/{companyId}/users/{u.id}
+      await db.doc(`companies/${targetCompanyId}/users/${u.id}`).set(cleanUser, { merge: true });
     } catch (e) {
       // مستخدم غير موجود في Auth، نتجاهله
     }
   }
 
+  // تحديث بيانات الشركة بـ usersCount فقط وتجنب حفظ مصفوفة users الضخمة
   await saveTenantEntry(targetCompanyId, {
-    users: sanitizedUsers,
     usersCount: sanitizedUsers.length,
   });
 
@@ -878,7 +897,7 @@ exports.syncOwnCompanyUsersDirectory = onCall(async (request) => {
 // ==============================================================================
 // 6. دالة تعيين صلاحيات السوبر أدمن (setSuperAdminClaims)
 // ==============================================================================
-exports.setSuperAdminClaims = onCall(async (request) => {
+exports.setSuperAdminClaims = onCall({ secrets: [superAdminSecret] }, async (request) => {
   const { targetUid, adminSecret } = request.data || {};
   const callerUid = request.auth?.uid;
 
@@ -886,14 +905,29 @@ exports.setSuperAdminClaims = onCall(async (request) => {
     throw new HttpsError("permission-denied", "يُسمح فقط للمستخدم بتعيين صلاحياته لنفسه من هذه الدالة.");
   }
 
-  const secretDoc = await db.doc("platform_metadata/superadmin").get();
-  if (!secretDoc.exists) {
-    throw new HttpsError("not-found", "سجل platform_metadata/superadmin غير مهيأ بعد.");
+  // فحص حالة التهيئة: رفض الاستدعاء إذا تم التهيئة مسبقاً أو وجد uid
+  const saDoc = await db.doc("platform_metadata/superadmin").get();
+  if (saDoc.exists) {
+    const saData = saDoc.data() || {};
+    if (saData.isInitialized === true || saData.uid) {
+      throw new HttpsError(
+        "failed-precondition",
+        "تم تهيئة حساب المشرف العام مسبقاً، ولا يمكن استخدام هذا الرابط بعد اكتمال التعيين."
+      );
+    }
   }
 
-  const storedSecret = secretDoc.data()?.setupSecret || secretDoc.data()?.adminSecret;
+  // قراءة السر حصراً من Secret Manager وليس من وثائق Firestore
+  let storedSecret = null;
+  try {
+    storedSecret = superAdminSecret.value();
+  } catch (e) {}
+  if (!storedSecret) {
+    storedSecret = process.env.SUPERADMIN_SETUP_SECRET;
+  }
+
   if (!storedSecret || !safeTimingCompare(adminSecret || "", storedSecret)) {
-    throw new HttpsError("permission-denied", "رمز الإدارة غير صحيح.");
+    throw new HttpsError("permission-denied", "رمز الإدارة غير صحيح أو لم يتم تكوينه في Secret Manager.");
   }
 
   await getAuth().setCustomUserClaims(targetUid, {
@@ -901,9 +935,11 @@ exports.setSuperAdminClaims = onCall(async (request) => {
     isSuperAdmin: true,
   });
 
+  // تسجيل انتهاء التهيئة وحفظ الهوية بدون تخزين أسرار في الوثيقة
   await db.doc("platform_metadata/superadmin").set({
     uid: targetUid,
     isInitialized: true,
+    bootstrappedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }, { merge: true });
 
@@ -1162,16 +1198,45 @@ exports.submitPortalApproval = onCall(async (request) => {
 exports.createPortalShare = onCall(async (request) => {
   const { companyId, projectId } = request.data || {};
   const callerUid = request.auth?.uid;
+  const callerClaims = request.auth?.token || {};
 
   if (!callerUid) {
     throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً.");
+  }
+
+  if (!companyId || !projectId) {
+    throw new HttpsError("invalid-argument", "معرف الشركة ومعرف المشروع مطلوبان.");
+  }
+
+  const callerRole = callerClaims.role || "viewer";
+  if (callerRole === "viewer") {
+    throw new HttpsError("permission-denied", "لا يملك المشاهد (viewer) صلاحية إنشاء أو مشاركة بوابة العميل.");
+  }
+
+  const callerEmail = (callerClaims.email || "").toLowerCase().trim();
+  let isSuperAdmin =
+    callerClaims.role === "super_admin" ||
+    callerClaims.isSuperAdmin === true ||
+    (callerEmail === "sicolove7@gmail.com" && callerClaims.email_verified === true);
+
+  if (!isSuperAdmin) {
+    try {
+      const saDoc = await db.doc("platform_metadata/superadmin").get();
+      if (saDoc.exists && saDoc.data()?.uid === callerUid) {
+        isSuperAdmin = true;
+      }
+    } catch (e) {}
+  }
+
+  if (!isSuperAdmin && callerClaims.companyId !== companyId) {
+    throw new HttpsError("permission-denied", "لا يمكنك مشاركة مشاريع شركة أخرى.");
   }
 
   const projRef = db.doc(`companies/${companyId}/projects/${projectId}`);
   const projSnap = await projRef.get();
 
   if (!projSnap.exists) {
-    throw new HttpsError("not-found", "المشروع غير موجود.");
+    throw new HttpsError("not-found", "المشروع غير موجود داخل هذه الشركة.");
   }
 
   const token = generateSecureToken();
