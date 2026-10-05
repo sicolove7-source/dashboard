@@ -11,7 +11,6 @@ import {
   registerWithEmail,
   getUserClaims,
   callAssignUserClaims,
-  hashUserPassword,
 } from "../services/auth";
 import {
   resolveTenantUserByEmail,
@@ -191,28 +190,7 @@ export default function Login({
           }
 
           if (registeredUser) {
-            // ✅ 1. فحص كلمة المرور المحدثة عبر passHash (يعمل مجاناً 100% بدون Cloud Functions أو Blaze Plan)
-            if (registeredUser.passHash) {
-              try {
-                const enteredHash = await hashUserPassword(password);
-                if (enteredHash === registeredUser.passHash) {
-                  console.log('[Login] ✅ Verified employee login via passHash fallback:', cleanEmail);
-                  authResult = {
-                    success: true,
-                    user: {
-                      uid: registeredUser.uid || registeredUser.id || (cleanedPhone ? `phone_${cleanedPhone}` : cleanEmail),
-                      email: registeredUser.email || cleanEmail,
-                      displayName: registeredUser.name,
-                      ...registeredUser
-                    }
-                  };
-                }
-              } catch (hErr) {
-                console.warn('[Login] passHash check notice:', hErr);
-              }
-            }
-
-            // إذا كان للمستخدم بريد مسجل في الشركة مختلف عن cleanEmail نجرب تسجيل الدخول به أولاً
+            // إذا كان للمستخدم بريد مسجل في الشركة مختلف عن cleanEmail نجرب تسجيل الدخول به عبر Firebase Auth
             if (!authResult.success && registeredUser.email && registeredUser.email !== cleanEmail) {
               const userEmailAuth = await loginWithEmail(registeredUser.email, password);
               if (userEmailAuth.success) {

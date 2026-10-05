@@ -205,7 +205,7 @@ export async function fetchCompanyDataFromCloud(companyId) {
 }
 
 /**
- * تطهير كائنات المستخدمين لحذف أي كلمات مرور بصيغة نص صريح (Plaintext) نهائياً
+ * تطهير كائنات المستخدمين لحذف أي كلمات مرور بصيغة نص صريح أو تجزئة محلية (passHash) نهائياً
  * الاعتماد الأمني المطلق يكون حصراً على Firebase Authentication المشفر
  */
 export function sanitizeCompanyUsersForCloud(users) {
@@ -215,6 +215,8 @@ export function sanitizeCompanyUsersForCloud(users) {
     const cleanUser = { ...u };
     delete cleanUser.password;
     delete cleanUser.adminPassword;
+    delete cleanUser.passHash;
+    delete cleanUser.passwordUpdatedAt;
     return cleanUser;
   });
 }
@@ -227,9 +229,11 @@ export function sanitizeCompanyPayloadForCloud(cId, partialData) {
   if (!partialData || typeof partialData !== 'object') return {};
   const payload = { ...partialData };
 
-  // 1. منع تسريب كلمات السر من المستوى الأول نهائياً
+  // 1. منع تسريب كلمات السر والتجزئات من المستوى الأول نهائياً
   delete payload.password;
   delete payload.adminPassword;
+  delete payload.passHash;
+  delete payload.passwordUpdatedAt;
 
   // 2. تطهير قائمة المستخدمين من أي كلمات سر
   if (Array.isArray(payload.users)) {

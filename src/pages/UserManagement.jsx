@@ -10,7 +10,7 @@ import {
 } from '../utils/permissions';
 import { getActiveTenantId, loadAllTenants } from '../services/tenantsManager';
 import { syncCompanyUsersToCloud, syncTenantUsersToCloud, syncTenantsListToCloud, syncTeamToCloud, sanitizeCompanyUsersForCloud, cleanPhoneNumber, mergeUsersPreservingLocal } from '../services/cloudSync';
-import { sendPasswordReset, callCreateCompanyUser, syncAndResetPhonePassword, hashUserPassword } from '../services/auth';
+import { sendPasswordReset, callCreateCompanyUser, syncAndResetPhonePassword } from '../services/auth';
 import { auth } from '../firebase';
 
 // أدوار الشركة المشتركة فقط (استبعاد Super Admin الخاص بالمنصة)
@@ -949,11 +949,8 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
           password: newPass,
         });
       }
-      const passHash = await hashUserPassword(newPass);
       const updatedUsers = users.map(u => u.id === resetPassModal.id ? {
         ...u,
-        passHash,
-        passwordUpdatedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       } : u);
       persist(updatedUsers);
@@ -1065,14 +1062,9 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
   }
 
   async function handleSaveUser(userData) {
-    const { password: rawPassword, ...safeUserData } = userData;
-    let passHash = null;
-    if (rawPassword && rawPassword.length >= 6) {
-      try { passHash = await hashUserPassword(rawPassword); } catch (e) {}
-    }
+    const { password: _rawPassword, ...safeUserData } = userData;
     const userWithComp = {
       ...safeUserData,
-      ...(passHash ? { passHash, passwordUpdatedAt: new Date().toISOString() } : {}),
       companyId: activeCompId
     };
     let nextUsers;

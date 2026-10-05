@@ -23,28 +23,12 @@ import { httpsCallable } from 'firebase/functions';
 import { cleanPhoneNumber } from './cloudSync';
 
 /**
- * تجزئة مشفرة لكلمة المرور (SHA-256) لمطابقة الموظفين بدون الحاجة لـ Cloud Functions أو باقة Blaze
+ * @deprecated [Security Hardening] تم استئصال passHash نهائياً.
+ * المصادقة الرسمية والوحيدة تتم عبر Firebase Authentication المشفر.
  */
-export async function hashUserPassword(password) {
-  if (!password) return null;
-  const str = String(password).trim();
-  if (typeof crypto !== 'undefined' && crypto.subtle) {
-    try {
-      const enc = new TextEncoder();
-      const data = enc.encode(str + '_tashteeb_auth_v1_secure');
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    } catch (e) {}
-  }
-  // Fallback hash
-  let hash = 0;
-  const saltStr = str + '_tashteeb_auth_v1_fallback';
-  for (let i = 0; i < saltStr.length; i++) {
-    hash = ((hash << 5) - hash) + saltStr.charCodeAt(i);
-    hash |= 0;
-  }
-  return 'h_' + Math.abs(hash).toString(16);
+export async function hashUserPassword(_password) {
+  console.warn('[Security] hashUserPassword is deprecated and no longer used. Authentication relies strictly on Firebase Auth.');
+  return null;
 }
 
 /**
