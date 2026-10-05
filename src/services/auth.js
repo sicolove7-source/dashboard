@@ -55,6 +55,17 @@ export async function callAssignUserClaims({ targetUid, companyId, role, company
   try {
     const fn = httpsCallable(functions, 'assignUserClaims');
     const result = await fn({ targetUid, companyId, role, companyName, currency, subdomain, logo });
+
+    // تجديد فوري لتوكن المستخدم الحالي إذا كان التعديل خاصاً به
+    if (auth.currentUser && auth.currentUser.uid === targetUid) {
+      try {
+        await auth.currentUser.getIdToken(true);
+        console.log('[callAssignUserClaims] Token refreshed successfully with updated claims');
+      } catch (tokErr) {
+        console.warn('[callAssignUserClaims] Token refresh notice:', tokErr.message);
+      }
+    }
+
     return result.data;
   } catch (err) {
     console.warn('[callAssignUserClaims] Cloud function error (non-blocking):', err?.message || err);
@@ -75,82 +86,36 @@ export async function callCreateCompanyUser({ email, name, role, companyId, pass
     return { success: false, error: 'غير مصرح: يجب تسجيل الدخول كمسؤول للقيام بهذا الإجراء.' };
   }
 
-  // 1. استدعاء Cloud Function الرسمية والآمنة (Admin SDK) إن كانت متوفرة
+  // 1. استدعاء Cloud Function الرسمية والآمنة (Admin SDK) حصراً (تم إيقاف Secondary App fallback أمنياً)
   try {
     const fn = httpsCallable(functions, 'createCompanyUser');
     const result = await fn({ email: cleanEmail, name, role, companyId, password });
     if (result.data?.success) {
+      let emailSent = false;
       if (!password && !cleanEmail.endsWith('@tashteeb.app')) {
-        try { await sendPasswordResetEmail(auth, cleanEmail); } catch (e) {}
-      }
-      return result.data;
-    }
-  } catch (cloudErr) {
-    console.warn('[callCreateCompanyUser] Cloud function unavailable or error, proceeding to direct auth creation fallback:', cloudErr?.message || cloudErr?.code);
-  }
-
-  // 2. البديل المباشر المضمون: إنشاء الحساب فورياً في Firebase Auth عبر تطبيق مستقل (Secondary App)
-  // يضمن تمكين الموظف من تسجيل الدخول بكلمة المرور دون التأثير على جلسة المسؤول الحالية
-  let createdUid = null;
-  if (password && password.length >= 6) {
-    let tempApp = null;
-    try {
-      const tempAppName = 'SecondaryAuth_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-      tempApp = initializeApp(firebaseConfig, tempAppName);
-      const tempAuth = getAuth(tempApp);
-      try {
-        const cred = await createUserWithEmailAndPassword(tempAuth, cleanEmail, password);
-        createdUid = cred.user?.uid;
-        console.log('[callCreateCompanyUser] ✅ Successfully created user in Firebase Auth:', cleanEmail, 'UID:', createdUid);
-      } catch (authCreateErr) {
-        if (authCreateErr.code === 'auth/email-already-in-use') {
-          console.log('[callCreateCompanyUser] User already exists in Firebase Auth:', cleanEmail);
-        } else {
-          console.warn('[callCreateCompanyUser] Secondary auth creation notice:', authCreateErr.message);
+        try {
+          await sendPasswordResetEmail(auth, cleanEmail);
+          emailSent = true;
+        } catch (e) {
+          console.warn('[callCreateCompanyUser] sendPasswordResetEmail notice:', e.message);
         }
       }
-    } catch (secErr) {
-      console.warn('[callCreateCompanyUser] Secondary app init error:', secErr);
-    } finally {
-      if (tempApp) {
-        try { await deleteApp(tempApp); } catch (e) {}
-      }
-    }
-  }
-
-  // 2.5. استدعاء صريح لـ callAssignUserClaims من جهة العميل كطبقة أمان إضافية
-  if (createdUid) {
-    try {
-      await callAssignUserClaims({
-        targetUid: createdUid,
-        companyId,
-        role: role || 'engineer',
-        companyName: '',
-      });
-      console.log('[callCreateCompanyUser] ✅ Custom Claims assigned explicitly for Secondary App user:', createdUid);
-    } catch (claimsErr) {
-      console.warn('[callCreateCompanyUser] Secondary app claims assignment notice:', claimsErr?.message);
-    }
-  }
-
-  // 3. إرسال رابط تعيين كلمة المرور إن لم تكن هناك كلمة مرور محددة
-  if (!password && cleanEmail.includes('@') && !cleanEmail.endsWith('@tashteeb.app')) {
-    try {
-      await sendPasswordResetEmail(auth, cleanEmail);
       return {
-        success: true,
-        emailSent: true,
-        message: `✅ تم إرسال رابط تعيين كلمة المرور إلى ${cleanEmail} بنجاح.`,
+        ...result.data,
+        emailSent,
+        message: emailSent
+          ? `✅ تم إنشاء حساب الموظف وإرسال رابط تعيين كلمة المرور إلى ${cleanEmail} بنجاح.`
+          : `✅ تم إنشاء وتفعيل حساب الموظف بنجاح في سجلات الشركة.`,
       };
-    } catch (resetErr) {
-      console.warn('[callCreateCompanyUser] Reset email warning:', resetErr?.message);
     }
+    return result.data || { success: false, error: 'تعذر إنشاء الحساب' };
+  } catch (cloudErr) {
+    console.error('[callCreateCompanyUser] Cloud function error:', cloudErr?.message || cloudErr?.code);
+    return {
+      success: false,
+      error: cloudErr?.message || 'فشل إنشاء حساب الموظف عبر الخادم السحابي.',
+    };
   }
-
-  return {
-    success: true,
-    message: `✅ تم حفظ وتفعيل بيانات الموظف بنجاح في سجلات الشركة.`,
-  };
 }
 
 

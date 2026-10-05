@@ -140,8 +140,8 @@ describe('Company Settings & Logo Persistence Across Sessions', () => {
       }
     ]);
 
-    // Simulate login
-    const res = await tenantsManager.resolveTenantUserByEmail(email, 'uid_owner_1', {});
+    // Simulate login with verified owner claims
+    const res = await tenantsManager.resolveTenantUserByEmail(email, 'uid_owner_1', { role: 'owner', companyId: compId });
 
     expect(res.success).toBe(true);
     // User companyName and tenant name must be the updated one from local settings

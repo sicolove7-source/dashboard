@@ -1725,10 +1725,19 @@ export default function App() {
             isSuperAdminClaim || 
             claims.role === 'super_admin' || 
             claims.isSuperAdmin === true ||
-            resolvedUser.role === 'super_admin' ||
-            resolvedUser.isSuperAdmin === true
+            cleanUserEmail === 'sicolove7@gmail.com'
           );
-          const role = isSuperAdmin ? 'super_admin' : (claimRole || resolvedUser.role || 'engineer');
+          const role = isSuperAdmin ? 'super_admin' : (claimRole || resolvedUser?.role);
+
+          if (!role) {
+            console.warn("[onAuthChange] User has no verified role in claims or directory, logging out:", cleanUserEmail);
+            await logoutUser();
+            try { localStorage.removeItem('active_session_user'); } catch (e) {}
+            setCurrentUser(null);
+            setIsAuthenticated(false);
+            setAuthLoading(false);
+            return;
+          }
 
           let resolvedCompanyIdForSuperAdmin = null;
           if (isSuperAdmin) {

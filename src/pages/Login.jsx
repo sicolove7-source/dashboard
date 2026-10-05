@@ -220,22 +220,9 @@ export default function Login({
                 cleanEmail = registeredUser.email;
               }
             }
-
-            // في حال لم ينجح، نقوم بإنشاء وتأسيس حسابه في Firebase Auth فوراً ونسجل دخوله
-            if (!authResult.success) {
-              console.log('[Login] Auto-provisioning registered employee account:', cleanEmail);
-              let autoReg = await registerWithEmail(cleanEmail, password);
-              if (!autoReg.success && registeredUser.email && registeredUser.email !== cleanEmail) {
-                autoReg = await registerWithEmail(registeredUser.email, password);
-                if (autoReg.success) cleanEmail = registeredUser.email;
-              }
-              if (autoReg.success) {
-                authResult = autoReg;
-              }
-            }
           }
         } catch (autoErr) {
-          console.warn('[Login] Auto-provision notice:', autoErr);
+          console.warn('[Login] Employee lookup notice:', autoErr);
         }
       }
 

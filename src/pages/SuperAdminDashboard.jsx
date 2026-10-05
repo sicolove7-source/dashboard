@@ -13,6 +13,7 @@ import {
 } from '../services/tenantsManager';
 import { syncTenantsListToCloud } from '../services/cloudSync';
 import { updateCurrentUserPassword } from '../services/auth';
+import SecurityDiagnosticsModal from '../components/SecurityDiagnosticsModal';
 
 function getTenantPhone(t) {
   if (!t) return '';
@@ -69,6 +70,9 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
 
   // Sub-accounts access master switch
   const [subAccountsAllowed, setSubAccountsAllowed] = useState(() => isSubAccountsLoginAllowed());
+
+  // Security Diagnostics Modal State
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   // Owner Security Modal State
   const [showOwnerModal, setShowOwnerModal] = useState(false);
@@ -293,6 +297,14 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
         </div>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowDiagnostics(true)}
+            style={{ gap: 8, padding: '8px 16px', background: '#F8FAFC', color: 'var(--ink)', borderColor: '#E2E8F0' }}
+            title="فحص Custom Claims الحالية ومطابقة وثائق Firestore"
+          >
+            <Shield size={15} color="#0284C7" /> تشخيص الأمان
+          </button>
           <button
             className="btn btn-secondary"
             onClick={() => {
@@ -1359,6 +1371,13 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
           </div>
         </div>
       )}
+
+      {/* Security Diagnostics Modal */}
+      <SecurityDiagnosticsModal
+        isOpen={showDiagnostics}
+        onClose={() => setShowDiagnostics(false)}
+        currentUser={currentUser}
+      />
     </div>
   );
 }

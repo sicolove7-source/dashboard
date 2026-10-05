@@ -108,44 +108,65 @@ async function getTenantDoc(companyId) {
  */
 async function saveTenantEntry(companyId, tenantData) {
   const now = new Date().toISOString();
+  const tenantRef = db.doc(`tenants/${companyId}`);
+  const metaRef = db.doc("platform_metadata/tenants");
 
-  // تنقية البيانات واستبعاد الحقول الحساسة والمصفوفات الكبيرة
-  const cleanData = {};
+  // تنقية البيانات واستبعاد الحقول الحساسة والمصفوفات الكبيرة وأي قيمة undefined
+  const cleanPatch = {};
   const sensitiveFields = new Set(["users", "authorizedEmails", "adminPassword", "passHash"]);
   for (const [key, value] of Object.entries(tenantData || {})) {
     if (value !== undefined && !sensitiveFields.has(key)) {
-      cleanData[key] = value;
+      cleanPatch[key] = value;
     }
   }
-  cleanData.id = companyId;
-  cleanData.updatedAt = now;
 
-  // 1. الكتابة في مجموعة tenants المستقلة
   try {
-    await db.doc(`tenants/${companyId}`).set(cleanData, { merge: true });
-  } catch (e) {
-    console.warn(`[saveTenantEntry] Error writing to tenants/${companyId}:`, e.message);
-  }
-
-  // 2. تحديث مصفوفة tenants في platform_metadata/tenants (دون كتابة مصفوفة list المكررة)
-  try {
-    const metaRef = db.doc("platform_metadata/tenants");
     await db.runTransaction(async (transaction) => {
+      // 1. فحص وثيقة الشركة الحالية في tenants/{companyId}
+      const tSnap = await transaction.get(tenantRef);
+      const isNewTenant = !tSnap.exists;
+
+      let mergedData = {};
+      if (isNewTenant) {
+        // عند الإنشاء الأول فقط: وضع القيم الافتراضية
+        mergedData = {
+          id: companyId,
+          status: "trial",
+          plan: "trial",
+          currency: "ج.م",
+          name: cleanPatch.name || companyId,
+          createdAt: now,
+          updatedAt: now,
+          ...cleanPatch,
+        };
+      } else {
+        // للشركات القائمة: دمج التعديلات الممررة صراحة فقط دون الكتابة فوق plan أو status بالقيم الافتراضية
+        mergedData = {
+          ...tSnap.data(),
+          ...cleanPatch,
+          id: companyId,
+          updatedAt: now,
+        };
+      }
+
+      transaction.set(tenantRef, mergedData, { merge: true });
+
+      // 2. تحديث مصفوفة tenants في platform_metadata/tenants (دون تكرار حقل list)
       const metaSnap = await transaction.get(metaRef);
       let list = [];
       if (metaSnap.exists) {
-        list = metaSnap.data()?.tenants || metaSnap.data()?.list || [];
+        list = metaSnap.data()?.tenants || [];
       }
       const idx = list.findIndex((t) => t.id === companyId);
       if (idx >= 0) {
-        list[idx] = { ...list[idx], ...cleanData };
+        list[idx] = { ...list[idx], ...mergedData };
       } else {
-        list.unshift(cleanData);
+        list.unshift(mergedData);
       }
       transaction.set(metaRef, { tenants: list, updatedAt: now }, { merge: true });
     });
   } catch (e) {
-    console.warn(`[saveTenantEntry] Error updating legacy platform_metadata/tenants:`, e.message);
+    console.warn(`[saveTenantEntry] Transaction error for ${companyId}:`, e.message);
   }
 }
 
@@ -254,21 +275,40 @@ exports.assignUserClaims = onCall({ secrets: [superAdminSecret] }, async (reques
     let isSelfRegisteringOwner = false;
     if (!isCallerSuperAdmin && !isOwnerOfCompany && role === "owner" && callerUid === targetUid) {
       try {
-        const compDoc = await db.doc(`companies/${companyId}`).get();
-        if (compDoc.exists) {
-          const compData = compDoc.data() || {};
+        const [compSnap, tenantSnap] = await Promise.all([
+          db.doc(`companies/${companyId}`).get(),
+          db.doc(`tenants/${companyId}`).get(),
+        ]);
+
+        if (compSnap.exists || tenantSnap.exists) {
+          // الشركة مسجلة مسبقاً
+          const compData = compSnap.data() || {};
           const isDocAdmin =
             compData.adminUid === callerUid ||
             (compData.adminEmail && compData.adminEmail.toLowerCase().trim() === callerEmail);
-          const hasNoAdminYet = !compData.adminUid;
-          if (isDocAdmin || hasNoAdminYet) {
+
+          if (isDocAdmin) {
             isSelfRegisteringOwner = true;
+          } else {
+            // رفض الاستيلاء على الشركات القائمة بحجة عدم وجود adminUid
+            throw new HttpsError(
+              "permission-denied",
+              "هذه الشركة مسجلة بالفعل في المنصة. إذا كنت مالكها ولم يتم ربط حسابك، يُرجى طلب تفعيل أو موافقة من المشرف العام للمنصة."
+            );
           }
         } else {
-          // الشركة جديدة تماماً ويتم إنشاؤها الآن
+          // شركة جديدة تماماً لم تكن موجودة من قبل
+          const isEmailVerified = targetUserRecord.emailVerified === true || callerClaims.email_verified === true;
+          if (!isEmailVerified && !callerEmail.endsWith("@tashteeb.app")) {
+            throw new HttpsError(
+              "failed-precondition",
+              "يجب التحقق من البريد الإلكتروني (email_verified) قبل تأسيس شركة جديدة كمالك."
+            );
+          }
           isSelfRegisteringOwner = true;
         }
       } catch (e) {
+        if (e instanceof HttpsError) throw e;
         console.warn("[assignUserClaims] Check company doc notice:", e.message);
       }
     }
@@ -391,15 +431,18 @@ exports.assignUserClaims = onCall({ secrets: [superAdminSecret] }, async (reques
 
   // حفظ بيانات الشركة في المسار المركزي الآمن tenants/{companyId}
   try {
-    await saveTenantEntry(companyId, {
+    const tenantPayload = {
       name: companyName || companyId,
-      adminEmail: role === "owner" ? (targetUserRecord.email || callerEmail) : undefined,
       currency: currency || "ج.م",
-      subdomain: validatedSub || null,
-      logo: logo || null,
-      status: "trial",
-      plan: "trial",
-    });
+    };
+    if (role === "owner") {
+      const emailVal = targetUserRecord.email || callerEmail;
+      if (emailVal) tenantPayload.adminEmail = emailVal;
+    }
+    if (validatedSub) tenantPayload.subdomain = validatedSub;
+    if (logo) tenantPayload.logo = logo;
+
+    await saveTenantEntry(companyId, tenantPayload);
   } catch (e) {
     console.warn("[assignUserClaims] Tenant entry notice:", e.message);
   }
@@ -496,7 +539,23 @@ exports.createCompanyUser = onCall(async (request) => {
   const existingClaims = userRecord.customClaims || {};
 
   if (!isNew) {
-    // 1. رفض إذا كان المستخدم مسجلاً لشركة أخرى
+    // 1. لا أحد يغير دور نفسه (منع المالك من خفض دوره بنفسه إلى engineer لو أضاف إيميله)
+    if (userRecord.uid === callerUid) {
+      throw new HttpsError(
+        "permission-denied",
+        "لا يمكن للمستخدم تعديل دوره أو إضافة نفسه كموظف لتفادي فقدان صلاحيات المالك."
+      );
+    }
+
+    // 2. رفض تعديل دور أدمن آخر بواسطة أدمن
+    if (callerClaims.role === "admin" && existingClaims.role === "admin" && !isSuperAdmin && callerClaims.role !== "owner") {
+      throw new HttpsError(
+        "permission-denied",
+        "لا يملك المسؤول (admin) صلاحية تعديل بيانات أو دور مسؤول آخر."
+      );
+    }
+
+    // 3. رفض إذا كان المستخدم مسجلاً لشركة أخرى
     if (existingClaims.companyId && existingClaims.companyId !== companyId && !isSuperAdmin) {
       throw new HttpsError(
         "already-exists",
@@ -504,14 +563,25 @@ exports.createCompanyUser = onCall(async (request) => {
       );
     }
 
-    // 2. رفض تعديل حساب السوبر أدمن
+    // 4. رفض تعديل حساب السوبر أدمن
     if (existingClaims.role === "super_admin" || existingClaims.isSuperAdmin) {
       throw new HttpsError("permission-denied", "لا يمكن تعديل حساب المشرف العام للمنصة.");
     }
 
-    // 3. رفض تعديل دور المالك الحالي للشركة بواسطة موظف آخر
+    // 5. رفض تعديل دور المالك الحالي للشركة بواسطة موظف آخر
     if (existingClaims.role === "owner" && !isSuperAdmin && callerUid !== userRecord.uid) {
       throw new HttpsError("permission-denied", "لا يمكن تغيير صلاحيات مالك الشركة الحالي.");
+    }
+
+    // 6. أي مستخدم موجود في Auth بلا companyId لا يُضم إلا إذا كان مضافاً في سجلات مستخدمي الشركة مسبقاً
+    if (!existingClaims.companyId && !isSuperAdmin) {
+      const userDoc = await db.doc(`companies/${companyId}/users/${userRecord.uid}`).get();
+      if (!userDoc.exists) {
+        throw new HttpsError(
+          "permission-denied",
+          "المستخدم مسجل مسبقاً في النظام. لإضافته للشركة، يجب دعوته رسمياً أو إضافته بواسطة المشرف العام."
+        );
+      }
     }
   }
 
@@ -542,13 +612,13 @@ exports.createCompanyUser = onCall(async (request) => {
     console.warn("[createCompanyUser] Firestore user save error:", e.message);
   }
 
-  // إرسال رابط تعيين كلمة المرور للمستخدم نفسه عبر بريده إن كان حساباً جديداً وبدون كلمة مرور
-  let emailSent = false;
+  // إنشاء رابط تعيين كلمة المرور إن كان حساباً جديداً وبدون كلمة مرور
+  let resetLinkGenerated = false;
   if (isNew && !password && !cleanEmail.endsWith("@tashteeb.app")) {
     try {
       // ننشئ الرابط للأغراض الأمنية لكن لا نعيده للمستدعي أبداً
       await auth.generatePasswordResetLink(cleanEmail);
-      emailSent = true;
+      resetLinkGenerated = true;
     } catch (e) {
       console.warn("[createCompanyUser] Reset link generation notice:", e.message);
     }
@@ -560,7 +630,8 @@ exports.createCompanyUser = onCall(async (request) => {
     email: cleanEmail,
     role: safeRole,
     isNew,
-    emailSent,
+    emailSent: false, // توليد الرابط في Auth لا يرسل بريداً تلقائياً
+    resetLinkGenerated,
   };
 });
 

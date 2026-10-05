@@ -11,6 +11,7 @@ import {
 import { getActiveTenantId, loadAllTenants } from '../services/tenantsManager';
 import { syncCompanyUsersToCloud, syncTenantUsersToCloud, syncTenantsListToCloud, syncTeamToCloud, sanitizeCompanyUsersForCloud, cleanPhoneNumber, mergeUsersPreservingLocal } from '../services/cloudSync';
 import { sendPasswordReset, callCreateCompanyUser, syncAndResetPhonePassword, hashUserPassword } from '../services/auth';
+import { auth } from '../firebase';
 
 // أدوار الشركة المشتركة فقط (استبعاد Super Admin الخاص بالمنصة)
 const COMPANY_ROLES = Object.fromEntries(
@@ -1087,48 +1088,41 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
     }
     persist(nextUsers);
 
-    // إنشاء أو تحديث حساب Firebase Auth وتفعيل كلمة المرور عبر Cloud Function الآمنة
-    if (rawPassword && rawPassword.length >= 6) {
-      try {
+    // إنشاء أو تحديث حساب Firebase Auth وتفعيل كلمة المرور والصلاحيات عبر Cloud Function الآمنة
+    try {
+      if (rawPassword && rawPassword.length >= 6) {
         const isPhoneAccount = userData.phone || userData.email?.endsWith('@tashteeb.app');
         if (isPhoneAccount) {
           const p = userData.phone || userData.email;
-          await syncAndResetPhonePassword(p, rawPassword, userData.email);
+          try { await syncAndResetPhonePassword(p, rawPassword, userData.email); } catch (e) {}
         }
-        await callCreateCompanyUser({
-          email: userData.email,
-          name: userData.name,
-          role: userData.role,
-          companyId: activeCompId,
-          password: rawPassword,
-        });
-        setResetFeedback(`✅ تم تحديث بيانات وكلمة مرور ${userData.name} بنجاح وتفعيلها للمصادقة`);
+      }
+
+      const cloudRes = await callCreateCompanyUser({
+        email: userData.email,
+        name: userData.name,
+        role: userData.role,
+        companyId: activeCompId,
+        password: (rawPassword && rawPassword.length >= 6) ? rawPassword : userData.password,
+      });
+
+      // إذا كان التعديل للمستخدم الحالي نفسه، تجديد التوكن فوراً
+      if (auth.currentUser && (auth.currentUser.email === userData.email || auth.currentUser.uid === userData.id)) {
+        try { await auth.currentUser.getIdToken(true); } catch (e) {}
+      }
+
+      if (cloudRes?.success) {
+        const msg = cloudRes.message || (rawPassword
+          ? `✅ تم تحديث بيانات وكلمة مرور ${userData.name} بنجاح وتفعيلها للمصادقة`
+          : `✅ تم تحديث بيانات وصلاحيات ${userData.name} بنجاح في سجلات الشركة`);
+        setResetFeedback(msg);
         setTimeout(() => setResetFeedback(null), 8000);
-      } catch (pwErr) {
-        console.warn('[handleSaveUser] Password sync error:', pwErr);
+      } else if (cloudRes?.error) {
+        setResetFeedback(`⚠️ ${cloudRes.error}`);
+        setTimeout(() => setResetFeedback(null), 8000);
       }
-    } else if (isNewUser && (userData.email || userData.phone)) {
-      try {
-        const cloudRes = await callCreateCompanyUser({
-          email: userData.email,
-          name: userData.name,
-          role: userData.role,
-          companyId: activeCompId,
-          password: userData.password,
-        });
-        if (cloudRes?.success) {
-          const msg = cloudRes.message || (userData.password
-            ? `✅ تم إنشاء وتفعيل حساب ${userData.name} بكلمة المرور المحددة`
-            : `✅ تم إنشاء حساب لـ ${userData.name} وإرسال رابط الدخول إلى ${userData.email} ✉️`);
-          setResetFeedback(msg);
-          setTimeout(() => setResetFeedback(null), 10000);
-        } else if (cloudRes?.error) {
-          setResetFeedback(`⚠️ ${cloudRes.error}`);
-          setTimeout(() => setResetFeedback(null), 8000);
-        }
-      } catch (cloudErr) {
-        console.warn('[handleSaveUser] Cloud create user error (non-critical):', cloudErr);
-      }
+    } catch (cloudErr) {
+      console.warn('[handleSaveUser] Cloud sync user notice:', cloudErr);
     }
 
 

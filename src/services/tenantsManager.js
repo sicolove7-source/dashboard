@@ -1448,7 +1448,14 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     }
 
     // الدور حصراً ومباشرة من claims.role (بدون أي تخمين أو قيم افتراضية)
-    const verifiedRole = claims.role || 'viewer';
+    if (!claims.role) {
+      return {
+        success: false,
+        error: 'missing_role_claims',
+        message: '🚫 لا توجد صلاحيات معتمدة لهذا الحساب (Custom Claims). يرجى مراجعة إدارة الشركة.',
+      };
+    }
+    const verifiedRole = claims.role;
     const compName = cloudCompanyName || (claimTenant ? getTenantCurrentName(claimTenant) : companyId);
     const compLogo = cloudCompanyLogo || (claimTenant ? getTenantCurrentLogo(claimTenant) : null);
     const currency = compCloud?.currency || claimTenant?.currency || claims.currency || 'ج.م';
@@ -1482,8 +1489,7 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     };
   }
 
-  // 3. فحص محلي فوري لمطابقة المالك أو الموظفين المسجلين في بيانات الشركة الحالية
-  // يفحص أولاً قبل الاتصال بالسحابة لمنع تأخير الشبكة والـ Timeouts
+  // 3. فحص محلي لحالة الحظر أو التعليق فقط (بدون تحديد الدور محلياً أو افتراض دور المالك)
   for (const t of tenants) {
     if (!t || t.status === 'deleted') continue;
 
@@ -1499,29 +1505,32 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
         };
       }
 
-      const compName = getTenantCurrentName(t);
-      const compLogo = getTenantCurrentLogo(t);
-      return {
-        success: true,
-        user: {
-          id: firebaseUid || `u_${t.id}_admin`,
-          email: cleanEmail,
-          name: t.adminName || cleanEmail.split('@')[0],
-          role: 'owner',
-          companyId: t.id,
-          companyName: compName,
-          currency: t.currency || 'ج.م',
-        },
-        tenant: {
-          ...t,
-          name: compName,
-          logo: compLogo,
-        },
-        isSuperAdmin: false,
-      };
+      // إذا كان لدى المستخدم claims.role صريح
+      if (claims.role) {
+        const compName = getTenantCurrentName(t);
+        const compLogo = getTenantCurrentLogo(t);
+        return {
+          success: true,
+          user: {
+            id: firebaseUid || `u_${t.id}_admin`,
+            email: cleanEmail,
+            name: t.adminName || cleanEmail.split('@')[0],
+            role: claims.role,
+            companyId: t.id,
+            companyName: compName,
+            currency: t.currency || 'ج.م',
+          },
+          tenant: {
+            ...t,
+            name: compName,
+            logo: compLogo,
+          },
+          isSuperAdmin: false,
+        };
+      }
     }
 
-    // ب) مطابقة الموظفين المسجلين في مصفوفة users
+    // ب) مطابقة الموظفين المسجلين في مصفوفة users لفحص حالة التعليق فقط
     if (Array.isArray(t.users)) {
       const match = t.users.find(u => {
         if (!u) return false;
@@ -1552,20 +1561,22 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
           };
         }
 
-        return {
-          success: true,
-          user: {
-            id: firebaseUid || match.id || `u_${t.id}_emp`,
-            email: cleanEmail,
-            name: match.name || cleanEmail.split('@')[0],
-            role: match.role || 'engineer',
-            companyId: t.id,
-            companyName: getTenantCurrentName(t),
-            currency: t.currency || 'ج.م',
-          },
-          tenant: t,
-          isSuperAdmin: false,
-        };
+        if (claims.role) {
+          return {
+            success: true,
+            user: {
+              id: firebaseUid || match.id || `u_${t.id}_emp`,
+              email: cleanEmail,
+              name: match.name || cleanEmail.split('@')[0],
+              role: claims.role,
+              companyId: t.id,
+              companyName: getTenantCurrentName(t),
+              currency: t.currency || 'ج.م',
+            },
+            tenant: t,
+            isSuperAdmin: false,
+          };
+        }
       }
     }
   }
