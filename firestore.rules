@@ -35,16 +35,16 @@ service cloud.firestore {
       let tokenCompId = request.auth.token.companyId;
       let userEmail = request.auth.token.email;
       let userId = request.auth.uid;
+      let compPath = /databases/$(database)/documents/companies/$(companyId);
 
       return isSuperAdmin() || (
         tokenCompId != null && tokenCompId == companyId
       ) || (
-        exists(/databases/$(database)/documents/companies/$(companyId)) && (
-          let compData = get(/databases/$(database)/documents/companies/$(companyId)).data;
-          compData.adminEmail == userEmail ||
-          compData.adminUid == userId ||
-          ('authorizedEmails' in compData && compData.authorizedEmails.hasAny([userEmail])) ||
-          ('authorizedUids' in compData && compData.authorizedUids.hasAny([userId]))
+        exists(compPath) && (
+          get(compPath).data.adminEmail == userEmail ||
+          get(compPath).data.adminUid == userId ||
+          ('authorizedEmails' in get(compPath).data && get(compPath).data.authorizedEmails.hasAny([userEmail])) ||
+          ('authorizedUids' in get(compPath).data && get(compPath).data.authorizedUids.hasAny([userId]))
         )
       );
     }
@@ -90,15 +90,15 @@ service cloud.firestore {
     function companyDocBelongsToUser(companyId) {
       let tokenCompId = request.auth.token.companyId;
       let userEmail = request.auth.token.email;
+      let compPath = /databases/$(database)/documents/companies/$(companyId);
       return isSuperAdmin() || (
         tokenCompId != null &&
         tokenCompId == companyId
       ) || (
-        exists(/databases/$(database)/documents/companies/$(companyId)) && (
-          let compData = get(/databases/$(database)/documents/companies/$(companyId)).data;
-          compData.adminEmail == userEmail ||
-          compData.adminUid == request.auth.uid ||
-          ('authorizedEmails' in compData && compData.authorizedEmails.hasAny([userEmail]))
+        exists(compPath) && (
+          get(compPath).data.adminEmail == userEmail ||
+          get(compPath).data.adminUid == request.auth.uid ||
+          ('authorizedEmails' in get(compPath).data && get(compPath).data.authorizedEmails.hasAny([userEmail]))
         )
       );
     }
