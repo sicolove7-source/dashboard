@@ -1,12 +1,7 @@
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import fs from 'fs';
-import path from 'path';
-
 let adminApp = null;
 let adminAuth = null;
 
-function getAdminAuth() {
+async function getAdminAuth() {
   if (adminAuth) return adminAuth;
 
   let serviceAccount = null;
@@ -22,26 +17,35 @@ function getAdminAuth() {
     }
   }
 
-  // 2. فحص ملف serviceAccountKey.json المحلي
+  // 2. فحص ملف serviceAccountKey.json المحلي إذا وُجد
   if (!serviceAccount) {
-    const candidatePaths = [
-      path.join(process.cwd(), 'serviceAccountKey.json'),
-      path.join(process.cwd(), 'dashboard', 'serviceAccountKey.json'),
-      path.resolve('serviceAccountKey.json')
-    ];
-    for (const p of candidatePaths) {
-      if (fs.existsSync(p)) {
-        try {
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const candidatePaths = [
+        path.join(process.cwd(), 'serviceAccountKey.json'),
+        path.join(process.cwd(), 'dashboard', 'serviceAccountKey.json'),
+        path.resolve('serviceAccountKey.json')
+      ];
+      for (const p of candidatePaths) {
+        if (fs.existsSync(p)) {
           serviceAccount = JSON.parse(fs.readFileSync(p, 'utf8'));
           break;
-        } catch (e) {}
+        }
       }
-    }
+    } catch (e) {}
   }
 
   if (!serviceAccount) {
-    throw new Error('Firebase Service Account Key not found. Please provide FIREBASE_SERVICE_ACCOUNT env or serviceAccountKey.json.');
+    throw new Error('Firebase Service Account Key not found in environment.');
   }
+
+  if (serviceAccount.private_key && typeof serviceAccount.private_key === 'string') {
+    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+  }
+
+  const { initializeApp, getApps, cert } = await import('firebase-admin/app');
+  const { getAuth } = await import('firebase-admin/auth');
 
   const apps = getApps();
   adminApp = apps.length > 0 ? apps[0] : initializeApp({
@@ -82,7 +86,13 @@ export default async function handler(req, res) {
     }
 
     const idToken = authHeader.split('Bearer ')[1].trim();
-    const auth = getAdminAuth();
+    let auth;
+    try {
+      auth = await getAdminAuth();
+    } catch (keyErr) {
+      console.error('[api/reset-password] Admin auth init failed:', keyErr);
+      return res.status(500).json({ success: false, error: 'لم يتم العثور على مفتاح الخدمة FIREBASE_SERVICE_ACCOUNT على السيرفر.' });
+    }
 
     // التحقق من هوية المسؤول الطالب للعملية
     let callerUser;

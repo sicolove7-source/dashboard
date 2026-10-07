@@ -74,33 +74,23 @@ export async function callCreateCompanyUser({ email, name, role, companyId, pass
   if (password && password.length >= 6) {
     try {
       const idToken = await currentUser.getIdToken();
-      const apiRes = await fetch('/api/reset-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`
-        },
-        body: JSON.stringify({
+      const data = await callResetPasswordApi({
+        email: cleanEmail,
+        name,
+        newPassword: password,
+        companyId
+      }, idToken);
+      if (data?.success) {
+        console.log('[callCreateCompanyUser] ✅ Serverless Admin API succeeded:', cleanEmail);
+        return {
+          success: true,
+          uid: data.uid,
           email: cleanEmail,
-          name,
-          newPassword: password,
-          companyId
-        })
-      });
-      if (apiRes.ok) {
-        const data = await apiRes.json();
-        if (data?.success) {
-          console.log('[callCreateCompanyUser] ✅ Vercel Serverless API succeeded:', cleanEmail);
-          return {
-            success: true,
-            uid: data.uid,
-            email: cleanEmail,
-            message: `✅ تم تفعيل حساب ${name || cleanEmail} بنجاح.`
-          };
-        }
+          message: `✅ تم تفعيل حساب ${name || cleanEmail} بنجاح.`
+        };
       }
     } catch (apiErr) {
-      console.warn('[callCreateCompanyUser] Vercel API notice:', apiErr.message);
+      console.warn('[callCreateCompanyUser] API notice:', apiErr.message);
     }
   }
 
@@ -386,6 +376,33 @@ export async function updateCurrentUserEmail(newEmail) {
  * مزامنة وتحديث كلمة المرور لحساب المصادقة بالهاتف (phone_${cleanPhone}@tashteeb.app)
  * حصرياً عبر Cloud Function الآمنة (Admin SDK) لحماية بيانات وحسابات المستخدمين
  */
+async function callResetPasswordApi(payload, idToken) {
+  const endpoints = [
+    '/api/reset-password',
+    'https://erp-dashboard.vercel.app/api/reset-password'
+  ];
+  for (const ep of endpoints) {
+    try {
+      const res = await fetch(ep, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify(payload)
+      });
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data?.success) return data;
+      }
+    } catch (e) {
+      console.warn(`[callResetPasswordApi] Endpoint ${ep} notice:`, e.message);
+    }
+  }
+  return null;
+}
+
 export async function syncAndResetPhonePassword(phone, newPassword, knownEmail = null) {
   const cleanPhone = cleanPhoneNumber(phone);
   if (!cleanPhone || cleanPhone.length < 7) {
@@ -403,30 +420,20 @@ export async function syncAndResetPhonePassword(phone, newPassword, knownEmail =
 
   const phoneAuthEmail = `phone_${cleanPhone}@tashteeb.app`;
 
-  // 1. استدعاء Vercel Serverless API (Admin SDK)
+  // 1. استدعاء Vercel Serverless API (Admin SDK) مع مسار بديل تلقائي
   try {
     const idToken = await currentUser.getIdToken();
-    const apiRes = await fetch('/api/reset-password', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${idToken}`
-      },
-      body: JSON.stringify({
-        phone: cleanPhone,
-        email: phoneAuthEmail,
-        newPassword
-      })
-    });
-    if (apiRes.ok) {
-      const data = await apiRes.json();
-      if (data?.success) {
-        console.log('[syncAndResetPhonePassword] ✅ Vercel Serverless API succeeded:', phoneAuthEmail);
-        return { success: true, phoneAuthEmail, message: data.message };
-      }
+    const apiData = await callResetPasswordApi({
+      phone: cleanPhone,
+      email: phoneAuthEmail,
+      newPassword
+    }, idToken);
+    if (apiData?.success) {
+      console.log('[syncAndResetPhonePassword] ✅ Serverless Admin API succeeded:', phoneAuthEmail);
+      return { success: true, phoneAuthEmail, message: apiData.message };
     }
   } catch (apiErr) {
-    console.warn('[syncAndResetPhonePassword] Vercel API attempt notice:', apiErr.message);
+    console.warn('[syncAndResetPhonePassword] Admin API notice:', apiErr.message);
   }
 
   // 2. استدعاء Cloud Function الآمنة (Admin SDK) — يعالج الإنشاء والتحديث معاً
