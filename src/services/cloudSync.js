@@ -530,15 +530,40 @@ export function mergeProjectsPreservingLocal(localProjects, incomingProjects, ta
   const safeLocal = filterByTarget(localProjects);
   const safeIncoming = filterByTarget(incomingProjects);
 
+  let deletedIds = new Set();
+  if (typeof localStorage !== 'undefined' && cleanTarget) {
+    try {
+      const stored = localStorage.getItem(`tenant_${cleanTarget}_deleted_projects`);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) deletedIds = new Set(parsed);
+      }
+    } catch (e) {}
+  }
+
+  const isPreservedLocal = (p) => {
+    if (!p || !p.id) return false;
+    if (deletedIds.has(p.id)) return false;
+    if (p._pendingSync === true || p.isOfflineCreated === true) return true;
+    if (p.createdAt && (Date.now() - new Date(p.createdAt).getTime() < 48 * 60 * 60 * 1000)) return true;
+    if (typeof p.id === 'string' && p.id.startsWith('p')) {
+      const timestampPart = Number(p.id.slice(1));
+      if (!isNaN(timestampPart) && timestampPart > 1700000000000 && (Date.now() - timestampPart < 48 * 60 * 60 * 1000)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   if (!incomingProjects) {
-    return safeLocal;
+    return safeLocal.filter(p => p && !deletedIds.has(p.id));
   }
   if (safeLocal.length === 0) {
     return safeIncoming;
   }
   if (safeIncoming.length === 0) {
-    // السحابة هي مصدر الحقيقة (Source of Truth): إذا كانت فارغة، لا نعيد إحياء المشاريع المحذوفة
-    return safeLocal.filter(p => p && (p._pendingSync === true || p.isOfflineCreated === true));
+    // السحابة فارغة أو في طور التهيئة: نحتفظ بكافة المشاريع المحلية غير المحذوفة عمداً
+    return safeLocal.filter(p => p && isPreservedLocal(p));
   }
 
   const localMap = new Map();
@@ -716,10 +741,10 @@ export function mergeProjectsPreservingLocal(localProjects, incomingProjects, ta
     };
   });
 
-  // إضافة فقط المشاريع المنشأة محلياً دون اتصال ولم تُرفع بعد (حتى لا نُعيد إحياء المشاريع المحذوفة سحابياً)
+  // إضافة المشاريع المنشأة أو المعدلة محلياً والتي لم تُسحب سحابياً بعد (مع استبعاد المحذوفة عمداً)
   safeLocal.forEach(local => {
     if (local && local.id && !safeIncoming.some(inc => inc.id === local.id)) {
-      if (local._pendingSync === true || local.isOfflineCreated === true) {
+      if (isPreservedLocal(local)) {
         merged.push(local);
       }
     }
@@ -1069,13 +1094,20 @@ export async function syncSettingsToCloud(companyId, settings) {
     const sub = settings.subdomain || (typeof window !== 'undefined' ? window.location.hostname.split('.')[0] : null);
     if (sub && sub !== 'tashteebpro' && sub !== 'www' && sub !== 'localhost' && sub !== '127') {
       const dirDocRef = doc(db, 'tenant_directory', sub.toLowerCase().trim());
-      await setDoc(dirDocRef, {
+      const patch = {
         companyId: cId,
         name: settings.companyName || 'شركة المقاولات',
         logo: settings.companyLogo || null,
         subdomain: sub.toLowerCase().trim(),
         updatedAt: new Date().toISOString(),
-      }, { merge: true });
+      };
+      if (settings.phone || settings.companyPhone) {
+        patch.phone = settings.phone || settings.companyPhone;
+        patch.mobile = settings.phone || settings.companyPhone;
+      }
+      if (settings.adminName) patch.adminName = settings.adminName;
+      if (settings.adminEmail) patch.adminEmail = settings.adminEmail;
+      await setDoc(dirDocRef, patch, { merge: true });
     }
   } catch (e) {
     console.warn("[syncSettingsToCloud] Error updating tenant_directory:", e.message);

@@ -3,10 +3,10 @@ import {
   Building2, Upload, Save, CheckCircle2, Image, Trash2,
   RefreshCw, AlertTriangle, Headphones, Hammer, Wallet, ClipboardList, X,
   Globe, ShieldCheck, Server, CheckCircle, Zap, Users, Phone, Mail,
-  FileText, MapPin, Hash, Check, Copy
+  FileText, MapPin, Hash, Check, Copy, Clock, Calendar
 } from 'lucide-react';
 
-import { setGlobalCurrency } from '../utils/helpers';
+import { setGlobalCurrency, formatRegistrationDateTime } from '../utils/helpers';
 import { getActiveTenantId } from '../services/tenantsManager';
 import { syncSettingsToCloud, syncCompanyUsersToCloud, syncTenantUsersToCloud, uploadMediaToFirebaseStorage } from '../services/cloudSync';
 import { callCreateCompanyUser } from '../services/auth';
@@ -202,6 +202,8 @@ export default function CompanySettings({
   const [teamErrors, setTeamErrors] = useState({});
   const [teamSuccess, setTeamSuccess] = useState({});
 
+  const regInfo = formatRegistrationDateTime(settings.registeredAt || settings.createdAt || effectiveCompanyId);
+
   const lastCompanyIdRef = useRef(effectiveCompanyId);
   const isDirtyRef = useRef(false);
 
@@ -269,13 +271,18 @@ export default function CompanySettings({
       if (sub && sub !== 'tashteebpro' && sub !== 'www' && sub !== 'localhost') {
         const { db } = await import('../firebase');
         const { doc, setDoc } = await import('firebase/firestore');
-        await setDoc(doc(db, 'tenant_directory', sub.toLowerCase().trim()), {
+        const patch = {
           companyId: effectiveCompanyId,
           name: settings.companyName,
           logo: settings.companyLogo || null,
           subdomain: sub.toLowerCase().trim(),
           updatedAt: new Date().toISOString(),
-        }, { merge: true });
+        };
+        if (settings.phone || settings.companyPhone) {
+          patch.phone = settings.phone || settings.companyPhone;
+          patch.mobile = settings.phone || settings.companyPhone;
+        }
+        await setDoc(doc(db, 'tenant_directory', sub.toLowerCase().trim()), patch, { merge: true });
         console.log('[CompanySettings] tenant_directory updated:', sub);
       }
     } catch (e) {
@@ -732,6 +739,54 @@ export default function CompanySettings({
                   </select>
                 </div>
 
+                {/* Registration Timestamp Card */}
+                <div style={{
+                  padding: '12px 16px',
+                  borderRadius: 12,
+                  background: 'linear-gradient(135deg, rgba(24,119,242,0.06), rgba(99,102,241,0.04))',
+                  border: '1px solid rgba(24,119,242,0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  flexWrap: 'wrap'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{
+                      width: 38, height: 38, borderRadius: 10,
+                      background: '#EFF6FF', color: '#1877F2',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      <Clock size={19} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)' }}>
+                        وقت وتاريخ تسجيل وتوثيق الشركة بالمنصة
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span>📅 {regInfo.arabicDate}</span>
+                        <span style={{ color: '#94A3B8' }}>•</span>
+                        <span style={{ color: '#1877F2', direction: 'ltr' }}>⏰ {regInfo.time}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    padding: '4px 10px',
+                    borderRadius: 20,
+                    background: '#F0FDF4',
+                    color: '#16A34A',
+                    border: '1px solid #BBF7D0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5
+                  }}>
+                    <CheckCircle2 size={13} /> حساب موثق بالمنصة
+                  </div>
+                </div>
+
                 {/* Live Preview Card */}
                 <div className="cs-live-preview-card" style={{
                   marginTop: 2,
@@ -898,6 +953,28 @@ export default function CompanySettings({
                   onChange={(e) => updateSetting('address', e.target.value)}
                   placeholder="الشارع، اسم المبنى، رقم المكتب"
                 />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 5 }}>
+                  <Clock size={12} style={{ display: 'inline', marginLeft: 4 }} /> تاريخ ووقت التسجيل بالمنصة (موثق)
+                </label>
+                <div style={{
+                  padding: '9px 12px',
+                  borderRadius: 8,
+                  background: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  color: 'var(--ink)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                }}>
+                  <span>📅 {regInfo.arabicDate}</span>
+                  <span style={{ color: '#1877F2', direction: 'ltr', fontSize: 12 }}>⏰ {regInfo.time}</span>
+                </div>
               </div>
             </div>
           </div>

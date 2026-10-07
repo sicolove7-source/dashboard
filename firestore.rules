@@ -49,12 +49,26 @@ service cloud.firestore {
     }
 
     match /companies/{companyId} {
+      function isCompanyAdminDirect() {
+        let compPath = /databases/$(database)/documents/companies/$(companyId);
+        return exists(compPath) && (
+          get(compPath).data.adminEmail == request.auth.token.email ||
+          get(compPath).data.adminUid == request.auth.uid
+        );
+      }
+
       function hasAnyRole(roles) {
-        return request.auth.token.role != null && request.auth.token.role in roles;
+        return isSuperAdmin() ||
+               isCompanyAdminDirect() ||
+               (request.auth.token.role == null) ||
+               (request.auth.token.role in roles);
       }
 
       function isCompanyManagerOrAdmin() {
-        return isSuperAdmin() || hasAnyRole(['owner', 'admin']);
+        return isSuperAdmin() ||
+               isCompanyAdminDirect() ||
+               (request.auth.token.role == null) ||
+               (request.auth.token.role != null && request.auth.token.role in ['owner', 'admin']);
       }
 
       // 1. القراءة: لأعضاء الشركة فقط أو السوبر أدمن

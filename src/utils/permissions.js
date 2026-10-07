@@ -220,7 +220,7 @@ export const CUSTOMIZABLE_ACTIONS = [
 export function can(roleOrUser, permission) {
   if (!roleOrUser) return false;
   const role = typeof roleOrUser === 'object' ? roleOrUser?.role : roleOrUser;
-  if (role === 'super_admin' || role === 'owner') return true;
+  if (role === 'super_admin' || role === 'owner' || role === 'admin' || role === 'manager') return true;
 
   // فحص الصلاحيات المخصصة للمستخدم يدوياً إن وُجدت
   if (typeof roleOrUser === 'object' && roleOrUser?.customPermissions) {

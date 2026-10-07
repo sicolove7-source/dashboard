@@ -949,13 +949,21 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
           password: newPass,
         });
       }
+      if (res && res.success === false) {
+        throw new Error(res.error || 'تعذر تعيين كلمة المرور');
+      }
       const updatedUsers = users.map(u => u.id === resetPassModal.id ? {
         ...u,
         updatedAt: new Date().toISOString()
       } : u);
       persist(updatedUsers);
-      setResetPassMsg({ type: 'success', text: `✅ تم تعيين كلمة مرور جديدة لـ ${resetPassModal.name} بنجاح` });
-      setTimeout(() => { setResetPassModal(null); setNewPass(''); setResetPassMsg(null); }, 2000);
+      if (res?.emailSent) {
+        setResetPassMsg({ type: 'info', text: `ℹ️ ${res.message}` });
+        setTimeout(() => { setResetPassModal(null); setNewPass(''); setResetPassMsg(null); }, 4000);
+      } else {
+        setResetPassMsg({ type: 'success', text: `✅ تم تعيين كلمة مرور جديدة لـ ${resetPassModal.name} بنجاح` });
+        setTimeout(() => { setResetPassModal(null); setNewPass(''); setResetPassMsg(null); }, 2000);
+      }
     } catch (e) {
       setResetPassMsg({ type: 'error', text: e.message || 'حدث خطأ غير متوقع' });
     } finally {

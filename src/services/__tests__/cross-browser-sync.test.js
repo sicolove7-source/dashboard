@@ -85,6 +85,34 @@ describe('Cross-Browser Cloud Sync & Realtime Fixes', () => {
       expect(merged.some(p => p.id === 'p_old')).toBe(false);
     });
 
+    it('preserves newly added project with recent timestamp id even if cloud list is empty or lacks it', () => {
+      const newProjId = 'p' + Date.now();
+      const localProjects = [
+        { id: newProjId, name: 'موقع جديد أضيف للتو', companyId: 'comp_1', createdAt: new Date().toISOString() },
+      ];
+      const incomingCloudProjects = [];
+
+      const merged = mergeProjectsPreservingLocal(localProjects, incomingCloudProjects, 'comp_1');
+      expect(merged).toHaveLength(1);
+      expect(merged[0].id).toBe(newProjId);
+    });
+
+    it('strictly drops projects recorded in deleted_projects localStorage', () => {
+      const newProjId = 'p' + Date.now();
+      global.localStorage.getItem = vi.fn((key) => {
+        if (key === 'tenant_comp_1_deleted_projects') return JSON.stringify([newProjId]);
+        return null;
+      });
+
+      const localProjects = [
+        { id: newProjId, name: 'مشروع حذفه المستخدم', companyId: 'comp_1', _pendingSync: true },
+      ];
+      const incomingCloudProjects = [];
+
+      const merged = mergeProjectsPreservingLocal(localProjects, incomingCloudProjects, 'comp_1');
+      expect(merged).toHaveLength(0);
+    });
+
     it('falls back to local projects when incoming projects is null/undefined (network offline)', () => {
       const localProjects = [
         { id: 'p1', name: 'مشروع محلي كاش', companyId: 'comp_1' },

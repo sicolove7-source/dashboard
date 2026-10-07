@@ -252,6 +252,48 @@ export function loadAllTenants() {
             }
           }
         } catch (e) {}
+
+        // استخراج الهاتف والاسم الحقيقي لمدير الشركة من سجلات المستخدمين إن وُجدت
+        try {
+          const uRaw = localStorage.getItem(`tenant_${t.id}_users`);
+          if (uRaw) {
+            const uList = JSON.parse(uRaw);
+            if (Array.isArray(uList) && uList.length > 0) {
+              enhanced.users = uList;
+              const owner = uList.find(u => u && (u.role === 'owner' || u.role === 'admin')) || uList[0];
+              if (owner) {
+                if (owner.name && owner.name !== 'المدير العام' && (!enhanced.adminName || enhanced.adminName === 'المدير العام')) {
+                  enhanced.adminName = owner.name;
+                }
+                if (owner.email && !enhanced.adminEmail) {
+                  enhanced.adminEmail = owner.email;
+                }
+                if ((owner.phone || owner.mobile) && !enhanced.phone) {
+                  enhanced.phone = owner.phone || owner.mobile;
+                  enhanced.mobile = owner.phone || owner.mobile;
+                }
+              }
+            }
+          }
+        } catch (e) {}
+
+        try {
+          const regRaw = localStorage.getItem('platform-all-users-registry');
+          if (regRaw) {
+            const reg = JSON.parse(regRaw);
+            const userInReg = enhanced.adminEmail ? reg[enhanced.adminEmail.toLowerCase().trim()] : null;
+            if (userInReg) {
+              if (userInReg.phone && !enhanced.phone) {
+                enhanced.phone = userInReg.phone;
+                enhanced.mobile = userInReg.phone;
+              }
+              if (userInReg.name && userInReg.name !== 'المدير العام' && (!enhanced.adminName || enhanced.adminName === 'المدير العام')) {
+                enhanced.adminName = userInReg.name;
+              }
+            }
+          }
+        } catch (e) {}
+
         if (!map.has(t.id)) {
           map.set(t.id, enhanced);
         } else {
@@ -316,29 +358,54 @@ export async function loadAllTenantsAsync() {
           const cId = td.companyId || `comp_${d.id}`;
           // ✅ تجاهل الشركات المحذوفة
           if (deletedIds.has(cId) || isTenantDeleted(cId)) return;
+          const matchedLocal = local.find(lt => lt && (lt.id === cId || lt.id === `comp_${d.id}`));
+          const rawPhone = td.phone || td.mobile || td.contactPhone || td.adminPhone || matchedLocal?.phone || matchedLocal?.mobile || '';
+          const rawAdminName = (td.adminName && td.adminName !== 'المدير العام')
+            ? td.adminName
+            : (matchedLocal?.adminName && matchedLocal.adminName !== 'المدير العام'
+                ? matchedLocal.adminName
+                : (td.name ? `مدير ${td.name}` : 'مدير الشركة'));
+          const rawEmail = td.adminEmail || matchedLocal?.adminEmail || '';
+
           if (!mergedMap.has(cId)) {
             mergedMap.set(cId, {
               id: cId,
-              name: td.name || d.id,
-              subdomain: td.subdomain || d.id,
-              slug: td.subdomain || d.id,
-              logo: td.logo || null,
-              adminEmail: td.adminEmail || '',
-              adminName: td.adminName || 'المدير العام',
-              phone: td.phone || '',
-              currency: td.currency || 'ج.م',
-              status: 'active',
-              plan: 'trial',
-              users: [{
+              name: td.name || matchedLocal?.name || d.id,
+              subdomain: td.subdomain || matchedLocal?.subdomain || d.id,
+              slug: td.subdomain || matchedLocal?.slug || d.id,
+              logo: td.logo || matchedLocal?.logo || null,
+              adminEmail: rawEmail,
+              adminName: rawAdminName,
+              phone: rawPhone,
+              mobile: rawPhone,
+              currency: td.currency || matchedLocal?.currency || 'ج.م',
+              status: td.status || matchedLocal?.status || 'active',
+              plan: td.plan || matchedLocal?.plan || 'trial',
+              users: (matchedLocal?.users && matchedLocal.users.length > 0) ? matchedLocal.users : [{
                 id: `u_${cId}_admin`,
-                email: td.adminEmail || '',
-                name: td.adminName || 'المدير العام',
+                email: rawEmail,
+                name: rawAdminName,
+                phone: rawPhone,
                 role: 'owner',
                 companyId: cId
               }],
-              authorizedEmails: td.adminEmail ? [td.adminEmail] : [],
-              createdAt: td.createdAt || new Date().toISOString()
+              authorizedEmails: rawEmail ? [rawEmail] : (matchedLocal?.authorizedEmails || []),
+              createdAt: td.createdAt || matchedLocal?.createdAt || new Date().toISOString()
             });
+          } else {
+            const existing = mergedMap.get(cId);
+            const enriched = { ...existing };
+            if (!enriched.phone && rawPhone) {
+              enriched.phone = rawPhone;
+              enriched.mobile = rawPhone;
+            }
+            if ((!enriched.adminName || enriched.adminName === 'المدير العام') && rawAdminName && rawAdminName !== 'المدير العام') {
+              enriched.adminName = rawAdminName;
+            }
+            if (!enriched.adminEmail && rawEmail) {
+              enriched.adminEmail = rawEmail;
+            }
+            mergedMap.set(cId, enriched);
           }
         });
       }
@@ -363,10 +430,8 @@ export async function loadAllTenantsAsync() {
       local.forEach(t => {
         if (t?.id && !deletedIds.has(t.id) && !isTenantDeleted(t.id) && t.status !== 'deleted') {
           if (!mergedMap.has(t.id)) {
-            // فقط إذا لم تكن هناك سحابة (Offline) أو تم تسجيل الشركة محلياً للتو نضيفها
-            if (!hasCloudSource || t._isLocalNew) {
-              mergedMap.set(t.id, t);
-            }
+            // ✅ إضافة الشركات المحلية دائماً بدون شرط _isLocalNew لضمان ظهور آخر شركة مسجلة
+            mergedMap.set(t.id, t);
           } else {
             const cloudT = mergedMap.get(t.id);
             const mergedUsers = Array.isArray(cloudT.users) && cloudT.users.length > 0
@@ -387,7 +452,11 @@ export async function loadAllTenantsAsync() {
               ...cloudT,
               ...t,
               phone: t.phone || cloudT.phone || cloudT.mobile || t.mobile || '',
+              mobile: t.phone || cloudT.phone || cloudT.mobile || t.mobile || '',
+              adminName: (t.adminName && t.adminName !== 'المدير العام') ? t.adminName : ((cloudT.adminName && cloudT.adminName !== 'المدير العام') ? cloudT.adminName : (t.adminName || cloudT.adminName || 'مدير الشركة')),
+              adminEmail: t.adminEmail || cloudT.adminEmail || '',
               createdAt: t.createdAt || cloudT.createdAt || t.startDate || cloudT.startDate || null,
+              registeredAt: t.registeredAt || cloudT.registeredAt || t.createdAt || cloudT.createdAt || t.startDate || cloudT.startDate || null,
               name: safeName,
               logo: safeLogo,
               users: mergedUsers,
@@ -450,7 +519,8 @@ export function createTenant(data) {
     subdomain: (data.subdomain || data.slug || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, ''),
     customDomain: (data.customDomain || '').trim().toLowerCase(),
     projectsCount: data.seedDemoProject ? 1 : 0,
-    createdAt: new Date().toISOString().slice(0, 10),
+    createdAt: data.createdAt || new Date().toISOString(),
+    registeredAt: data.registeredAt || data.createdAt || new Date().toISOString(),
   };
 
   const updated = [newTenant, ...tenants];
@@ -697,6 +767,14 @@ export async function registerNewTenant(formData) {
         logo: newTenant.logo || null,
         subdomain: rawSubdomain,
         currency: newTenant.currency || 'ج.م',
+        adminName: newTenant.adminName || adminName,
+        adminEmail: cleanEmail,
+        phone: phone || newTenant.phone || '',
+        mobile: phone || newTenant.phone || '',
+        city: city || 'القاهرة',
+        country: 'مصر',
+        plan: 'trial',
+        status: 'active',
         createdAt: new Date().toISOString(),
       }),
       new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))

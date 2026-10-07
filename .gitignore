@@ -23,3 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 .firebase/
+*firebase-adminsdk*.json
+*serviceAccount*.json
+.env
+.env.*
+key_single_line.txt

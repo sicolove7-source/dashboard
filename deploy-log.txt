@@ -6,50 +6,52 @@
 > vite build
 
 [36mvite v8.1.5 [32mbuilding client environment for production...[36m[39m
-[2Ktransforming...✓ 2448 modules transformed.
+[2Ktransforming...✓ 2449 modules transformed.
 rendering chunks...
-dist/index.html                                   3.23 kB
+dist/index.html                                   4.94 kB
 dist/assets/index-BAqSiy_r.css                   97.89 kB
 dist/assets/printHelper-CeLOktij.js               0.54 kB
-dist/assets/StatusBadge-DKU7zKAq.js               0.62 kB
-dist/assets/firebase-BicxowB2.js                  0.65 kB
+dist/assets/StatusBadge-CLLt5345.js               0.62 kB
+dist/assets/firebase-DLLIuOv_.js                  0.63 kB
 dist/assets/rolldown-runtime-QTnfLwEv.js          0.69 kB
 dist/assets/StampRing-B8L5YHz8.js                 0.89 kB
-dist/assets/preload-helper-Czpn1I53.js            1.19 kB
 dist/assets/helpers-U2PvoJj3.js                   1.60 kB
-dist/assets/SignaturePad-9UoxhfZS.js              2.66 kB
-dist/assets/QuickWinChecklist-BRglvCdK.js         4.71 kB
-dist/assets/ProjectForm-Dzip8_Eh.js               5.44 kB
-dist/assets/Overview-CNebjKCH.js                  8.15 kB
-dist/assets/permissions-CGq4QtK9.js               8.77 kB
-dist/assets/ProjectsTab-Aocb6PPL.js               9.18 kB
+dist/assets/SignaturePad-BRQszDBR.js              2.66 kB
+dist/assets/preload-helper-CDo7mfKx.js            3.67 kB
+dist/assets/QuickWinChecklist-byMK-mhv.js         4.71 kB
+dist/assets/ProjectForm-raai58Ld.js               5.44 kB
+dist/assets/Overview-EloMnUyV.js                  8.16 kB
+dist/assets/permissions-9OiiAME5.js               8.83 kB
+dist/assets/ProjectsTab-BnU_XNPn.js               9.18 kB
 dist/assets/vendor-confetti-DBguxEek.js          10.56 kB
-dist/assets/AdminPortal-C-AGQ8RN.js              11.61 kB
-dist/assets/OnboardingTourModal-AgnhEpDM.js      17.11 kB
+dist/assets/AdminPortal-CQb1XgY4.js              11.67 kB
+dist/assets/OnboardingTourModal-k27rJ96o.js      17.11 kB
 dist/assets/constants-DSFEuw_j.js                18.30 kB
-dist/assets/CrmPipeline-Bdi3A9kx.js              18.75 kB
-dist/assets/ClientIntakePage-CersONZw.js         23.31 kB
-dist/assets/ClientPortal-C5zfvVKE.js             25.87 kB
-dist/assets/vendor-icons-HBYIHGH6.js             27.77 kB
-dist/assets/cloudSync-NyGTXWvz.js                30.43 kB
-dist/assets/QuotationBuilder-DQq0sQ4x.js         31.18 kB
-dist/assets/SuperAdminDashboard-CTNRY5Yl.js      31.23 kB
-dist/assets/TeamPerformance-HPJtuX_V.js          33.00 kB
-dist/assets/SuppliersTab-akQ9nf1L.js             35.26 kB
-dist/assets/CompanyFinance-Dsp8XiRr.js           37.80 kB
-dist/assets/Login-Cjgh7b27.js                    38.42 kB
-dist/assets/CraftsmanContractModal-CHWn8klN.js   56.53 kB
-dist/assets/LandingPage-BZ4gSAha.js              65.95 kB
-dist/assets/SubcontractorsTab-DxrI7T1-.js        85.54 kB
-dist/assets/CompanySettings-BHDbp6fH.js          96.89 kB
+dist/assets/CrmPipeline-D6DJBBnK.js              18.75 kB
+dist/assets/ClientIntakePage-CXEjwQj6.js         23.31 kB
+dist/assets/ClientPortal-DPH3c3_2.js             25.87 kB
+dist/assets/vendor-icons-BL3VWFys.js             28.61 kB
+dist/assets/QuotationBuilder-hD5HjrBA.js         31.18 kB
+dist/assets/TeamPerformance-Dee377gc.js          33.00 kB
+dist/assets/cloudSync-C8WaOPuh.js                33.93 kB
+dist/assets/SuppliersTab-Cd11ajha.js             35.69 kB
+dist/assets/CompanyFinance-9KixpoB0.js           37.80 kB
+dist/assets/Login-DNBe4NZp.js                    41.06 kB
+dist/assets/SuperAdminDashboard-CjhT2xLc.js      45.37 kB
+dist/assets/CraftsmanContractModal-DnanL480.js   56.67 kB
+dist/assets/LandingPage-B9ijhW3e.js              67.03 kB
+dist/assets/SubcontractorsTab-Bv3xBXKz.js        85.54 kB
+dist/assets/CompanySettings-K4v4O7BS.js         101.01 kB
 dist/assets/vendor-core-DeyV6SdX.js             147.09 kB
 dist/assets/vendor-react-Bc61X83-.js            178.69 kB
-dist/assets/index-BY8VCTJK.js                   230.43 kB
-dist/assets/ProjectDetail-DnI4usqU.js           321.83 kB
+dist/assets/index-DuJ2X3-S.js                   245.76 kB
+dist/assets/ProjectDetail-Cf1-Dt1t.js           323.89 kB
 dist/assets/vendor-charts-DM3jLR8h.js           418.01 kB
-dist/assets/vendor-firebase-DmhIKqbb.js         501.52 kB
+dist/assets/vendor-firebase-6aLi-koS.js         507.15 kB
 
-[32m✓ built in 1.35s[39m
+[33m[33m[INEFFECTIVE_DYNAMIC_IMPORT] [0msrc/services/auth.js is dynamically imported by src/services/tenantsManager.js but also statically imported by src/App.jsx, src/pages/AdminPortal.jsx, src/pages/CompanySettings.jsx, src/pages/Login.jsx, src/pages/SuperAdminDashboard.jsx, ..., dynamic import will not move module into another chunk.
+[39m
+[32m✓ built in 1.51s[39m
 
 ============================================
   Step 2/3: Logging in to Firebase...
@@ -60,7 +62,19 @@ Already logged in as [1msicolove7@gmail.com[22m
   Step 3/3: Deploying Functions FIRST (separately)...
 ============================================
 
-[1m[31mError:[39m[22m Cannot understand what targets to deploy/serve. No targets in firebase.json match '--only functions'. If you are using PowerShell make sure you place quotes around any comma-separated lists (ex: --only "functions,firestore").
+[1m[37m===[39m Deploying to 'tashteeb-67d13'...[22m
+
+[36m[1mi [22m[39m deploying [1mfunctions[22m
+[36m[1mi  functions:[22m[39m preparing codebase [1mdefault[22m for deployment
+[36m[1mi  functions:[22m[39m ensuring required API [1mcloudfunctions.googleapis.com[22m is enabled...
+[36m[1mi  functions:[22m[39m ensuring required API [1mcloudbuild.googleapis.com[22m is enabled...
+[36m[1mi  artifactregistry:[22m[39m ensuring required API [1martifactregistry.googleapis.com[22m is enabled...
+[33m[1m!  functions:[22m[39m missing required API [1mcloudbuild.googleapis.com[22m. Enabling now...
+[33m[1m!  artifactregistry:[22m[39m missing required API [1martifactregistry.googleapis.com[22m. Enabling now...
+
+[1m[31mError:[39m[22m Your project [1mtashteeb-67d13[22m must be on the Blaze (pay-as-you-go) plan to complete this command. Required API [1martifactregistry.googleapis.com[22m can't be enabled until the upgrade is complete. To upgrade, visit the following URL:
+
+https://console.firebase.google.com/project/tashteeb-67d13/usage/details
 
 ============================================
   [ERROR] Functions deploy FAILED. This is the
@@ -76,27 +90,10 @@ Already logged in as [1msicolove7@gmail.com[22m
 
 [1m[37m===[39m Deploying to 'tashteeb-67d13'...[22m
 
-[36m[1mi [22m[39m deploying [1mfirestore, hosting[22m
-[36m[1mi  firestore:[22m[39m ensuring required API [1mfirestore.googleapis.com[22m is enabled...
-[36m[1mi  firestore:[22m[39m ensuring required API [1mfirestore.googleapis.com[22m is enabled...
-[36m[1mi  cloud.firestore:[22m[39m checking [1mfirestore.rules[22m for compilation errors...
-[33m[1m! [22m[39m [W] 33:39 - The sub-expressions are not comparable, so this comparison will always return true.
-[33m[1m! [22m[39m [W] 46:41 - The sub-expressions are not comparable, so this comparison will always return true.
-[32m[1m+  cloud.firestore:[22m[39m rules file [1mfirestore.rules[22m compiled successfully
-[36m[1mi  firestore:[22m[39m uploading rules [1mfirestore.rules[22m...
-[36m[1mi  hosting[tashteeb-67d13]:[22m[39m beginning deploy...
-[36m[1mi  hosting[tashteeb-67d13]:[22m[39m found 49 files in [1mdist[22m
-[32m[1m+  hosting[tashteeb-67d13]:[22m[39m file upload complete
-[32m[1m+  firestore:[22m[39m released rules [1mfirestore.rules[22m to [1mcloud.firestore[22m
-[36m[1mi  hosting[tashteeb-67d13]:[22m[39m finalizing version...
-[32m[1m+  hosting[tashteeb-67d13]:[22m[39m version finalized
-[36m[1mi  hosting[tashteeb-67d13]:[22m[39m releasing new version...
-[32m[1m+  hosting[tashteeb-67d13]:[22m[39m release complete
+[36m[1mi [22m[39m deploying [1mstorage, firestore, hosting[22m
+[36m[1mi  storage:[22m[39m ensuring required API [1mfirebasestorage.googleapis.com[22m is enabled...
 
-[32m[1m+ [22m[39m [1m[4mDeploy complete![24m[22m
-
-[1mProject Console:[22m https://console.firebase.google.com/project/tashteeb-67d13/overview
-[1mHosting URL:[22m https://tashteeb-67d13.web.app
+[1m[31mError:[39m[22m Firebase Storage has not been set up on project '[1mtashteeb-67d13[22m'. Go to https://console.firebase.google.com/project/tashteeb-67d13/storage and click 'Get Started' to set up Firebase Storage.
 
 ============================================
   DONE. Live site: https://tashteeb-67d13.web.app

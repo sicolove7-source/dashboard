@@ -13,17 +13,77 @@ import {
 } from '../services/tenantsManager';
 import { syncTenantsListToCloud } from '../services/cloudSync';
 import { updateCurrentUserPassword } from '../services/auth';
+import { formatRegistrationDateTime } from '../utils/helpers';
 import SecurityDiagnosticsModal from '../components/SecurityDiagnosticsModal';
 
 function getTenantPhone(t) {
   if (!t) return '';
-  const candidate = t.phone || t.mobile || t.adminPhone || t.contactPhone || t.userPhone;
+  const candidate = t.phone || t.mobile || t.adminPhone || t.contactPhone || t.userPhone || t.companyPhone || t.tel || t.settings?.phone || t.settings?.companyPhone || t.settings?.mobile;
   if (candidate && String(candidate).trim()) return String(candidate).trim();
   if (Array.isArray(t.users) && t.users.length > 0) {
-    const u = t.users.find(u => u && (u.phone || u.mobile));
-    if (u && (u.phone || u.mobile)) return String(u.phone || u.mobile).trim();
+    const u = t.users.find(u => u && (u.phone || u.mobile || u.userPhone));
+    if (u && (u.phone || u.mobile || u.userPhone)) return String(u.phone || u.mobile || u.userPhone).trim();
+  }
+  if (t.id && typeof localStorage !== 'undefined') {
+    try {
+      const rawS = localStorage.getItem(`tenant_${t.id}_settings`);
+      if (rawS) {
+        const s = JSON.parse(rawS);
+        if (s.phone || s.companyPhone) return String(s.phone || s.companyPhone).trim();
+      }
+    } catch (e) {}
+    try {
+      const rawU = localStorage.getItem(`tenant_${t.id}_users`);
+      if (rawU) {
+        const uList = JSON.parse(rawU);
+        if (Array.isArray(uList)) {
+          const found = uList.find(x => x && (x.phone || x.mobile));
+          if (found && (found.phone || found.mobile)) return String(found.phone || found.mobile).trim();
+        }
+      }
+    } catch (e) {}
+    try {
+      const reg = JSON.parse(localStorage.getItem('platform-all-users-registry') || '{}');
+      if (t.adminEmail && reg[t.adminEmail.toLowerCase().trim()]?.phone) {
+        return String(reg[t.adminEmail.toLowerCase().trim()].phone).trim();
+      }
+    } catch (e) {}
   }
   return '';
+}
+
+function getTenantAdminName(t) {
+  if (!t) return 'مدير الشركة';
+  if (t.adminName && t.adminName !== 'المدير العام') return t.adminName;
+  if (Array.isArray(t.users) && t.users.length > 0) {
+    const owner = t.users.find(u => u && (u.role === 'owner' || u.role === 'admin') && u.name && u.name !== 'المدير العام');
+    if (owner && owner.name) return owner.name;
+    const firstUser = t.users.find(u => u && u.name && u.name !== 'المدير العام');
+    if (firstUser && firstUser.name) return firstUser.name;
+  }
+  if (t.id && typeof localStorage !== 'undefined') {
+    try {
+      const rawU = localStorage.getItem(`tenant_${t.id}_users`);
+      if (rawU) {
+        const uList = JSON.parse(rawU);
+        if (Array.isArray(uList)) {
+          const owner = uList.find(u => u && (u.role === 'owner' || u.role === 'admin') && u.name && u.name !== 'المدير العام');
+          if (owner?.name) return owner.name;
+          const anyU = uList.find(u => u && u.name && u.name !== 'المدير العام');
+          if (anyU?.name) return anyU.name;
+        }
+      }
+    } catch (e) {}
+    try {
+      const reg = JSON.parse(localStorage.getItem('platform-all-users-registry') || '{}');
+      if (t.adminEmail && reg[t.adminEmail.toLowerCase().trim()]?.name) {
+        const rName = reg[t.adminEmail.toLowerCase().trim()].name;
+        if (rName && rName !== 'المدير العام') return rName;
+      }
+    } catch (e) {}
+  }
+  if (t.name) return `مدير ${t.name}`;
+  return 'مدير الشركة';
 }
 
 function getTenantTimestamp(t) {
@@ -669,7 +729,7 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                         </td>
 
                         <td>
-                          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' }}>{t.adminName || 'المدير العام'}</div>
+                          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' }}>{getTenantAdminName(t)}</div>
                           <div style={{ fontSize: 11.5, color: 'var(--muted)', fontFamily: 'monospace' }}>{t.adminEmail}</div>
                           {phone ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
@@ -722,9 +782,19 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>
                             {t.expiryDate || 'مفتوح'}
                           </div>
-                          <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                            تاريخ التسجيل: {t.createdAt ? String(t.createdAt).slice(0, 10) : (t.startDate || '2026-08')}
-                          </div>
+                          {(() => {
+                            const reg = formatRegistrationDateTime(t);
+                            return (
+                              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                <span>📅 {reg.date !== '—' ? reg.date : (t.startDate || '2026-08')}</span>
+                                {reg.time !== '—' && (
+                                  <span style={{ color: '#1877F2', fontWeight: 600, direction: 'ltr', textAlign: 'right', fontSize: 10.5 }}>
+                                    ⏰ {reg.time}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         <td>
@@ -939,7 +1009,7 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, background: 'var(--bg-color)', padding: '10px 12px', borderRadius: 8, fontSize: 12 }}>
                       <div>
                         <span style={{ color: 'var(--muted)', display: 'block', fontSize: 11 }}>المدير المسؤول:</span>
-                        <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{t.adminName || 'المدير العام'}</span>
+                        <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{getTenantAdminName(t)}</span>
                       </div>
                       <div>
                         <span style={{ color: 'var(--muted)', display: 'block', fontSize: 11 }}>الباقة والعملة:</span>
@@ -973,8 +1043,20 @@ export default function SuperAdminDashboard({ onSwitchToCompany, currentUser }) 
                         )}
                       </div>
                       <div>
-                        <span style={{ color: 'var(--muted)', display: 'block', fontSize: 11 }}>تاريخ التسجيل:</span>
-                        <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{t.createdAt ? String(t.createdAt).slice(0, 10) : (t.startDate || '—')}</span>
+                        <span style={{ color: 'var(--muted)', display: 'block', fontSize: 11 }}>تاريخ ووقت التسجيل:</span>
+                        {(() => {
+                          const reg = formatRegistrationDateTime(t);
+                          return (
+                            <span style={{ fontWeight: 600, color: 'var(--ink)', display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span>📅 {reg.arabicDate !== '—' ? reg.arabicDate : (t.startDate || '—')}</span>
+                              {reg.time !== '—' && (
+                                <span style={{ color: '#1877F2', direction: 'ltr', fontSize: 11.5 }}>
+                                  ⏰ {reg.time}
+                                </span>
+                              )}
+                            </span>
+                          );
+                        })()}
                       </div>
                       <div>
                         <span style={{ color: 'var(--muted)', display: 'block', fontSize: 11 }}>صلاحية الاشتراك:</span>

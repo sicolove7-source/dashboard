@@ -22,7 +22,10 @@ export function printElement(elementId, title = 'طباعة مستند رسمي'
   const originalTitle = document.title;
   if (title) document.title = title;
 
+  let cleanedUp = false;
   const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
     document.body.classList.remove('is-printing-document');
     if (element) element.classList.remove('printable-document-target');
     document.title = originalTitle;
@@ -34,7 +37,7 @@ export function printElement(elementId, title = 'طباعة مستند رسمي'
   // Trigger print
   setTimeout(() => {
     window.print();
-    // Fallback cleanup in case afterprint does not fire
-    setTimeout(cleanup, 2500);
-  }, 100);
+    // Fallback cleanup with a safe delay (60s) in case afterprint does not fire
+    setTimeout(cleanup, 60000);
+  }, 150);
 }

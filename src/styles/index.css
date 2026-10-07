@@ -108,6 +108,11 @@ html, body, #root {
   width: 100%;
 }
 
+html {
+  scrollbar-gutter: stable;
+  overflow-y: scroll;
+}
+
 body {
   min-height: 100%;
   width: 100%;
@@ -119,11 +124,9 @@ body {
   color: var(--ink);
   background-color: var(--bg-color);
   background-image: var(--bg-gradient);
-  background-attachment: fixed;
   min-height: 100%;
   width: 100%;
   display: flex;
-  transition: background 0.4s ease, color 0.4s ease;
 }
 
 .font-display { font-family: 'IBM Plex Sans Arabic', 'Cairo', sans-serif; font-weight: 700; }

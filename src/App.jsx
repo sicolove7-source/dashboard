@@ -299,16 +299,17 @@ const THEME_KEY = "finishing-theme-v2";
 function getTabFromPath() {
   try {
     const path = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
-    if (path === 'contractors' || path === 'subcontractors') return 'subcontractors';
+    if (path === 'contractors' || path === 'subcontractors' || path === 'contracts') return 'subcontractors';
     if (path === 'projects') return 'projects';
-    if (path === 'crm' || path === 'pipeline') return 'crm';
-    if (path === 'finance') return 'finance';
-    if (path === 'team') return 'team';
-    if (path === 'suppliers') return 'suppliers';
-    if (path === 'quotations') return 'quotations';
+    if (path === 'crm' || path === 'pipeline' || path === 'leads') return 'crm';
+    if (path === 'finance' || path === 'accounting') return 'finance';
+    if (path === 'team' || path === 'staff' || path === 'employees' || path === 'users') return 'team';
+    if (path === 'suppliers' || path === 'vendors') return 'suppliers';
+    if (path === 'quotations' || path === 'boq' || path === 'quotes' || path === 'estimates') return 'quotations';
     if (path === 'automations') return 'automations';
-    if (path === 'settings') return 'settings';
+    if (path === 'settings' || path === 'company-settings') return 'settings';
     if (path === 'tenants' || path === 'superadmin') return 'tenants';
+    if (path === 'overview' || path === 'dashboard') return 'overview';
   } catch (e) {}
   return null;
 }
@@ -434,7 +435,16 @@ export default function App() {
   const [tab, setTab] = useState(() => {
     const p = getTabFromPath();
     if (p === 'automations') return 'settings';
-    return p || "overview";
+    if (p) return p;
+    try {
+      const u = JSON.parse(localStorage.getItem('active_session_user') || '{}');
+      if (u.isSuperAdmin || u.role === 'super_admin' || u.email === 'sicolove7@gmail.com') {
+        const isPreviewing = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('admin_preview_mode') === 'true';
+        return isPreviewing ? 'overview' : 'tenants';
+      }
+      if (u.role && DEFAULT_TAB[u.role]) return DEFAULT_TAB[u.role];
+    } catch (e) {}
+    return "overview";
   });
   const [settingsSubTab, setSettingsSubTab] = useState(() => {
     return getTabFromPath() === 'automations' ? 'automations' : 'branding';
@@ -1319,11 +1329,12 @@ export default function App() {
     const unsub = subscribeToCloudProjects(activeCompanyId, (cloudProjects) => {
       if (Array.isArray(cloudProjects)) {
         setProjects((prev) => {
-          if (hasCollectionChanged(prev, cloudProjects)) {
+          const merged = mergeProjectsPreservingLocal(prev || [], cloudProjects, activeCompanyId);
+          if (hasCollectionChanged(prev, merged)) {
             try {
-              localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(cloudProjects));
+              localStorage.setItem(`tenant_${activeCompanyId}_projects`, JSON.stringify(merged));
             } catch (e) {}
-            return cloudProjects;
+            return merged;
           }
           return prev;
         });
@@ -1558,12 +1569,22 @@ export default function App() {
     } else {
       const id = "p" + Date.now();
       const token = generatePortalToken();
+      const now = new Date().toISOString();
       const newProject = {
         ...data,
         id,
         companyId: effectiveCompId,
+        budget: Number(data.budget) || 0,
+        contractValue: Number(data.budget) || 0,
+        clientPhone: data.clientPhone || '',
+        createdBy: currentUser?.id || null,
+        createdByEmail: currentUser?.email || null,
         clientPortalToken: data.clientPortalToken || token,
         clientPortalEnabled: data.clientPortalEnabled !== false,
+        _pendingSync: true,
+        isOfflineCreated: true,
+        createdAt: now,
+        updatedAt: now,
         submittals: [],
         tasks: [],
         dailyLogs: [],
@@ -1584,7 +1605,20 @@ export default function App() {
           } catch (e) {
             flashSave(false);
           }
-          syncSingleProjectToCloud(effectiveCompId, id, newProject).catch(err => {
+          try {
+            const delKey = `tenant_${effectiveCompId}_deleted_projects`;
+            const stored = localStorage.getItem(delKey);
+            if (stored) {
+              const filtered = JSON.parse(stored).filter(did => did !== id);
+              localStorage.setItem(delKey, JSON.stringify(filtered));
+            }
+          } catch (e) {}
+
+          syncSingleProjectToCloud(effectiveCompId, id, newProject).then((success) => {
+            if (success) {
+              setProjects(curr => (curr || []).map(p => p.id === id ? { ...p, _pendingSync: false, isOfflineCreated: false } : p));
+            }
+          }).catch(err => {
             console.warn("Cloud sync single project error:", err);
             flashSave(false);
           });
@@ -1598,6 +1632,15 @@ export default function App() {
 
   function deleteProject(id) {
     const effectiveCompId = activeCompanyId || currentUser?.companyId || null;
+    if (effectiveCompId) {
+      try {
+        const delKey = `tenant_${effectiveCompId}_deleted_projects`;
+        const stored = localStorage.getItem(delKey);
+        const set = new Set(stored ? JSON.parse(stored) : []);
+        set.add(id);
+        localStorage.setItem(delKey, JSON.stringify(Array.from(set)));
+      } catch (e) {}
+    }
     setProjects(prev => {
       const updated = (prev || []).filter((p) => p.id !== id);
       if (effectiveCompId) {
@@ -1624,7 +1667,7 @@ export default function App() {
       const list = prev || [];
       const updated = list.map((p) => {
         if (p.id === id) {
-          const merged = { ...p, ...patch, companyId: p.companyId || effectiveCompId, updatedAt: patch?.updatedAt || now };
+          const merged = { ...p, ...patch, companyId: p.companyId || effectiveCompId, updatedAt: patch?.updatedAt || now, _pendingSync: true };
           if (Array.isArray(merged.expenses)) {
             merged.spent = merged.expenses.reduce((s, e) => s + (Number(e?.amount) || 0), 0);
           }
@@ -1650,7 +1693,11 @@ export default function App() {
           flashSave(false);
         }
         const fullProject = updated.find(p => p.id === id);
-        syncSingleProjectToCloud(effectiveCompId, id, fullProject || { ...patch, updatedAt: now }).catch(err => {
+        syncSingleProjectToCloud(effectiveCompId, id, fullProject || { ...patch, updatedAt: now }).then((success) => {
+          if (success) {
+            setProjects(curr => (curr || []).map(p => p.id === id ? { ...p, _pendingSync: false } : p));
+          }
+        }).catch(err => {
           console.warn("Cloud sync update project error:", err);
           flashSave(false);
         });
@@ -1673,6 +1720,8 @@ export default function App() {
           setAuthLoading(false);
           return;
         }
+
+        const cleanUserEmail = (firebaseUser.email || '').toLowerCase().trim();
 
         try {
           // قراءة الـ Custom Claims المشفرة من Google إن وُجدت
@@ -1702,7 +1751,6 @@ export default function App() {
 
           if (!tenantRes?.success || !tenantRes.user) {
             // فحص هل المستخدم في مرحلة إكمال تسجيل حساب شركة جديد لتفادي طرده قبل حفظ الشركة
-            const cleanUserEmail = (firebaseUser.email || '').toLowerCase().trim();
             const isRegistering = typeof sessionStorage !== 'undefined' && 
               sessionStorage.getItem('is_registering_user') === cleanUserEmail;
             
@@ -1818,14 +1866,18 @@ export default function App() {
 
           const requestedTab = getTabFromPath();
           if (role === 'engineer') {
-            setTab('projects');
+            setTab(prev => (requestedTab && (NAV_PERMISSIONS.engineer || []).includes(requestedTab) ? requestedTab : (prev || 'projects')));
           } else if (isCompanySubdomain()) {
             // 🔒 داخل سب-دومين شركة، التبويب دائماً للشركة الحالية (overview أو الرابط المطلوب، وليس tenants أبداً)
             const allowedTabs = NAV_PERMISSIONS[role] || ['overview'];
-            setTab(requestedTab && allowedTabs.includes(requestedTab) && requestedTab !== 'tenants' ? requestedTab : 'overview');
+            setTab(prev => (requestedTab && allowedTabs.includes(requestedTab) && requestedTab !== 'tenants' ? requestedTab : (allowedTabs.includes(prev) && prev !== 'tenants' ? prev : 'overview')));
           } else if (role === 'super_admin' || isSuperAdmin) {
             const isPreviewing = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('admin_preview_mode') === 'true';
-            setTab(isPreviewing ? 'overview' : 'tenants');
+            setTab(prev => {
+              if (requestedTab) return requestedTab;
+              if (prev) return prev;
+              return isPreviewing ? 'overview' : 'tenants';
+            });
           } else if (requestedTab && (NAV_PERMISSIONS[role] || []).includes(requestedTab) && requestedTab !== 'tenants') {
             setTab(requestedTab);
           } else {
@@ -1876,6 +1928,18 @@ export default function App() {
       window.history.pushState({ tab }, '', targetPath + search);
     }
   }, [tab, isAuthenticated]);
+
+  // استماع لحدث الرجوع والتقدم في المتصفح (Browser Back/Forward)
+  useEffect(() => {
+    const handlePopState = () => {
+      const p = getTabFromPath();
+      if (p) {
+        setTab(p);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Security Guard: Prevent non-superadmin accounts from ever viewing the tenants hub
   useEffect(() => {
@@ -2071,6 +2135,7 @@ export default function App() {
       const cleanEngName = engName.replace(/^م\.\s*/, '').trim();
       if (!cleanEngName) return projects;
       return projects.filter(p => {
+        if (p.createdBy === currentUser?.id || p.createdByEmail === currentUser?.email) return true;
         const pEng = (p.engineer || '').trim();
         const cleanPEng = pEng.replace(/^م\.\s*/, '').trim();
         return pEng === engName || cleanPEng === cleanEngName || (cleanPEng && cleanEngName && (cleanPEng.includes(cleanEngName) || cleanEngName.includes(cleanPEng)));
@@ -2653,7 +2718,7 @@ export default function App() {
         onLogout={handleLogout}
       />
 
-      <div className="main" style={{ paddingTop: (currentUser?.role === 'super_admin' && tab !== 'tenants') ? 50 : undefined }}>
+      <div className="main">
         <div className="titleblock">
           <h1>
             {NAV.find((n) => n.key === tab)?.label}
@@ -2830,7 +2895,14 @@ export default function App() {
               )}
 
               {tab === "projects" && view === "list" && (
-                <ProjectsTab projects={displayedProjects} onOpenDetail={openDetail} onOpenEdit={openEdit} onDelete={deleteProject} userRole={userRole} />
+                <ProjectsTab 
+                  projects={displayedProjects} 
+                  onOpenDetail={openDetail} 
+                  onOpenEdit={openEdit} 
+                  onDelete={deleteProject} 
+                  onOpenNew={openNew}
+                  userRole={userRole} 
+                />
               )}
               {tab === "projects" && view === "detail" && (
                 activeProject ? (

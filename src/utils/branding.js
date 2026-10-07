@@ -99,6 +99,8 @@ export const DEFAULT_COMPANY_SETTINGS = {
   subdomain: '',
   customDomain: '',
   customDomainVerified: false,
+  createdAt: null,
+  registeredAt: null,
 };
 
 export function loadCompanySettings(companyId) {
@@ -117,7 +119,12 @@ export function loadCompanySettings(companyId) {
       if (tenantRaw) {
         const parsed = JSON.parse(tenantRaw);
         if (parsed.currency) setGlobalCurrency(parsed.currency);
-        return { ...DEFAULT_COMPANY_SETTINGS, ...parsed };
+        return {
+          ...DEFAULT_COMPANY_SETTINGS,
+          ...parsed,
+          createdAt: parsed.createdAt || parsed.startDate || null,
+          registeredAt: parsed.registeredAt || parsed.createdAt || parsed.startDate || null,
+        };
       }
     } catch (e) {}
 
@@ -139,6 +146,8 @@ export function loadCompanySettings(companyId) {
               phone: match.phone || '',
               primaryColor: match.primaryColor || DEFAULT_COMPANY_SETTINGS.primaryColor,
               accentColor: match.accentColor || DEFAULT_COMPANY_SETTINGS.accentColor,
+              createdAt: match.createdAt || match.startDate || null,
+              registeredAt: match.registeredAt || match.createdAt || match.startDate || null,
               updatedAt: match.updatedAt,
             };
           }
@@ -213,6 +222,8 @@ export function saveCompanySettings(settings, companyId) {
             phone: stampedSettings.phone !== undefined ? stampedSettings.phone : t.phone,
             primaryColor: stampedSettings.primaryColor || t.primaryColor,
             accentColor: stampedSettings.accentColor || t.accentColor,
+            createdAt: stampedSettings.createdAt || t.createdAt || t.startDate || undefined,
+            registeredAt: stampedSettings.registeredAt || stampedSettings.createdAt || t.registeredAt || t.createdAt || undefined,
             updatedAt: stampedSettings.updatedAt,
           };
         }
@@ -229,6 +240,8 @@ export function saveCompanySettings(settings, companyId) {
           phone: stampedSettings.phone || '',
           primaryColor: stampedSettings.primaryColor || '#1877F2',
           accentColor: stampedSettings.accentColor || '#166FE5',
+          createdAt: stampedSettings.createdAt || new Date().toISOString(),
+          registeredAt: stampedSettings.registeredAt || stampedSettings.createdAt || new Date().toISOString(),
           updatedAt: stampedSettings.updatedAt,
         });
       }

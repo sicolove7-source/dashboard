@@ -17,7 +17,7 @@ import {
   updateEmail,
   getAuth,
   setPersistence,
-  browserSessionPersistence,
+  browserLocalPersistence,
 } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { cleanPhoneNumber } from './cloudSync';
@@ -70,7 +70,41 @@ export async function callCreateCompanyUser({ email, name, role, companyId, pass
     return { success: false, error: 'غير مصرح: يجب تسجيل الدخول كمسؤول للقيام بهذا الإجراء.' };
   }
 
-  // 1. استدعاء Cloud Function الرسمية والآمنة (Admin SDK) حصراً (تم إيقاف Secondary App fallback أمنياً)
+  // 1. محاولة استدعاء Vercel Serverless Function إذا تم توفير كلمة مرور
+  if (password && password.length >= 6) {
+    try {
+      const idToken = await currentUser.getIdToken();
+      const apiRes = await fetch('/api/reset-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({
+          email: cleanEmail,
+          name,
+          newPassword: password,
+          companyId
+        })
+      });
+      if (apiRes.ok) {
+        const data = await apiRes.json();
+        if (data?.success) {
+          console.log('[callCreateCompanyUser] ✅ Vercel Serverless API succeeded:', cleanEmail);
+          return {
+            success: true,
+            uid: data.uid,
+            email: cleanEmail,
+            message: `✅ تم تفعيل حساب ${name || cleanEmail} بنجاح.`
+          };
+        }
+      }
+    } catch (apiErr) {
+      console.warn('[callCreateCompanyUser] Vercel API notice:', apiErr.message);
+    }
+  }
+
+  // 2. استدعاء Cloud Function الرسمية والآمنة (Admin SDK)
   try {
     const fn = httpsCallable(functions, 'createCompanyUser');
     const result = await fn({ email: cleanEmail, name, role, companyId, password });
@@ -108,8 +142,8 @@ export async function callCreateCompanyUser({ email, name, role, companyId, pass
  */
 export async function loginWithEmail(email, password, retries = 3) {
   const cleanEmail = (email || '').trim().toLowerCase();
-  // ✅ ضمان أن كل تاب له جلسة مستقلة (sessionStorage) قبل تسجيل الدخول
-  try { await setPersistence(auth, browserSessionPersistence); } catch (e) {}
+  // ✅ الحفاظ على الجلسة في localStorage حتى لا تضيع عند الـ Refresh
+  try { await setPersistence(auth, browserLocalPersistence); } catch (e) {}
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
@@ -233,8 +267,8 @@ export async function sendPasswordReset(email) {
  */
 export async function registerWithEmail(email, password, retries = 3) {
   const cleanEmail = (email || '').trim().toLowerCase();
-  // ✅ ضمان جلسة مستقلة لكل تاب (sessionStorage) عند التسجيل الجديد أيضاً
-  try { await setPersistence(auth, browserSessionPersistence); } catch (e) {}
+  // ✅ الحفاظ على الجلسة في localStorage حتى لا تضيع عند الـ Refresh
+  try { await setPersistence(auth, browserLocalPersistence); } catch (e) {}
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
@@ -369,7 +403,33 @@ export async function syncAndResetPhonePassword(phone, newPassword, knownEmail =
 
   const phoneAuthEmail = `phone_${cleanPhone}@tashteeb.app`;
 
-  // 1. استدعاء Cloud Function الآمنة (Admin SDK) — يعالج الإنشاء والتحديث معاً
+  // 1. استدعاء Vercel Serverless API (Admin SDK)
+  try {
+    const idToken = await currentUser.getIdToken();
+    const apiRes = await fetch('/api/reset-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
+      body: JSON.stringify({
+        phone: cleanPhone,
+        email: phoneAuthEmail,
+        newPassword
+      })
+    });
+    if (apiRes.ok) {
+      const data = await apiRes.json();
+      if (data?.success) {
+        console.log('[syncAndResetPhonePassword] ✅ Vercel Serverless API succeeded:', phoneAuthEmail);
+        return { success: true, phoneAuthEmail, message: data.message };
+      }
+    }
+  } catch (apiErr) {
+    console.warn('[syncAndResetPhonePassword] Vercel API attempt notice:', apiErr.message);
+  }
+
+  // 2. استدعاء Cloud Function الآمنة (Admin SDK) — يعالج الإنشاء والتحديث معاً
   try {
     const fn = httpsCallable(functions, 'resetUserPassword');
     const result = await fn({ phone: cleanPhone, email: phoneAuthEmail, newPassword });
@@ -417,27 +477,41 @@ export async function syncAndResetPhonePassword(phone, newPassword, knownEmail =
       return { success: true, phoneAuthEmail, isNew: true };
     } catch (createErr) {
       if (createErr.code === 'auth/email-already-in-use') {
-        // المستخدم موجود — نحتاج كلمة مروره الحالية لتسجيل الدخول ثم تحديث الكلمة
-        // بما أننا لا نملكها، نعتمد على الـ Cloud Function حصراً لهذه الحالة
-        console.warn('[syncAndResetPhonePassword] User exists — Cloud Function is required to update password server-side. Returning partial success.');
-        // نُعيد نجاحاً جزئياً — الكلمة ستُحدَّث عند نجاح الـ Cloud Function في المرة القادمة
+        // إذا كان هناك بريد حقيقي مسجل للموظف، نرسل له رابط إعادة تعيين
+        if (knownEmail && !knownEmail.endsWith('@tashteeb.app') && knownEmail.includes('@')) {
+          try {
+            await sendPasswordResetEmail(auth, knownEmail);
+            return {
+              success: true,
+              emailSent: true,
+              phoneAuthEmail,
+              message: `الحساب مسجل مسبقاً. تم إرسال رابط تعيين كلمة المرور إلى البريد الإلكتروني (${knownEmail}) بنجاح.`
+            };
+          } catch (emailErr) {
+            console.warn('[syncAndResetPhonePassword] sendPasswordResetEmail error:', emailErr);
+          }
+        }
+        console.warn('[syncAndResetPhonePassword] User exists — Cloud Function is required to update password server-side.');
         return {
-          success: true,
+          success: false,
           phoneAuthEmail,
-          warning: 'تم حفظ الطلب. قد يحتاج تحديث كلمة المرور بعض الوقت حتى تتزامن الخوادم.'
+          error: 'المستخدم مسجل مسبقاً في Firebase Auth. تغيير كلمة مرور حساب موجود يتطلب نشر الدالة السحابية (ترقية المشروع لخطة Blaze) لتحديثها بأمان من طرف الخادم.'
         };
       }
       throw createErr;
     }
   } catch (secErr) {
     console.warn('[syncAndResetPhonePassword] Secondary auth fallback error:', secErr);
+    return {
+      success: false,
+      phoneAuthEmail,
+      error: secErr.message || 'حدث خطأ أثناء محاولة تعيين كلمة المرور.'
+    };
   } finally {
     if (tempApp) {
       try { await deleteApp(tempApp); } catch (e) {}
     }
   }
-
-  return { success: true, phoneAuthEmail };
 }
 
 /**

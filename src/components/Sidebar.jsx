@@ -403,7 +403,7 @@ export default function Sidebar({
             <div style={{ fontSize: 12, fontWeight: 700, color: isDarkMode ? roleInfo.color : "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {roleInfo.label}
             </div>
-            <div style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <div style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minHeight: 16, lineHeight: '16px' }}>
               {currentUser?.name || ""}
             </div>
           </div>

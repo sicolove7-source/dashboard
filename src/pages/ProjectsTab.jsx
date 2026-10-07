@@ -1,7 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Pencil, Trash2, Calendar, User, AlertTriangle, CheckCircle, Clock, MapPin, Home } from 'lucide-react';
+import { Search, Pencil, Trash2, Calendar, User, AlertTriangle, CheckCircle, Clock, MapPin, Home, Plus, Phone, DollarSign } from 'lucide-react';
 import StatusBadge from '../components/StatusBadge';
 import StampRing from '../components/StampRing';
+import { can } from '../utils/permissions';
+import { getGlobalCurrency } from '../utils/helpers';
 
 function daysLeft(dueDate) {
   if (!dueDate) return null;
@@ -44,21 +46,24 @@ function ProgressBar({ value, status }) {
   );
 }
 
-export default function ProjectsTab({ projects, onOpenDetail, onOpenEdit, onDelete, userRole }) {
+export default function ProjectsTab({ projects = [], onOpenDetail, onOpenEdit, onDelete, onOpenNew, userRole }) {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('due'); // 'due' | 'progress' | 'name'
   const [confirmId, setConfirmId] = useState(null);
 
+  const canManage = userRole === 'owner' || userRole === 'admin' || userRole === 'super_admin' || userRole === 'manager' || can(userRole, 'projects_edit');
+  const canCreate = userRole === 'owner' || userRole === 'admin' || userRole === 'super_admin' || userRole === 'manager' || can(userRole, 'projects_create');
+
   const filtered = useMemo(() => {
-    let list = projects.filter(p => {
-      const matchQ = (p.name + p.client + p.engineer + (p.area || '')).includes(query);
+    let list = (projects || []).filter(p => {
+      const matchQ = ((p.name || '') + (p.client || '') + (p.engineer || '') + (p.area || '')).includes(query);
       const matchS = statusFilter === 'all' || p.status === statusFilter;
       return matchQ && matchS;
     });
     if (sortBy === 'due') list = [...list].sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
-    if (sortBy === 'progress') list = [...list].sort((a, b) => b.progress - a.progress);
-    if (sortBy === 'name') list = [...list].sort((a, b) => a.name.localeCompare(b.name));
+    if (sortBy === 'progress') list = [...list].sort((a, b) => (b.progress || 0) - (a.progress || 0));
+    if (sortBy === 'name') list = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     return list;
   }, [projects, query, statusFilter, sortBy]);
 
@@ -70,10 +75,12 @@ export default function ProjectsTab({ projects, onOpenDetail, onOpenEdit, onDele
     dueThisWeek: projects.filter(p => { const d = daysLeft(p.dueDate); return d !== null && d >= 0 && d <= 7; }).length,
   }), [projects]);
 
+  const currency = getGlobalCurrency();
+
   return (
     <div className="tab-fade" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      {/* ── Summary Strip (Clean & Neutral) ───────────────────────── */}
+      {/* ── Summary Strip ───────────────────────── */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         {[
           { label: 'إجمالي المواقع', value: stats.total, icon: <Home size={15} /> },
@@ -94,7 +101,7 @@ export default function ProjectsTab({ projects, onOpenDetail, onOpenEdit, onDele
       {/* ── Confirm Delete ───────────────────────────────────────── */}
       {confirmId && (
         <div className="confirm-bar">
-          <span>هل أنت متأكد من حذف مشروع "{projects.find(p => p.id === confirmId)?.name}"؟ لا يمكن التراجع.</span>
+          <span>هل أنت متأكد من حذف موقع "{projects.find(p => p.id === confirmId)?.name}"؟ لا يمكن التراجع.</span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-danger" onClick={() => { onDelete(confirmId); setConfirmId(null); }}>تأكيد الحذف</button>
             <button className="btn btn-ghost" onClick={() => setConfirmId(null)}>إلغاء</button>
@@ -103,25 +110,50 @@ export default function ProjectsTab({ projects, onOpenDetail, onOpenEdit, onDele
       )}
 
       {/* ── Toolbar ──────────────────────────────────────────────── */}
-      <div className="toolbar" style={{ marginBottom: 0 }}>
-        <div className="search-box">
-          <Search size={16} color="var(--muted)" />
-          <input placeholder="ابحث بالاسم، العميل، المهندس، أو المنطقة…" value={query} onChange={e => setQuery(e.target.value)} />
+      <div className="toolbar" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 260, flexWrap: 'wrap' }}>
+          <div className="search-box" style={{ flex: 1, minWidth: 200 }}>
+            <Search size={16} color="var(--muted)" />
+            <input placeholder="ابحث بالاسم، العميل، المهندس، أو المنطقة…" value={query} onChange={e => setQuery(e.target.value)} />
+          </div>
+          <select className="filter-select" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+            <option value="all">كل الحالات</option>
+            <option value="on_track">على المسار</option>
+            <option value="at_risk">يحتاج متابعة</option>
+            <option value="delayed">متأخر</option>
+          </select>
+          <select className="filter-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+            <option value="due">ترتيب: الأقرب تسليماً</option>
+            <option value="progress">ترتيب: نسبة الإنجاز</option>
+            <option value="name">ترتيب: الاسم</option>
+          </select>
         </div>
-        <select className="filter-select" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-          <option value="all">كل الحالات</option>
-          <option value="on_track">على المسار</option>
-          <option value="at_risk">يحتاج متابعة</option>
-          <option value="delayed">متأخر</option>
-        </select>
-        <select className="filter-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
-          <option value="due">ترتيب: الأقرب تسليماً</option>
-          <option value="progress">ترتيب: نسبة الإنجاز</option>
-          <option value="name">ترتيب: الاسم</option>
-        </select>
+
+        {/* زر إضافة موقع جديد المباشر في التولبار */}
+        {onOpenNew && canCreate && (
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={onOpenNew}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '9px 18px',
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 800,
+              whiteSpace: 'nowrap',
+              boxShadow: '0 2px 8px rgba(24, 119, 242, 0.25)',
+              cursor: 'pointer'
+            }}
+          >
+            <Plus size={16} /> إضافة موقع جديد
+          </button>
+        )}
       </div>
 
-      {/* ── Cards Grid (Calm & Clean) ────────────────────────────── */}
+      {/* ── Cards Grid ────────────────────────────── */}
       <div className="grid project-grid">
         {filtered.map(p => {
           const roomsCount = (p.rooms || []).length;
@@ -130,13 +162,14 @@ export default function ProjectsTab({ projects, onOpenDetail, onOpenEdit, onDele
             r.categories?.forEach(c => c.steps?.forEach(s => { t++; if (s.status === 'done') done++; }));
             return t > 0 && done === t;
           }).length;
+          const budgetVal = Number(p.budget || p.contractValue || 0);
 
           return (
-            <div key={p.id} className="project-card" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}
+            <div key={p.id} className="project-card" style={{ display: 'flex', flexDirection: 'column', gap: 0, cursor: 'pointer' }}
               onClick={() => onOpenDetail(p.id)}>
 
               {/* Actions */}
-              {userRole === 'manager' && (
+              {canManage && (
                 <div className="card-actions" onClick={e => e.stopPropagation()}>
                   <span className="icon-btn" onClick={() => onOpenEdit(p)} title="تعديل"><Pencil size={14} /></span>
                   <span className="icon-btn" onClick={() => setConfirmId(p.id)} title="حذف" style={{ color: 'var(--danger)' }}><Trash2 size={14} /></span>
@@ -147,8 +180,15 @@ export default function ProjectsTab({ projects, onOpenDetail, onOpenEdit, onDele
               <div className="top" style={{ marginBottom: 6 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="name" style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</div>
-                  <div className="client" style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <User size={12} /> {p.client}
+                  <div className="client" style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <User size={12} /> {p.client}
+                    </span>
+                    {p.clientPhone && (
+                      <span style={{ fontSize: 11, color: '#16A34A', display: 'inline-flex', alignItems: 'center', gap: 2, background: 'rgba(22,163,74,0.08)', padding: '1px 6px', borderRadius: 4 }}>
+                        <Phone size={10} /> {p.clientPhone}
+                      </span>
+                    )}
                   </div>
                   {p.area && (
                     <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -158,8 +198,16 @@ export default function ProjectsTab({ projects, onOpenDetail, onOpenEdit, onDele
                 </div>
               </div>
 
-              {/* Clean Progress Bar */}
-              <ProgressBar value={p.progress} status={p.status} />
+              {/* Budget Badge if exists */}
+              {budgetVal > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '6px 0 2px', fontSize: 11.5, color: '#0F172A', fontWeight: 700 }}>
+                  <span style={{ color: 'var(--muted)', fontWeight: 500 }}>الميزانية:</span>
+                  <span style={{ color: '#10B981' }}>{budgetVal.toLocaleString('ar-EG')} {currency}</span>
+                </div>
+              )}
+
+              {/* Progress Bar */}
+              <ProgressBar value={p.progress || 0} status={p.status || 'on_track'} />
 
               {/* Status Badge + Days chip */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
@@ -175,7 +223,7 @@ export default function ProjectsTab({ projects, onOpenDetail, onOpenEdit, onDele
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 12, justifyContent: 'flex-end' }}>
                   <AlertTriangle size={12} />
-                  <span>{(p.snags || []).filter(s => s.status !== 'done').length} ملاحظة مفتوحة</span>
+                  <span>{(p.snags || []).filter(s => s.status !== 'done').length} ملاحظة</span>
                 </div>
                 {roomsCount > 0 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 12, gridColumn: '1/-1' }}>
@@ -247,8 +295,37 @@ export default function ProjectsTab({ projects, onOpenDetail, onOpenEdit, onDele
       </div>
 
       {filtered.length === 0 && (
-        <div className="panel" style={{ textAlign: 'center', color: 'var(--muted)', padding: 40 }}>
-          لا توجد مشاريع مطابقة لبحثك.
+        <div className="panel" style={{ textAlign: 'center', color: 'var(--muted)', padding: '48px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(24, 119, 242, 0.1)', color: '#1877F2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Home size={28} />
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>
+            {projects.length === 0 ? 'لم يتم تسجيل أي مواقع عمل بعد' : 'لا توجد مشاريع مطابقة لمعايير البحث'}
+          </div>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)', maxWidth: 400, lineHeight: 1.6 }}>
+            {projects.length === 0 
+              ? 'ابدأ بتسجيل أول موقع أو فيلا لإدارة مراحل التشطيب والمقايسات وجداول الدفعات واليوميات الميدانية.' 
+              : 'جرب كتابة اسم مختلف أو تغيير فلاتر الحالة لعرض المواقع المسجلة.'}
+          </p>
+          {onOpenNew && canCreate && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={onOpenNew}
+              style={{
+                marginTop: 6,
+                padding: '10px 24px',
+                fontSize: 14,
+                fontWeight: 800,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                boxShadow: '0 4px 12px rgba(24, 119, 242, 0.3)'
+              }}
+            >
+              <Plus size={18} /> تسجيل موقع جديد الآن
+            </button>
+          )}
         </div>
       )}
     </div>
