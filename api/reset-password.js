@@ -1,6 +1,20 @@
 let adminApp = null;
 let adminAuth = null;
 
+const FALLBACK_SERVICE_ACCOUNT = {
+  type: "service_account",
+  project_id: "tashteeb-67d13",
+  private_key_id: "c255ecbefdcde59012a888b97ba3649fc3fa032c",
+  private_key: "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDMU/2fJKFjP+l2\nucaAql17t1vYnNGJloBWvuqP9cMlJiP5igrA0ThBgHJnCgQB4/57lhe+alJ5OfV2\n75T2mauRzPqfrYYQvHlqD9vvlQDUCXoSjRpZ7blyt6tJtgnWmD57Oo9CtKsB7PYl\npqsofSa5H6dJbAWNFI7j9cp1oWLBaH4TMqc07Y78axZ2x/vu8EIYVbjQK4/0qeeC\nGRtxB/naBu7+QpdV7SCXLeBEHAZTT/aXLmYZLCvIYA7GDOGeMgqpAPQ3oifCmVph\n2Mu+lqMQcTKjJfA9PKLNYVg8x6xQN2VoJWM05AHm1WQ1kzgQPhkxYMMXG+3nhIE5\nRij3VCl1AgMBAAECggEAIuw3FLh0ygseKs/pRMv5gt/tt4nkCWVbBZiHbDgH1MVe\nUDP/DwIjYJSk2QYd9bnDYNmgMMgo1PXqRZwAxJ4ytA6KBnkoyRsBkHZp85quw87j\n2aBa0OR/9gK86LIPn+kxAqxZWIAbG07mKjzAk8DCOdFWbQbksv6AxqcXpb/B6obU\nHM1wXRBYpI/cl02qi+YlKGPtvvPyTyn7+1f2UmH1pPU4v4fCiqEP7A6Zr0tRpQDe\nwZE7Nh8O7kTH0IJE+GLXP5x7OVOKHtZeQi44doz7lnwU2lDudilNPZdQkS7XOrCM\npi/8uM6KoqUDSXoILbOIBY5uYVAxduJYYGTKm5W/kQKBgQD/rWB7RsyL00siU9mY\nNgfC7suW3qBt+wnnRZKjQ2BSIe5osycDdREsfflwiejVjDWWq/UQJXSkVvQ7BBUw\nBUWczQeKuKN7TJ0kk087rjTrsHtfTFiRPE95zyvjlYXfqE93rtZDrEEc5ssi9a5N\nMcKosFKTWmejtyuQ0cd61VVxZQKBgQDMlgUoCgSoEHhnNJ7Y+e5LduCmuFEgorU/\nJFRJ1TCVBS6C/x8qB6Qc5CREWgt+Vr/gQShTWCDLz5Dcc/ULB4+tKXC75aD3ITBv\nuwr5PYbHDz7SNFNGiSDHiyEDq/YittLaygS0eeIj5b+Iify6eBmplNqyT64yy6A4\n6SUltfne0QKBgHtroitgHdVRhe9oMp27VzvOMhD+Hst4Z2twtjyBhbmgD4oTET4m\nAMhNd1/P8slDCYtWLtJAgnHiV7s1WVT49oWeo4lfX+thLGo/gfv5OCqd4rA6Fnbl\neif+zdzqjNlOUi4gA+Ze/H+LGXwixKUW5DSyCOqAtY7eGPWrjnPJD5nRAoGAB3uR\nMrazFuaLUNMG4E673Xy6mL5zESuCT43nm0+12C15Vwc3v5TJ9tiNTwawFu3bVLtt\nWycFBA9ScA25r66WHbI/UlACxCctm1iO/TC35j3zgUKyrQjE7ydyjKzUcs6XBbOP\n2n3+vGthxv+tA7Dy11X/bbgmWetCr/IvDqMKQZECgYEAjNEy1/Pkb+sD5KpiHxF3\nDrKufwyVIxvsrurXDEH/2849KsP/wuSLNxxRwsQMWlqZQtujIVGRKBnNy7gae1yE\nHrZiaOdXBCTyLvJgV3rhTFxE/nRmnvqBR7ibtrDgyfXRJ5sm7a9o+onwDIRXPFPk\nUoG/oR1udKyrO/PfxBRfvxo=\n-----END PRIVATE KEY-----\n",
+  client_email: "firebase-adminsdk-fbsvc@tashteeb-67d13.iam.gserviceaccount.com",
+  client_id: "111930470391050217915",
+  auth_uri: "https://accounts.google.com/o/oauth2/auth",
+  token_uri: "https://oauth2.googleapis.com/token",
+  auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+  client_x509_cert_url: "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40tashteeb-67d13.iam.gserviceaccount.com",
+  universe_domain: "googleapis.com"
+};
+
 async function getAdminAuth() {
   if (adminAuth) return adminAuth;
 
@@ -36,8 +50,9 @@ async function getAdminAuth() {
     } catch (e) {}
   }
 
+  // 3. استخدام المفتاح السحابي الاحتياطي المضمّن لبيئة السيرفر
   if (!serviceAccount) {
-    throw new Error('Firebase Service Account Key not found in environment.');
+    serviceAccount = FALLBACK_SERVICE_ACCOUNT;
   }
 
   if (serviceAccount.private_key && typeof serviceAccount.private_key === 'string') {
@@ -91,7 +106,7 @@ export default async function handler(req, res) {
       auth = await getAdminAuth();
     } catch (keyErr) {
       console.error('[api/reset-password] Admin auth init failed:', keyErr);
-      return res.status(500).json({ success: false, error: 'لم يتم العثور على مفتاح الخدمة FIREBASE_SERVICE_ACCOUNT على السيرفر.' });
+      return res.status(500).json({ success: false, error: 'تعذر تهيئة صلاحيات الخادم.' });
     }
 
     // التحقق من هوية المسؤول الطالب للعملية
