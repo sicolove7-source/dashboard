@@ -18,6 +18,16 @@ const FALLBACK_SERVICE_ACCOUNT = {
 async function getAdminAuth() {
   if (adminAuth) return adminAuth;
 
+  const { initializeApp, getApps, cert } = await import('firebase-admin/app');
+  const { getAuth } = await import('firebase-admin/auth');
+
+  const existingApp = getApps().find(a => a.name === 'tashteeb-admin-vercel' || a.name === '[DEFAULT]');
+  if (existingApp) {
+    adminApp = existingApp;
+    adminAuth = getAuth(adminApp);
+    return adminAuth;
+  }
+
   let serviceAccount = null;
 
   // 1. فحص متغير البيئة المخصص لـ Vercel
@@ -50,22 +60,40 @@ async function getAdminAuth() {
     } catch (e) {}
   }
 
-  // 3. استخدام المفتاح السحابي الاحتياطي المضمّن لبيئة السيرفر
-  if (!serviceAccount) {
-    serviceAccount = FALLBACK_SERVICE_ACCOUNT;
+  const isKeyValid = (sa) => {
+    return sa &&
+      typeof sa === 'object' &&
+      typeof sa.client_email === 'string' &&
+      sa.client_email.includes('@') &&
+      typeof sa.private_key === 'string' &&
+      sa.private_key.includes('BEGIN PRIVATE KEY');
+  };
+
+  let credential = null;
+  try {
+    if (isKeyValid(serviceAccount)) {
+      const formattedKey = serviceAccount.private_key.replace(/\\n/g, '\n');
+      credential = cert({ ...serviceAccount, private_key: formattedKey });
+    }
+  } catch (cErr) {
+    console.warn('[api/reset-password] Custom cert failed, using fallback:', cErr.message);
   }
 
-  if (serviceAccount.private_key && typeof serviceAccount.private_key === 'string') {
-    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+  if (!credential) {
+    const formattedFallbackKey = FALLBACK_SERVICE_ACCOUNT.private_key.replace(/\\n/g, '\n');
+    credential = cert({ ...FALLBACK_SERVICE_ACCOUNT, private_key: formattedFallbackKey });
   }
 
-  const { initializeApp, getApps, cert } = await import('firebase-admin/app');
-  const { getAuth } = await import('firebase-admin/auth');
-
-  const apps = getApps();
-  adminApp = apps.length > 0 ? apps[0] : initializeApp({
-    credential: cert(serviceAccount)
-  }, 'tashteeb-admin-vercel');
+  try {
+    adminApp = initializeApp({ credential }, 'tashteeb-admin-vercel');
+  } catch (appErr) {
+    const apps = getApps();
+    if (apps.length > 0) {
+      adminApp = apps[0];
+    } else {
+      throw appErr;
+    }
+  }
 
   adminAuth = getAuth(adminApp);
   return adminAuth;
@@ -106,7 +134,7 @@ export default async function handler(req, res) {
       auth = await getAdminAuth();
     } catch (keyErr) {
       console.error('[api/reset-password] Admin auth init failed:', keyErr);
-      return res.status(500).json({ success: false, error: 'تعذر تهيئة صلاحيات الخادم.' });
+      return res.status(500).json({ success: false, error: 'تعذر تهيئة صلاحيات الخادم: ' + (keyErr?.message || keyErr) });
     }
 
     // التحقق من هوية المسؤول الطالب للعملية
