@@ -379,6 +379,7 @@ export async function updateCurrentUserEmail(newEmail) {
 async function callResetPasswordApi(payload, idToken) {
   const endpoints = [
     '/api/reset-password',
+    'https://erp-dashboard-ten-flame.vercel.app/api/reset-password',
     'https://erp-dashboard.vercel.app/api/reset-password'
   ];
   for (const ep of endpoints) {
