@@ -21,14 +21,9 @@ const fs = require('fs');
 const path = require('path');
 
 async function main() {
-  let admin;
-  try {
-    admin = require('firebase-admin');
-  } catch (err) {
-    console.error('❌ حزمة firebase-admin غير مثبتة.');
-    console.log('👉 يرجى تثبيتها أولاً: npm install firebase-admin --save-dev');
-    process.exit(1);
-  }
+  const { initializeApp, getApps, cert } = require('firebase-admin/app');
+  const { getAuth } = require('firebase-admin/auth');
+  const { getFirestore } = require('firebase-admin/firestore');
 
   const possibleKeyPaths = [
     path.join(__dirname, 'serviceAccountKey.json'),
@@ -44,15 +39,18 @@ async function main() {
   }
 
   const serviceAccount = require(keyPath);
-  if (!admin.apps.length) {
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
+  let app;
+  if (!getApps().length) {
+    app = initializeApp({
+      credential: cert(serviceAccount),
       projectId: serviceAccount.project_id || 'tashteeb-67d13',
     });
+  } else {
+    app = getApps()[0];
   }
 
-  const auth = admin.auth();
-  const db = admin.firestore();
+  const auth = getAuth(app);
+  const db = getFirestore(app);
 
   const args = process.argv.slice(2);
   const isAll = args.includes('--all');
@@ -117,6 +115,12 @@ async function main() {
       const data = docSnap.data();
       const compId = docSnap.id;
 
+      // تجاهل الشركات المحذوفة نهائياً لمنع تلوث حسابات المستخدمين
+      if (data.status === 'deleted' || data.isDeleted === true) {
+        console.log(`⏩ [Skipping Deleted Company] ${compId}`);
+        continue;
+      }
+
       // أ) مالك الشركة (Owner)
       if (data.adminEmail) {
         const ownerEmail = data.adminEmail.toLowerCase().trim();
@@ -131,21 +135,31 @@ async function main() {
         } catch (e) {}
       }
 
-      // ب) فريق العمل (Users array)
-      if (Array.isArray(data.users)) {
-        for (const u of data.users) {
-          if (u?.email) {
-            const memberEmail = u.email.toLowerCase().trim();
-            try {
-              const user = await auth.getUserByEmail(memberEmail);
-              await auth.setCustomUserClaims(user.uid, {
-                role: u.role || 'engineer',
-                companyId: compId,
-                isSuperAdmin: false,
-              });
-              console.log(`👷 [Member: ${u.role || 'engineer'}] ${memberEmail} -> شركة: ${compId}`);
-            } catch (e) {}
-          }
+      // ب) فريق العمل (Users and Team arrays)
+      const allMembers = [
+        ...(Array.isArray(data.users) ? data.users : []),
+        ...(Array.isArray(data.team) ? data.team : [])
+      ];
+
+      for (const u of allMembers) {
+        if (!u) continue;
+        const candidateEmails = [];
+        if (u.email) candidateEmails.push(u.email.toLowerCase().trim());
+        const rawPhone = (u.phone || u.cleanPhone || '').toString().replace(/\D/g, '');
+        if (rawPhone && rawPhone.length >= 7) {
+          candidateEmails.push(`phone_${rawPhone}@tashteeb.app`);
+        }
+
+        for (const memberEmail of candidateEmails) {
+          try {
+            const user = await auth.getUserByEmail(memberEmail);
+            await auth.setCustomUserClaims(user.uid, {
+              role: u.role || 'engineer',
+              companyId: compId,
+              isSuperAdmin: false,
+            });
+            console.log(`👷 [Member: ${u.role || 'engineer'}] ${memberEmail} -> شركة: ${compId}`);
+          } catch (e) {}
         }
       }
     }

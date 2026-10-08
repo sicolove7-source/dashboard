@@ -1446,125 +1446,108 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
   if (claims.companyId) {
     const companyId = claims.companyId;
 
-    // فحص هل الشركة محذوفة نهائياً
-    if (isTenantDeleted(companyId)) {
-      return {
-        success: false,
-        error: 'company_deleted',
-        isCompanyDeleted: true,
-        message: '🚫 تم حذف أو إلغاء تفعيل حساب هذه المؤسسة من قِبل إدارة المنصة.',
-      };
-    }
-
-    // جلب بيانات الشركة المحدثة من السحابة أو الكاش
     let claimTenant = tenants.find(t => t.id === companyId);
     let cloudCompanyName = null;
     let cloudCompanyLogo = null;
     let compCloud = null;
 
-    try {
-      const { fetchCompanyDataFromCloud } = await import('./cloudSync');
-      compCloud = await fetchCompanyDataFromCloud(companyId);
-      if (compCloud?.status === 'deleted' || compCloud?.isDeleted === true) {
-        addDeletedTenantId(companyId);
+    // فحص هل الشركة محذوفة نهائياً
+    const isClaimsCompDeleted = isTenantDeleted(companyId) || claimTenant?.status === 'deleted';
+    if (!isClaimsCompDeleted) {
+      try {
+        const { fetchCompanyDataFromCloud } = await import('./cloudSync');
+        compCloud = await fetchCompanyDataFromCloud(companyId);
+        if (compCloud?.status === 'deleted' || compCloud?.isDeleted === true) {
+          addDeletedTenantId(companyId);
+          console.warn('[resolveTenantUserByEmail] claims tenant deleted in cloud, falling through to search active companies:', companyId);
+        } else {
+          if (compCloud?.name) cloudCompanyName = compCloud.name;
+          if (compCloud?.settings?.companyName) cloudCompanyName = compCloud.settings.companyName;
+          if (compCloud?.logo) cloudCompanyLogo = compCloud.logo;
+          if (compCloud?.settings?.companyLogo) cloudCompanyLogo = compCloud.settings.companyLogo;
+        }
+      } catch (e) {
+        console.warn('[resolveTenantUserByEmail] Cloud fetch notice:', e?.message);
+      }
+    } else {
+      console.warn('[resolveTenantUserByEmail] claims.companyId is deleted, falling through to search active companies:', companyId);
+    }
+
+    if (!isClaimsCompDeleted && compCloud?.status !== 'deleted' && !compCloud?.isDeleted) {
+      // فحص تعليق المؤسسة
+      const isSuspended = compCloud?.status === 'suspended' || claimTenant?.status === 'suspended';
+      if (isSuspended) {
         return {
           success: false,
-          error: 'company_deleted',
-          isCompanyDeleted: true,
-          message: '🚫 تم حذف أو إلغاء تفعيل حساب هذه المؤسسة من قِبل إدارة المنصة.',
+          isTenantSuspended: true,
+          error: 'tenant_suspended',
+          tenant: claimTenant || compCloud || { id: companyId, name: cloudCompanyName || companyId, status: 'suspended' },
+          message: '🚫 تم تعليق أو إيقاف حساب هذه المؤسسة من قِبل إدارة المنصة.',
         };
       }
-      if (compCloud?.name) cloudCompanyName = compCloud.name;
-      if (compCloud?.settings?.companyName) cloudCompanyName = compCloud.settings.companyName;
-      if (compCloud?.logo) cloudCompanyLogo = compCloud.logo;
-      if (compCloud?.settings?.companyLogo) cloudCompanyLogo = compCloud.settings.companyLogo;
-    } catch (e) {
-      console.warn('[resolveTenantUserByEmail] Cloud fetch notice:', e?.message);
-    }
 
-    if (claimTenant?.status === 'deleted') {
-      addDeletedTenantId(companyId);
-      return {
-        success: false,
-        error: 'company_deleted',
-        isCompanyDeleted: true,
-        message: '🚫 تم حذف أو إلغاء تفعيل حساب هذه المؤسسة من قِبل إدارة المنصة.',
-      };
-    }
+      // فحص عزل النطاق الفرعي (Subdomain Isolation)
+      const currentSub = isCompanySubdomain() ? getSubdomain() : null;
+      if (currentSub && currentSub !== 'admin') {
+        const tenantSub = (claimTenant?.subdomain || claimTenant?.slug || compCloud?.subdomain || '').toLowerCase().trim();
+        const rawCompId = (companyId || '').toLowerCase().trim();
+        const matchesSub =
+          tenantSub === currentSub ||
+          rawCompId === currentSub ||
+          rawCompId === `comp_${currentSub}` ||
+          rawCompId === `comp_c_${currentSub}`;
 
-    // فحص تعليق المؤسسة
-    const isSuspended = compCloud?.status === 'suspended' || claimTenant?.status === 'suspended';
-    if (isSuspended) {
-      return {
-        success: false,
-        isTenantSuspended: true,
-        error: 'tenant_suspended',
-        tenant: claimTenant || compCloud || { id: companyId, name: cloudCompanyName || companyId, status: 'suspended' },
-        message: '🚫 تم تعليق أو إيقاف حساب هذه المؤسسة من قِبل إدارة المنصة.',
-      };
-    }
+        if (!matchesSub) {
+          return {
+            success: false,
+            error: 'cross_tenant_access_denied',
+            tenant: claimTenant || { id: companyId, name: cloudCompanyName || companyId, subdomain: tenantSub },
+            message: `❌ هذا الحساب مسجل في شركة أخرى ولا يملك صلاحية الدخول لبوابة '${currentSub}'.`,
+          };
+        }
+      }
 
-    // فحص عزل النطاق الفرعي (Subdomain Isolation)
-    const currentSub = isCompanySubdomain() ? getSubdomain() : null;
-    if (currentSub && currentSub !== 'admin') {
-      const tenantSub = (claimTenant?.subdomain || claimTenant?.slug || compCloud?.subdomain || '').toLowerCase().trim();
-      const rawCompId = (companyId || '').toLowerCase().trim();
-      const matchesSub =
-        tenantSub === currentSub ||
-        rawCompId === currentSub ||
-        rawCompId === `comp_${currentSub}` ||
-        rawCompId === `comp_c_${currentSub}`;
-
-      if (!matchesSub) {
+      // الدور حصراً ومباشرة من claims.role (بدون أي تخمين أو قيم افتراضية)
+      if (!claims.role) {
         return {
           success: false,
-          error: 'cross_tenant_access_denied',
-          tenant: claimTenant || { id: companyId, name: cloudCompanyName || companyId, subdomain: tenantSub },
-          message: `❌ هذا الحساب مسجل في شركة أخرى ولا يملك صلاحية الدخول لبوابة '${currentSub}'.`,
+          error: 'missing_role_claims',
+          message: '🚫 لا توجد صلاحيات معتمدة لهذا الحساب (Custom Claims). يرجى مراجعة إدارة الشركة.',
         };
       }
-    }
+      const verifiedRole = claims.role;
+      const compName = cloudCompanyName || (claimTenant ? getTenantCurrentName(claimTenant) : companyId);
+      const compLogo = cloudCompanyLogo || (claimTenant ? getTenantCurrentLogo(claimTenant) : null);
+      const currency = compCloud?.currency || claimTenant?.currency || claims.currency || 'ج.م';
 
-    // الدور حصراً ومباشرة من claims.role (بدون أي تخمين أو قيم افتراضية)
-    if (!claims.role) {
-      return {
-        success: false,
-        error: 'missing_role_claims',
-        message: '🚫 لا توجد صلاحيات معتمدة لهذا الحساب (Custom Claims). يرجى مراجعة إدارة الشركة.',
-      };
-    }
-    const verifiedRole = claims.role;
-    const compName = cloudCompanyName || (claimTenant ? getTenantCurrentName(claimTenant) : companyId);
-    const compLogo = cloudCompanyLogo || (claimTenant ? getTenantCurrentLogo(claimTenant) : null);
-    const currency = compCloud?.currency || claimTenant?.currency || claims.currency || 'ج.م';
-
-    const resolvedTenant = claimTenant ? {
-      ...claimTenant,
-      name: compName,
-      logo: compLogo,
-    } : {
-      id: companyId,
-      name: compName,
-      logo: compLogo,
-      currency: currency,
-      subdomain: compCloud?.subdomain || null,
-      status: compCloud?.status || 'active',
-    };
-
-    return {
-      success: true,
-      user: {
-        id: firebaseUid || `u_${companyId}`,
-        email: cleanEmail,
-        name: claims.name || cleanEmail.split('@')[0],
-        role: verifiedRole,
-        companyId: companyId,
-        companyName: compName,
+      const resolvedTenant = claimTenant ? {
+        ...claimTenant,
+        name: compName,
+        logo: compLogo,
+      } : {
+        id: companyId,
+        name: compName,
+        logo: compLogo,
         currency: currency,
-      },
-      tenant: resolvedTenant,
-      isSuperAdmin: false,
-    };
+        subdomain: compCloud?.subdomain || null,
+        status: compCloud?.status || 'active',
+      };
+
+      return {
+        success: true,
+        user: {
+          id: firebaseUid || `u_${companyId}`,
+          email: cleanEmail,
+          name: claims.name || cleanEmail.split('@')[0],
+          role: verifiedRole,
+          companyId: companyId,
+          companyName: compName,
+          currency: currency,
+        },
+        tenant: resolvedTenant,
+        isSuperAdmin: false,
+      };
+    }
   }
 
   // 3. فحص محلي لحالة الحظر أو التعليق فقط (بدون تحديد الدور محلياً أو افتراض دور المالك)
@@ -1733,7 +1716,58 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     console.warn('[resolveTenantUserByEmail] Cloud directory notice:', e?.message);
   }
 
-  // 5. الحساب غير مرتبط بأي شركة مسجلة
+  // 5. استدعاء السيرفرليس الآمن المباشر (Serverless Tenant User Resolver)
+  try {
+    const { auth } = await import('../firebase');
+    if (auth.currentUser) {
+      const idToken = await auth.currentUser.getIdToken();
+      const endpoints = [
+        '/api/resolve-tenant-user',
+        'https://erp-dashboard-ten-flame.vercel.app/api/resolve-tenant-user',
+        'https://erp-dashboard.vercel.app/api/resolve-tenant-user'
+      ];
+      for (const ep of endpoints) {
+        try {
+          const apiRes = await fetch(ep, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${idToken}`
+            }
+          });
+          const ct = apiRes.headers.get('content-type') || '';
+          if (ct.includes('application/json')) {
+            const apiData = await apiRes.json();
+            if (apiData?.success && apiData.tenant && apiData.user) {
+              console.log('[resolveTenantUserByEmail] ✅ Serverless Tenant Resolver succeeded:', apiData.tenant.id);
+              try {
+                const compId = apiData.tenant.id;
+                const uKey = `tenant_${compId}_users`;
+                const currentUList = JSON.parse(localStorage.getItem(uKey) || '[]');
+                if (!currentUList.some(u => u.email === cleanEmail)) {
+                  currentUList.push(apiData.user);
+                  localStorage.setItem(uKey, JSON.stringify(currentUList));
+                }
+              } catch (e) {}
+
+              return {
+                success: true,
+                user: apiData.user,
+                tenant: apiData.tenant,
+                isSuperAdmin: apiData.isSuperAdmin || false
+              };
+            }
+          }
+        } catch (epErr) {
+          console.warn(`[resolveTenantUserByEmail] Endpoint ${ep} notice:`, epErr.message);
+        }
+      }
+    }
+  } catch (apiError) {
+    console.warn('[resolveTenantUserByEmail] Serverless Resolver notice:', apiError?.message);
+  }
+
+  // 6. الحساب غير مرتبط بأي شركة مسجلة
   console.warn('[resolveTenantUserByEmail] No company associated for user:', cleanEmail);
   return {
     success: false,
