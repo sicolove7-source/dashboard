@@ -1074,7 +1074,8 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
   }
 
   async function handleSaveUser(userData) {
-    const { password: _rawPassword, ...safeUserData } = userData;
+    const rawPassword = userData.password;
+    const { password: _unused, ...safeUserData } = userData;
     const userWithComp = {
       ...safeUserData,
       companyId: activeCompId

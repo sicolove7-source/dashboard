@@ -78,6 +78,7 @@ export async function callCreateCompanyUser({ email, name, role, companyId, pass
         email: cleanEmail,
         name,
         newPassword: password,
+        role,
         companyId
       }, idToken);
       if (data?.success) {
