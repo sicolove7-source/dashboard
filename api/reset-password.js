@@ -81,8 +81,9 @@ function cleanPhoneNumber(phone) {
 
 export default async function handler(req, res) {
   // CORS Headers
+  const origin = req.headers.origin || '*';
+  res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader(
     'Access-Control-Allow-Headers',
@@ -117,7 +118,7 @@ export default async function handler(req, res) {
     }
     const callerUser = verifyData.users[0];
 
-    const { phone, email, newPassword, targetUid, name } = req.body || {};
+    const { phone, email, newPassword, targetUid, name, role, companyId, companyName } = req.body || {};
 
     if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
       return res.status(400).json({ success: false, error: 'كلمة المرور يجب أن تتكون من 6 أحرف أو أرقام على الأقل.' });
@@ -172,6 +173,29 @@ export default async function handler(req, res) {
         return res.status(400).json({ success: false, error: createData.error.message || 'فشل إنشاء الحساب.' });
       }
 
+      // ضبط Custom Claims للمستخدم المنشأ حديثاً
+      if (role || companyId) {
+        try {
+          await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:update`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${adminToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              localId: createData.localId,
+              customAttributes: JSON.stringify({
+                ...(role ? { role } : {}),
+                ...(companyId ? { companyId } : {}),
+                ...(companyName ? { companyName } : {})
+              })
+            })
+          });
+        } catch (claimsErr) {
+          console.warn('[api/reset-password] Custom claims set notice:', claimsErr);
+        }
+      }
+
       console.log('[api/reset-password] Created new user in Auth via REST:', createData.localId, targetEmail);
       return res.status(200).json({
         success: true,
@@ -186,17 +210,36 @@ export default async function handler(req, res) {
       return res.status(404).json({ success: false, error: 'المستخدم غير موجود في النظام.' });
     }
 
-    // تحديث كلمة المرور للمستخدم الموجود
+    // تجهيز حزمة تحديث كلمة المرور و Custom Claims للمستخدم الموجود
+    const updateBody = {
+      localId: targetUser.localId,
+      password: newPassword
+    };
+
+    if (role || companyId) {
+      let existingClaims = {};
+      try {
+        if (targetUser.customAttributes) {
+          existingClaims = JSON.parse(targetUser.customAttributes);
+        }
+      } catch (e) {}
+
+      updateBody.customAttributes = JSON.stringify({
+        ...existingClaims,
+        ...(role ? { role } : {}),
+        ...(companyId ? { companyId } : {}),
+        ...(companyName ? { companyName } : {})
+      });
+    }
+
+    // تحديث كلمة المرور و الصلاحيات للمستخدم الموجود
     const updateRes = await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:update`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${adminToken}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        localId: targetUser.localId,
-        password: newPassword
-      })
+      body: JSON.stringify(updateBody)
     });
     const updateData = await updateRes.json();
     if (updateData.error) {

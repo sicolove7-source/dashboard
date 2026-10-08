@@ -404,7 +404,7 @@ async function callResetPasswordApi(payload, idToken) {
   return null;
 }
 
-export async function syncAndResetPhonePassword(phone, newPassword, knownEmail = null) {
+export async function syncAndResetPhonePassword(phone, newPassword, knownEmail = null, extraData = {}) {
   const cleanPhone = cleanPhoneNumber(phone);
   if (!cleanPhone || cleanPhone.length < 7) {
     return { success: false, error: 'يرجى إدخال رقم هاتف صحيح.' };
@@ -427,7 +427,11 @@ export async function syncAndResetPhonePassword(phone, newPassword, knownEmail =
     const apiData = await callResetPasswordApi({
       phone: cleanPhone,
       email: phoneAuthEmail,
-      newPassword
+      newPassword,
+      role: extraData?.role,
+      companyId: extraData?.companyId,
+      companyName: extraData?.companyName,
+      name: extraData?.name
     }, idToken);
     if (apiData?.success) {
       console.log('[syncAndResetPhonePassword] ✅ Serverless Admin API succeeded:', phoneAuthEmail);

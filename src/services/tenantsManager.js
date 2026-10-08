@@ -1639,22 +1639,21 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
           };
         }
 
-        if (claims.role) {
-          return {
-            success: true,
-            user: {
-              id: firebaseUid || match.id || `u_${t.id}_emp`,
-              email: cleanEmail,
-              name: match.name || cleanEmail.split('@')[0],
-              role: claims.role,
-              companyId: t.id,
-              companyName: getTenantCurrentName(t),
-              currency: t.currency || 'ج.م',
-            },
-            tenant: t,
-            isSuperAdmin: false,
-          };
-        }
+        const effectiveRole = claims.role || match.role || 'engineer';
+        return {
+          success: true,
+          user: {
+            id: firebaseUid || match.id || `u_${t.id}_emp`,
+            email: cleanEmail,
+            name: match.name || cleanEmail.split('@')[0],
+            role: effectiveRole,
+            companyId: t.id,
+            companyName: getTenantCurrentName(t),
+            currency: t.currency || 'ج.م',
+          },
+          tenant: t,
+          isSuperAdmin: false,
+        };
       }
     }
   }

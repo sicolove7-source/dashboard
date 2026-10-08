@@ -939,7 +939,11 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
       const isPhoneAccount = resetPassModal.phone || resetPassModal.email?.endsWith('@tashteeb.app');
       if (isPhoneAccount) {
         const phoneToReset = resetPassModal.phone || resetPassModal.email;
-        res = await syncAndResetPhonePassword(phoneToReset, newPass, resetPassModal.email);
+        res = await syncAndResetPhonePassword(phoneToReset, newPass, resetPassModal.email, {
+          role: resetPassModal.role,
+          companyId: activeCompId,
+          name: resetPassModal.name
+        });
       } else {
         res = await callCreateCompanyUser({
           email: resetPassModal.email,
@@ -1094,7 +1098,13 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
         const isPhoneAccount = userData.phone || userData.email?.endsWith('@tashteeb.app');
         if (isPhoneAccount) {
           const p = userData.phone || userData.email;
-          try { await syncAndResetPhonePassword(p, rawPassword, userData.email); } catch (e) {}
+          try {
+            await syncAndResetPhonePassword(p, rawPassword, userData.email, {
+              role: userData.role,
+              companyId: activeCompId,
+              name: userData.name
+            });
+          } catch (e) {}
         }
       }
 
