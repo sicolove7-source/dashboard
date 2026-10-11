@@ -122,7 +122,13 @@ export function mergeUsersWithTeam(companyUsers, teamObj, companyId) {
     }
   });
 
-  return users;
+  // إزالة المستخدمين المكررين بناءً على الـ id قبل الإرجاع
+  const seenMerge = new Set();
+  return users.filter(u => {
+    if (!u.id || seenMerge.has(u.id)) return false;
+    seenMerge.add(u.id);
+    return true;
+  });
 }
 
 export function loadUsers(companyId, teamObj = null) {
@@ -163,6 +169,14 @@ export function loadUsers(companyId, teamObj = null) {
   if (tData) {
     users = mergeUsersWithTeam(users, tData, cId);
   }
+
+  // إزالة أي مستخدمين مكررين بناءً على الـ id قبل الحفظ والإرجاع
+  const seenIds = new Set();
+  users = users.filter(u => {
+    if (!u.id || seenIds.has(u.id)) return false;
+    seenIds.add(u.id);
+    return true;
+  });
 
   if (key && users.length > 0) try { localStorage.setItem(key, JSON.stringify(users)); } catch (e) {}
   return users;
@@ -1372,13 +1386,13 @@ export default function UserManagement({ currentUser, companyId, team, onTeamCha
                   </td>
                 </tr>
               ) : (
-                filtered.map((u) => {
+                filtered.map((u, uIdx) => {
                   const isCurrent = u.id === currentUser?.id || u.email === currentUser?.email;
                   const isCopied = copiedId === u.id;
                   const hasCustom = Boolean(u.hasCustomPermissions || (u.customNav && u.customNav.length > 0) || u.customPermissions);
 
                   return (
-                    <tr key={u.id}>
+                    <tr key={u.id ? `${u.id}_${uIdx}` : `user_row_${uIdx}`}>
                       {/* Name + Avatar */}
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

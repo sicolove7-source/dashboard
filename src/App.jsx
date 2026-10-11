@@ -1927,16 +1927,41 @@ export default function App() {
     if (!projects) return [];
     if (userRole === 'engineer' && !can(currentUser || userRole, 'projects_view_all')) {
       const engName = (currentUser?.engineerName || currentUser?.name || '').trim();
-      const cleanEngName = engName.replace(/^م\.\s*/, '').trim();
-      if (!cleanEngName) return projects;
-      return projects.filter(p => {
-        const pEng = (p.engineer || '').trim();
-        const cleanPEng = pEng.replace(/^م\.\s*/, '').trim();
-        return pEng === engName || cleanPEng === cleanEngName || (cleanPEng && cleanEngName && (cleanPEng.includes(cleanEngName) || cleanEngName.includes(cleanPEng)));
+      const cleanEngName = engName.replace(/^م\.\s*/, '').replace(/^Eng\.\s*/i, '').trim();
+      const engPhone = (currentUser?.cleanPhone || currentUser?.phone || '').replace(/\D/g, '');
+      const engEmail = (currentUser?.email || '').trim().toLowerCase();
+      const engId = (currentUser?.id || currentUser?.uid || '').trim();
+
+      // إذا لم يوجد أي معرّف - نُظهر كل المشاريع
+      if (!cleanEngName && !engPhone && !engEmail && !engId) return projects;
+
+      const matched = projects.filter(p => {
+        // 1. مطابقة بـ engineerId إذا كان موجوداً في المشروع
+        if (engId && p.engineerId && (p.engineerId === engId || p.engineerId === engEmail)) return true;
+
+        // 2. مطابقة بالهاتف إذا كان مخزّن في المشروع
+        if (engPhone && p.engineerPhone) {
+          const pPhone = p.engineerPhone.replace(/\D/g, '');
+          if (pPhone && (pPhone === engPhone || pPhone.endsWith(engPhone) || engPhone.endsWith(pPhone))) return true;
+        }
+
+        // 3. مطابقة بالاسم (الطريقة الأصلية)
+        if (cleanEngName) {
+          const pEng = (p.engineer || '').trim();
+          const cleanPEng = pEng.replace(/^م\.\s*/, '').replace(/^Eng\.\s*/i, '').trim();
+          if (pEng === engName || cleanPEng === cleanEngName) return true;
+          if (cleanPEng && cleanEngName && (cleanPEng.includes(cleanEngName) || cleanEngName.includes(cleanPEng))) return true;
+        }
+
+        return false;
       });
+
+      // إذا لم تُوجد مشاريع مُسندة - نُظهر الكل (المهندس لم يُسند إليه أي مشروع بعد)
+      return matched.length > 0 ? matched : projects;
     }
     return projects;
   }, [projects, userRole, currentUser]);
+
 
   // ─── 0.0 ADMIN PORTAL (FOR ADMIN SUBDOMAIN - HIGHEST PRIORITY) ───
   if (isAdminSubdomain()) {

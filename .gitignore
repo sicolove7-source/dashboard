@@ -23,3 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 .firebase/
+.vercel
+serviceAccountKey.json
+*.pem
+*.key
+key_single_line.txt
