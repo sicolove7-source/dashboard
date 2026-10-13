@@ -88,6 +88,8 @@ export default function Login({
   const [resetSuccess, setResetSuccess] = useState(null);
   const [registeredTenantInfo, setRegisteredTenantInfo] = useState(null);
   const [copiedSubdomain, setCopiedSubdomain] = useState(false);
+  const [copiedEngineerEmail, setCopiedEngineerEmail] = useState(false);
+  const [copiedEngineerPass, setCopiedEngineerPass] = useState(false);
 
   // Register Fields (البيانات الإلزامية لتأسيس مساحة عمل الشركة)
   const [companyTitle, setCompanyTitle] = useState("");
@@ -548,14 +550,15 @@ export default function Login({
         user: res.user,
         tenant: res.tenant,
         subUrl: targetUrl,
+        demoEngineer: res.demoEngineer,
       });
       setLoading(false);
 
-      // انتقال تلقائي بعد 3 ثوانٍ لرابط الشركة إذا لم يضغط المستخدم على أي زر
+      // انتقال تلقائي بعد 15 ثانية لرابط الشركة إذا لم يضغط المستخدم على أي زر
       const autoRedirectTimer = setTimeout(() => {
         try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
         window.location.href = targetUrl;
-      }, 6000);
+      }, 15000);
       // حفظ المؤقت لإمكانية إلغائه عند ضغط أزرار يدوية
       window._autoRedirectTimer = autoRedirectTimer;
 
@@ -774,6 +777,137 @@ export default function Login({
                   • <strong>أو عبر المنصة:</strong> يمكنك أيضاً الدخول دائماً من <strong>tashteebpro.com</strong> ببريدك الإلكتروني وكلمة المرور.
                 </div>
               </div>
+
+              {/* بطاقة حساب الموظف التجريبي (مهندس الموقع) */}
+              {registeredTenantInfo.demoEngineer && (
+                <div style={{
+                  background: "rgba(16,185,129,0.06)",
+                  border: "1.5px dashed rgba(16,185,129,0.35)",
+                  borderRadius: 14,
+                  padding: "16px 14px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                  textAlign: "right"
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "#059669", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 16 }}>👷‍♂️</span>
+                      <span>تم تجهيز حساب تجريبي لمهندس الموقع تلقائياً:</span>
+                    </div>
+                    <span style={{ fontSize: 11, background: "rgba(16,185,129,0.15)", color: "#059669", padding: "2px 8px", borderRadius: 6, fontWeight: 700 }}>
+                      جاهز للتجربة
+                    </span>
+                  </div>
+
+                  <div style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    background: "var(--card, #fff)",
+                    padding: "11px 12px",
+                    borderRadius: 9,
+                    border: "1px solid var(--border)",
+                    fontSize: 12.5,
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", direction: "ltr" }}>
+                      <span style={{ fontWeight: 800, color: "#0F172A", wordBreak: "break-all" }}>
+                        {registeredTenantInfo.demoEngineer.email}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          try { if (window._autoRedirectTimer) clearTimeout(window._autoRedirectTimer); } catch (e) {}
+                          navigator.clipboard.writeText(registeredTenantInfo.demoEngineer.email);
+                          setCopiedEngineerEmail(true);
+                          setTimeout(() => setCopiedEngineerEmail(false), 2000);
+                        }}
+                        style={{
+                          background: copiedEngineerEmail ? "#10B981" : "rgba(16,185,129,0.12)",
+                          color: copiedEngineerEmail ? "#fff" : "#059669",
+                          border: "none",
+                          borderRadius: 6,
+                          padding: "4px 9px",
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          fontFamily: "'Cairo', sans-serif",
+                          whiteSpace: "nowrap",
+                          flexShrink: 0,
+                          marginLeft: 6,
+                        }}
+                      >
+                        {copiedEngineerEmail ? "✓ تم النسخ" : "نسخ البريد"}
+                      </button>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px dashed var(--border)", paddingTop: 8 }}>
+                      <span style={{ color: "var(--muted)", fontSize: 12 }}>
+                        🔑 كلمة المرور: <strong style={{ color: "var(--ink)" }}>{registeredTenantInfo.demoEngineer.password}</strong> (نفس كلمة مرور حسابك)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          try { if (window._autoRedirectTimer) clearTimeout(window._autoRedirectTimer); } catch (e) {}
+                          navigator.clipboard.writeText(registeredTenantInfo.demoEngineer.password);
+                          setCopiedEngineerPass(true);
+                          setTimeout(() => setCopiedEngineerPass(false), 2000);
+                        }}
+                        style={{
+                          background: copiedEngineerPass ? "#10B981" : "rgba(16,185,129,0.12)",
+                          color: copiedEngineerPass ? "#fff" : "#059669",
+                          border: "none",
+                          borderRadius: 6,
+                          padding: "4px 9px",
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          fontFamily: "'Cairo', sans-serif",
+                          whiteSpace: "nowrap",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {copiedEngineerPass ? "✓ تم النسخ" : "نسخ السر"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try { if (window._autoRedirectTimer) clearTimeout(window._autoRedirectTimer); } catch (e) {}
+                      try { sessionStorage.removeItem('is_registering_user'); } catch (e) {}
+                      try {
+                        const { logoutUser } = await import('../services/auth');
+                        await logoutUser();
+                      } catch (e) {}
+                      setRegisteredTenantInfo(null);
+                      setMode('login');
+                      setEmail(registeredTenantInfo.demoEngineer.email);
+                      setPassword(registeredTenantInfo.demoEngineer.password);
+                      setError(null);
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "9px 12px",
+                      background: "rgba(16,185,129,0.12)",
+                      color: "#059669",
+                      border: "1px solid rgba(16,185,129,0.3)",
+                      borderRadius: 9,
+                      fontFamily: "'Cairo', sans-serif",
+                      fontSize: 13,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <span>🔄 تجربة تسجيل الدخول بحساب المهندس الآن</span>
+                  </button>
+                </div>
+              )}
 
               {/* أزرار المتابعة */}
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>

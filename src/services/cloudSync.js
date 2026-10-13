@@ -1654,17 +1654,6 @@ export async function fetchUserFromCloudDirectory(email, preferredSubdomain = nu
           (t.id || '').toLowerCase().trim() === `comp_${cleanSub}`
         );
         if (preferredTenant) {
-          if (preferredTenant.adminEmail && preferredTenant.adminEmail.toLowerCase().trim() === cleanEmail) {
-            return {
-              id: `u_${preferredTenant.id}_admin`,
-              email: preferredTenant.adminEmail,
-              name: preferredTenant.adminName || 'مدير الشركة',
-              role: 'owner',
-              companyId: preferredTenant.id,
-              companyName: preferredTenant.name,
-              currency: preferredTenant.currency || 'ج.م',
-            };
-          }
           if (Array.isArray(preferredTenant.users)) {
             const m = preferredTenant.users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
             if (m) {
@@ -1676,24 +1665,21 @@ export async function fetchUserFromCloudDirectory(email, preferredSubdomain = nu
               };
             }
           }
+          if (preferredTenant.adminEmail && preferredTenant.adminEmail.toLowerCase().trim() === cleanEmail) {
+            return {
+              id: `u_${preferredTenant.id}_admin`,
+              email: preferredTenant.adminEmail,
+              name: preferredTenant.adminName || 'مدير الشركة',
+              role: 'owner',
+              companyId: preferredTenant.id,
+              companyName: preferredTenant.name,
+              currency: preferredTenant.currency || 'ج.م',
+            };
+          }
         }
       }
 
-      // أولوية عامة: هل المستخدم مالك (Owner / adminEmail) لأي شركة في المنصة؟
-      for (const t of tenantsList) {
-        if (t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail) {
-          return {
-            id: `u_${t.id}_admin`,
-            email: t.adminEmail,
-            name: t.adminName || 'مدير الشركة',
-            role: 'owner',
-            companyId: t.id,
-            companyName: t.name,
-            currency: t.currency || 'ج.م',
-          };
-        }
-      }
-      // إذا لم يكن مالكاً، نبحث كعضو فريق أو موظف
+      // أولوية أولى: فحص قوائم الموظفين وأعضاء الفريق في كافة الشركات لضمان عدم تصعيد الموظف كمالك
       for (const t of tenantsList) {
         if (Array.isArray(t.users)) {
           const match = t.users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
@@ -1705,6 +1691,21 @@ export async function fetchUserFromCloudDirectory(email, preferredSubdomain = nu
               currency: t.currency || 'ج.م',
             };
           }
+        }
+      }
+
+      // أولوية ثانية: هل المستخدم مسجل حصرياً كمالك (Owner / adminEmail) لأي شركة في المنصة؟
+      for (const t of tenantsList) {
+        if (t.adminEmail && t.adminEmail.toLowerCase().trim() === cleanEmail) {
+          return {
+            id: `u_${t.id}_admin`,
+            email: t.adminEmail,
+            name: t.adminName || 'مدير الشركة',
+            role: 'owner',
+            companyId: t.id,
+            companyName: t.name,
+            currency: t.currency || 'ج.م',
+          };
         }
       }
     }
@@ -1791,11 +1792,11 @@ export async function fetchUserByPhoneFromCloudDirectory(phone) {
             };
           }
         }
-        if (t.phone && cleanPhoneNumber(t.phone) === cPhone) {
+        if (t.adminPhone && cleanPhoneNumber(t.adminPhone) === cPhone) {
           return {
             id: `u_${t.id}_admin`,
             email: t.adminEmail,
-            phone: t.phone,
+            phone: t.adminPhone,
             name: t.adminName || 'مدير الشركة',
             role: 'owner',
             companyId: t.id,

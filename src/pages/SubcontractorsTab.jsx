@@ -722,7 +722,15 @@ export default function SubcontractorsTab({
                       <Phone size={14} color="#10B981" />
                     </a>
                     <a
-                      href={`https://wa.me/20${sub.phone.replace(/[^0-9]/g, '').replace(/^0/, '')}`}
+                      href={(() => {
+                        // دعم أرقام دولية: إذا كان الرقم يبدأ بـ + فهو يحتوي على كود الدولة بالفعل
+                        const digits = sub.phone.replace(/[^0-9+]/g, '');
+                        if (digits.startsWith('+')) return `https://wa.me/${digits.replace('+', '')}`;
+                        // إذا بدأ بـ 00 (كود دولي بديل)
+                        if (digits.startsWith('00')) return `https://wa.me/${digits.replace(/^00/, '')}`;
+                        // إذا بدأ بـ 0 → إزالتها (يُفترض أن المستخدم يُدخل رقم بلده)
+                        return `https://wa.me/${digits.replace(/^0/, '')}`;
+                      })()}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn"

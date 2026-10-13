@@ -89,4 +89,43 @@ describe('Subdomain, SuperAdmin Security & Team Fixes', () => {
       expect(res2).toBeNull();
     });
   });
+
+  describe('Employee Resolution & Anti-Elevation Protection', () => {
+    it('preserves employee role (engineer) and never elevates to owner even if company phone is identical', async () => {
+      const testTenant = {
+        id: 'comp_amlak_test',
+        name: 'شركة أملاك',
+        subdomain: 'amlak-test',
+        phone: '01018160583', // Company public phone
+        adminPhone: '01199999999', // Distinct Admin phone
+        adminEmail: 'owner@amlak-test.com',
+        users: [
+          {
+            id: 'u_emp_1',
+            name: 'المهندس أحمد',
+            email: 'eng.ahmed@amlak.com',
+            phone: '01018160583', // Employee has same phone as company phone
+            role: 'engineer',
+            companyId: 'comp_amlak_test',
+          }
+        ]
+      };
+
+      tenantsManager.saveAllTenants([testTenant]);
+
+      // Resolve via employee phone-based email
+      const res = await tenantsManager.resolveTenantUserByEmail('phone_01018160583@tashteeb.app', 'uid_emp_1', {});
+      expect(res.success).toBe(true);
+      expect(res.user.role).toBe('engineer');
+      expect(res.user.role).not.toBe('owner');
+      expect(res.user.companyId).toBe('comp_amlak_test');
+    });
+
+    it('rejects unassigned user rather than promoting them to owner on subdomain', async () => {
+      const res = await tenantsManager.resolveTenantUserByEmail('unknown-stranger@gmail.com', 'uid_stranger', {});
+      expect(res.success).toBe(false);
+      expect(res.user).toBeNull();
+      expect(res.error).toContain('لم يتم ربط هذا الحساب بأي شركة');
+    });
+  });
 });

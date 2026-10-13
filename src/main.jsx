@@ -4,6 +4,10 @@ import './styles/index.css'
 import './styles/mobile.css'
 import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
+import { initUsersRegistry } from './services/tenantsManager.js'
+
+// تهيئة الفهرس المركزي لمستخدمي الشركات بشكل آمن عند بداية التطبيق
+try { initUsersRegistry(); } catch(e) {}
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

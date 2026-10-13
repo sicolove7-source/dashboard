@@ -40,6 +40,11 @@ export function getSubdomain() {
 
   // 2. إذا كان عنوان IP محلي أو عام، أو localhost عادي:
   if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname) || hostname === 'localhost') {
+    // في صفحة تسجيل الدخول العامة (/login) أو الرئيسية (/) بدون معلمة استعلام، لا نفرض السب-دومين القديم المخزن
+    const pathname = window.location.pathname || '';
+    if (pathname === '/login' || pathname === '/') {
+      return null;
+    }
     // فحص الكاش المحلي للسب-دومين (يعمل بعد reload في بيئة التطوير)
     try {
       const savedSub = localStorage.getItem(SUBDOMAIN_SESSION_KEY);

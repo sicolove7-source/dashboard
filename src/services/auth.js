@@ -135,6 +135,56 @@ export async function callCreateCompanyUser({ email, name, role, companyId, pass
   };
 }
 
+/**
+ * إنشاء حساب مستخدم ثانوي في Firebase Auth (مثل موظف تجريبي أو دعوة فريق)
+ * باستخدام تطبيق Firebase مستقل حتى لا يؤثر على جلسة تسجيل الدخول الحالية للمسؤول.
+ */
+export async function createSecondaryUserAuth(email, password, { companyId, role, companyName, currency } = {}) {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  if (!cleanEmail || !password) return { success: false, error: 'البريد وكلمة المرور مطلوبان' };
+
+  let createdUid = null;
+  let tempApp = null;
+  try {
+    const tempAppName = 'SecondaryAuth_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    tempApp = initializeApp(firebaseConfig, tempAppName);
+    const tempAuth = getAuth(tempApp);
+    try {
+      const cred = await createUserWithEmailAndPassword(tempAuth, cleanEmail, password);
+      createdUid = cred.user?.uid;
+      console.log('[createSecondaryUserAuth] ✅ Successfully created user in Firebase Auth:', cleanEmail, 'UID:', createdUid);
+    } catch (authCreateErr) {
+      if (authCreateErr.code === 'auth/email-already-in-use') {
+        console.log('[createSecondaryUserAuth] User already exists in Firebase Auth:', cleanEmail);
+        return { success: true, alreadyExists: true };
+      } else {
+        console.warn('[createSecondaryUserAuth] Secondary auth creation notice:', authCreateErr.message);
+        return { success: false, error: authCreateErr.message, code: authCreateErr.code };
+      }
+    }
+  } catch (secErr) {
+    console.warn('[createSecondaryUserAuth] Secondary app init error:', secErr);
+    return { success: false, error: secErr.message };
+  } finally {
+    if (tempApp) {
+      try { await deleteApp(tempApp); } catch (e) {}
+    }
+  }
+
+  if (createdUid && companyId) {
+    try {
+      await callAssignUserClaims({
+        targetUid: createdUid,
+        companyId,
+        role: role || 'engineer',
+        companyName: companyName || '',
+        currency: currency || 'ج.م',
+      });
+    } catch (claimsErr) {}
+  }
+
+  return { success: true, uid: createdUid };
+}
 
 /**
  * تسجيل الدخول باستخدام البريد الإلكتروني وكلمة المرور
@@ -207,7 +257,11 @@ export async function logoutUser() {
       }
       if (typeof localStorage !== 'undefined') {
         localStorage.removeItem('active_session_user');
+        localStorage.removeItem('tashteeb_active_subdomain');
+        localStorage.removeItem('admin_preview_mode');
+        localStorage.removeItem('tashteeb_preview_tenant_id');
       }
+      removeCrossSubdomainCookie('tashteeb_session_user');
     } catch (e) {}
     await signOut(auth);
     return { success: true };
