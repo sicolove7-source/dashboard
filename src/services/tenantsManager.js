@@ -376,6 +376,8 @@ export function createTenant(data) {
   } catch (e) {}
 
   // إعداد مستخدمي الشركة (بدون أي كلمات سر كنص صريح - الاعتماد كلياً على Firebase Auth)
+  const demoEngEmail = `eng.${newTenant.subdomain || newTenant.slug || id.replace('comp_', '')}@tashteebpro.com`;
+  const demoEngName = `م. مهندس ${newTenant.name.replace(/^شركة\s*/g, '').trim() || 'الموقع'}`;
   const companyUsers = [
     {
       id: `u_${id}_admin`,
@@ -384,18 +386,18 @@ export function createTenant(data) {
       name: newTenant.adminName,
       engineerName: null,
       companyId: id,
+    },
+    {
+      id: `u_${id}_eng1`,
+      email: id === 'comp_demo' ? 'site.eng@tashteebpro.com' : demoEngEmail,
+      role: 'engineer',
+      name: id === 'comp_demo' ? 'مهندس الموقع (تجريبي)' : demoEngName,
+      engineerName: id === 'comp_demo' ? 'مهندس الموقع (تجريبي)' : demoEngName,
+      companyId: id,
+      isDemo: true,
+      createdAt: new Date().toISOString(),
     }
   ];
-  if (id === 'comp_demo') {
-    companyUsers.push({
-      id: `u_${id}_eng1`,
-      email: 'site.eng@tashteebpro.com',
-      role: 'engineer',
-      name: 'مهندس الموقع (تجريبي)',
-      engineerName: 'مهندس الموقع (تجريبي)',
-      companyId: id,
-    });
-  }
   localStorage.setItem(`tenant_${id}_users`, JSON.stringify(companyUsers));
 
   // إعدادات الشركة
@@ -416,7 +418,7 @@ export function createTenant(data) {
 
   // الفريق
   const companyTeam = {
-    engineers: ['م. مهندس الموقع', 'م. سيف النيادي'],
+    engineers: [demoEngName, 'م. سيف النيادي'],
     accountants: ['أ. المحاسب المالي'],
     techOffice: ['م. المكتب الفني'],
     customerService: []
@@ -1437,6 +1439,38 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
     }
 
     if (subTenant) {
+      // 0. فحص فوري ومباشر لمهندس الموقع التجريبي (eng.{subdomain}@tashteebpro.com)
+      const expectedDemoEng = `eng.${currentSub}@tashteebpro.com`;
+      const isSubEng = cleanEmail === expectedDemoEng || (subTenant.subdomain && cleanEmail === `eng.${subTenant.subdomain}@tashteebpro.com`);
+      if (isSubEng) {
+        const compName = getTenantCurrentName(subTenant);
+        const compLogo = getTenantCurrentLogo(subTenant);
+        const demoEngUser = {
+          id: firebaseUid || `u_${subTenant.id}_eng1`,
+          email: cleanEmail,
+          name: `م. مهندس ${compName.replace(/^شركة\s*/g, '').trim() || 'الموقع'}`,
+          engineerName: `م. مهندس ${compName.replace(/^شركة\s*/g, '').trim() || 'الموقع'}`,
+          role: 'engineer',
+          companyId: subTenant.id,
+          companyName: compName,
+          currency: subTenant.currency || 'ج.م',
+          isDemo: true,
+        };
+        try {
+          const uList = JSON.parse(localStorage.getItem(`tenant_${subTenant.id}_users`) || '[]');
+          if (!uList.some(u => u.email === cleanEmail)) {
+            uList.push(demoEngUser);
+            localStorage.setItem(`tenant_${subTenant.id}_users`, JSON.stringify(uList));
+          }
+        } catch (e) {}
+        return {
+          success: true,
+          user: demoEngUser,
+          tenant: { ...subTenant, name: compName, logo: compLogo },
+          isSuperAdmin: false,
+        };
+      }
+
       // 1. أولاً وأهم أولوية: هل هو موظف مسجل في هذه الشركة؟ (تُفحص قبل المالك لمنع تصعيد الموظف لمالك)
       let subUsers = Array.isArray(subTenant.users) ? [...subTenant.users] : [];
       try {
@@ -1519,6 +1553,68 @@ export async function resolveTenantUserByEmail(email, firebaseUid = '', claims =
           isSuperAdmin: false,
         };
       }
+    }
+  }
+
+  // 3.8. فحص نمط بريد مهندس الموقع eng.{subdomain}@tashteebpro.com عند الدخول من المنصة الرئيسية
+  const engMatch = cleanEmail.match(/^eng\.([a-z0-9-]+)@tashteebpro\.com$/);
+  if (engMatch) {
+    const targetSub = engMatch[1];
+    let targetTenant = tenants.find(t =>
+      (t.subdomain || '').toLowerCase().trim() === targetSub ||
+      (t.slug || '').toLowerCase().trim() === targetSub ||
+      (t.id || '').toLowerCase().trim() === targetSub ||
+      (t.id || '').toLowerCase().trim() === `comp_${targetSub}`
+    );
+    if (!targetTenant) {
+      try {
+        const { doc: fDoc, getDoc: fGetDoc } = await import('firebase/firestore');
+        const sSnap = await Promise.race([
+          fGetDoc(fDoc(db, 'tenant_directory', targetSub)),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2500))
+        ]);
+        if (sSnap && sSnap.exists()) {
+          const sData = sSnap.data();
+          targetTenant = {
+            id: sData.companyId || `comp_${targetSub}`,
+            name: sData.name || targetSub,
+            subdomain: targetSub,
+            slug: targetSub,
+            logo: sData.logo || null,
+            currency: sData.currency || 'ج.م',
+            status: 'active',
+          };
+        }
+      } catch (e) {}
+    }
+
+    if (targetTenant) {
+      const compName = getTenantCurrentName(targetTenant);
+      const compLogo = getTenantCurrentLogo(targetTenant);
+      const demoEngUser = {
+        id: firebaseUid || `u_${targetTenant.id}_eng1`,
+        email: cleanEmail,
+        name: `م. مهندس ${compName.replace(/^شركة\s*/g, '').trim() || 'الموقع'}`,
+        engineerName: `م. مهندس ${compName.replace(/^شركة\s*/g, '').trim() || 'الموقع'}`,
+        role: 'engineer',
+        companyId: targetTenant.id,
+        companyName: compName,
+        currency: targetTenant.currency || 'ج.م',
+        isDemo: true,
+      };
+      try {
+        const uList = JSON.parse(localStorage.getItem(`tenant_${targetTenant.id}_users`) || '[]');
+        if (!uList.some(u => u.email === cleanEmail)) {
+          uList.push(demoEngUser);
+          localStorage.setItem(`tenant_${targetTenant.id}_users`, JSON.stringify(uList));
+        }
+      } catch (e) {}
+      return {
+        success: true,
+        user: demoEngUser,
+        tenant: { ...targetTenant, name: compName, logo: compLogo },
+        isSuperAdmin: false,
+      };
     }
   }
 
